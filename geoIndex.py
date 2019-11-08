@@ -118,7 +118,7 @@ class geoIndex(dict):
             if key in index_list[0].attrs:
                 if index_list[0].attrs[key] is not None:
                     self.attrs[key]=index_list[0].attrs[key]
-        if len(dir_root) > 0:
+        if dir_root is not None and len(dir_root) > 0:
             self.attrs['dir_root']=dir_root
         # make a list of files in the destination index (self)
         fileListTo=list()
@@ -132,7 +132,8 @@ class geoIndex(dict):
                 thisFileName=index.attrs['file_%d' % fileNum]
                 if 'dir_root' in index.attrs and index.attrs['dir_root'] is not None:
                     thisFileName=index.attrs['dir_root']+'/'+thisFileName
-                thisFileName=thisFileName.replace(dir_root,'')
+                if dir_root is not None:
+                    thisFileName=thisFileName.replace(dir_root,'')
                 thisFileType=index.attrs['type_%d' % fileNum]
                 if thisFileName not in fileListTo:
                     fileListTo.append(thisFileName)
@@ -266,7 +267,7 @@ class geoIndex(dict):
             if D.latitude.shape[0] > 0:
                 self.from_latlon(D.latitude, D.longitude,  filename_out, 'ATM_waveform', number=number)
         if file_type in ['filtered_DEM', 'DEM'] :
-            D=pc.map.data().from_file(filename, band=1).as_points()
+            D=pc.grid.data().from_geotif(filename, bands=[1], min_res=self.attrs['delta'][0]/10).as_points()
             if D.size > 0:
                 self.from_xy((D.x, D.y), filename=filename_out, file_type=file_type, number=number)
         if file_type in ['h5_geoindex']:
@@ -546,10 +547,10 @@ def get_data_for_geoIndex(query_results, delta=[10000., 10000.], fields=None, da
         if result['type'] == 'ATM_waveform':
             D=[pc.atmWaveform(filename=this_file, index_range=np.array(temp), waveform_format=True) for temp in zip(result['offset_start'], result['offset_end'])]
         if result['type'] == 'DEM':
-            D=pc.map.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
+            D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
             D.index(D, np.isfinite(D.z))
         if result['type'] == 'filtered_DEM':
-            D=pc.map.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
+            D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
             D.index(D, np.isfinite(D.z))
             D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
             D.filename=this_file

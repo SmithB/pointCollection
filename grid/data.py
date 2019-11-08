@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import h5py
 import scipy.interpolate as si
 import pointCollection as pc
-import WV_date
+from . import WV_date
 
 class data(object):
     def __init__(self):
@@ -27,7 +27,7 @@ class data(object):
         self.time=None
 
     def __copy__(self):
-        temp=pc.map.data()
+        temp=pc.grid.data()
         for field in ['x','y','z','projection','filename','extent','time']:
             setattr(temp, field, getattr(self, field))
         return temp
@@ -38,7 +38,7 @@ class data(object):
     def update_extent(self):
         self.extent=[np.min(self.x), np.max(self.x), np.min(self.y), np.max(self.y)]
 
-    def from_geotif(self, file, bands=None, bounds=None, skip=1, date_format=None):
+    def from_geotif(self, file, bands=None, bounds=None, skip=1, min_res=None, date_format=None):
         """
         Read a raster from a geotif
         """
@@ -48,6 +48,10 @@ class data(object):
 
         ds=gdal.Open(file, gdalconst.GA_ReadOnly)
         GT=ds.GetGeoTransform()
+        
+        if min_res is not None:
+            skip=np.max([1, np.ceil(min_res/np.abs(GT[1]))]).astype(int)
+        
         proj=ds.GetProjection()
         if bands is None:
             n_bands=ds.RasterCount
@@ -99,13 +103,13 @@ class data(object):
         self.update_extent()
         return self
 
-    def from_h5(self, h5_file, field_mapping={}, group='/', bounds=None, skip=1):
+    def from_h5(self, h5_file, field_gridping={}, group='/', bounds=None, skip=1):
        """
        Read a raster from an hdf5 file
        """
        self.filename=h5_file
        fields={'x':'x','y':'y','z':'z','t':'t'}
-       fields.update(field_mapping)
+       fields.update(field_gridping)
        t=None
        with h5py.File(h5_file,'r') as h5f:
            x=np.array(h5f[group+fields['x']])
@@ -133,7 +137,7 @@ class data(object):
 
     def to_geotif(self, out_file, srs_proj4=None, srs_wkt=None,  srs_epsg=None):
         """
-        Write a mapData object to a geotif.
+        Write a grid object to a geotif.
         """
         nx=self.z.shape[1]
         ny=self.z.shape[0]
@@ -168,7 +172,7 @@ class data(object):
 
     def as_points(self, keep_all=False):
         """
-        Return a pointCollection.data object containing the points in the map
+        Return a pointCollection.data object containing the points in the grid
         """
         x,y=np.meshgrid(self.x, self.y)
         if keep_all:
@@ -233,7 +237,7 @@ class data(object):
 
     def index(self, row_ind, col_ind):
         """
-        slice a map by row or column
+        slice a grid by row or column
         """
         self.x=self.x[col_ind]
         self.y=self.y[row_ind]
@@ -246,7 +250,7 @@ class data(object):
 
     def subset(self, XR, YR):
         """
-        Return a subset of a map by x and y range
+        Return a subset of a grid by x and y range
         """
 
         col_ind = np.where((self.x >= XR[0]) & (self.x <= XR[1]))[0]
@@ -255,7 +259,7 @@ class data(object):
            self.index(row_ind, col_ind)
            return self
         except Exception as e:
-           print("mapData: self extent is: ", self.extent)
+           print("grid: self extent is: ", self.extent)
            print("XR is %s", XR)
            print("YR is %s", YR)
            print("Error is" )
@@ -270,7 +274,7 @@ class data(object):
 
     def interp(self, x, y, gridded=False, band=0):
         """
-        interpolate a map to a set of x and y points
+        interpolate a grid to a set of x and y points
         """
         if self.interpolator is None:
             if len(self.z.shape) > 2:
@@ -317,6 +321,6 @@ class data(object):
 
     def bounds(self, pad=0):
         """
-        Return the x and y bounds of a map
+        Return the x and y bounds of a grid
         """
         return [[np.min(self.x)-pad, np.max(self.x)+pad], [np.min(self.y)-pad, np.max(self.y)+pad]]

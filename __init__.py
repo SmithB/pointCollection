@@ -11,3 +11,4 @@ from pointCollection import Qfit
 from pointCollection import ATL06
 from .pt_blockmedian import pt_blockmedian
 from .geoIndex import geoIndex
+from pointCollection import grid

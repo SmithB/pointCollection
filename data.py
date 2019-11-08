@@ -13,7 +13,7 @@ import os
 
 class data(object):
     np.seterr(invalid='ignore')
-    def __init__(self, fields=None, SRS_proj4=None, field_dict=None, columns=0):
+    def __init__(self, fields=None, SRS_proj4=None, field_dict=None, columns=0, filename=None):
 
         if field_dict is None:
             self.field_dict=self.__default_field_dict__()
@@ -33,7 +33,7 @@ class data(object):
         self.columns=columns
         self.shape=None
         self.size=None
-        self.filename=None
+        self.filename=filename
 
     def __repr__(self):
         out=f"{self.__class__} with shape {self.shape},"+"\n"
