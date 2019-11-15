@@ -213,7 +213,7 @@ class geoIndex(dict):
             indexGrp.attrs['n_files'] = self.attrs['n_files']
         else:
             indexGrp.attrs['n_files']=0
-        if 'dir_root' in self.attrs:
+        if 'dir_root' in self.attrs and self.attrs['dir_root'] is not None:
             indexGrp.attrs['dir_root']=self.attrs['dir_root']
         indexGrp.attrs['delta'] = self.attrs['delta']
         indexGrp.attrs['SRS_proj4'] = self.attrs['SRS_proj4']
@@ -243,7 +243,7 @@ class geoIndex(dict):
                 if D.latitude.shape[0] > 0:
                     temp.append(geoIndex(delta=self.attrs['delta'], SRS_proj4=\
                                           self.attrs['SRS_proj4']).from_xy([np.nanmean(D.x, axis=1), np.nanmean(D.y, axis=1)], '%s:pair%d' % (filename_out, beam_pair), 'ATL06', number=number))
-            self.from_list(temp)
+            self.from_list(temp, dir_root=dir_root)
         if file_type in ['ATL11']:
             temp=list()
             this_field_dict={'corrected_h':('ref_pt_lat','ref_pt_lon')}
