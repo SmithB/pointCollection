@@ -38,6 +38,13 @@ class data(object):
     def update_extent(self):
         self.extent=[np.min(self.x), np.max(self.x), np.min(self.y), np.max(self.y)]
 
+    def from_dict(self, thedict):
+        for field in ['x','y','z','projection','filename','extent','time']:
+            if field in thedict:
+                setattr(self, field, thedict[field])
+        self.update_extent()
+        return self
+    
     def from_geotif(self, file, bands=None, bounds=None, skip=1, min_res=None, date_format=None):
         """
         Read a raster from a geotif
@@ -103,13 +110,13 @@ class data(object):
         self.update_extent()
         return self
 
-    def from_h5(self, h5_file, field_gridping={}, group='/', bounds=None, skip=1):
+    def from_h5(self, h5_file, field_mapping={}, group='/', bounds=None, skip=1):
        """
        Read a raster from an hdf5 file
        """
        self.filename=h5_file
        fields={'x':'x','y':'y','z':'z','t':'t'}
-       fields.update(field_gridping)
+       fields.update(field_mapping)
        t=None
        with h5py.File(h5_file,'r') as h5f:
            x=np.array(h5f[group+fields['x']])
@@ -265,11 +272,18 @@ class data(object):
            print("Error is" )
            print(e)
 
-    def show(self, ax=None, **kwargs):
-        if ax is None:
-            h_im = plt.imshow(self.z, extent=self.extent, origin='lower', **kwargs)
+    def show(self, band=None, ax=None, xy_scale=1,  **kwargs):
+        kwargs['extent']=np.array(self.extent)*xy_scale
+        kwargs['origin']='lower'
+        if band is None:
+            zz=self.z
         else:
-            h_im = ax.imshow(self.z, extent=self.extent, origin='lower', **kwargs)
+            zz=self.z[:,:,band]
+        
+        if ax is None:
+            h_im = plt.imshow(zz, **kwargs)
+        else:
+            h_im = ax.imshow(zz, **kwargs)
         return h_im
 
     def interp(self, x, y, gridded=False, band=0):
