@@ -53,6 +53,14 @@ class data(pc.data):
         """
         Read data from a file.
         """
+  
+        if field_dict is not None:
+            fields=[]
+            for group in self.field_dict.keys():
+                for field in self.field_dict[group]:
+                        fields.append(field)
+            self.fields=fields
+            self.field_dict=field_dict
         self.file=filename
         h5_f=h5py.File(filename,'r')
         # generate the name for the hdf5 beam groups
