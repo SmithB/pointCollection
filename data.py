@@ -321,7 +321,7 @@ class data(object):
         """
         ravel all the fields in self
         """
-        for field in self.list_of_fields:
+        for field in self.fields:
             setattr(self, field, getattr(self, field).ravel())
         self.__update_size_and_shape__()
         return self
