@@ -16,6 +16,7 @@ from osgeo import osr
 import matplotlib.pyplot as plt
 import pointCollection as pc
 import ATL11
+import os
 
 class geoIndex(dict):
     def __init__(self, delta=[1000,1000], SRS_proj4=None, data=None):
@@ -28,6 +29,7 @@ class geoIndex(dict):
             elif hasattr(data,'latitude'):
                 self.from_latlon(self.data.latitude, self.data.longitude)
         self.h5_file=None
+        self.filename=None
 
     def __repr__(self):
         out = f"{self.__class__} with {len(self.keys())} bins, referencing {self.attrs['n_files']} files"
@@ -72,6 +74,7 @@ class geoIndex(dict):
         # and file_type.  If the file_type is 'geoIndex', optionally sepecify a
         # value for 'fake_offset_val'
         delta=self.attrs['delta']
+        self.filename=filename
         xy_bin=np.round(np.c_[xy[0].ravel(), xy[1].ravel()]/delta).astype(int)
         if first_last is None:
             # If the inputs haven't provided the first and last index for each bin, need to calculate it:
@@ -175,6 +178,7 @@ class geoIndex(dict):
         # h5_file_index attribute of the resulting geoIndex is set to a
         # reference to the hdf_file's 'index' attribute.  This seems to be
         # faster than reading the whole file.
+        
         h5_f = h5py.File(index_file,'r')
         h5_i = h5_f[group]
         if read_file:
@@ -183,8 +187,7 @@ class geoIndex(dict):
         self.attrs=h5_i.attrs
         self.h5_file=h5_f
         self.h5_file_index=h5_f['index']
-        #if read_file is True:
-        #    h5_f.close()
+        self.filename=index_file
         return self
 
     def change_root(self, new_root, old_root=None):
@@ -430,7 +433,14 @@ class geoIndex(dict):
                 i0=i0[keep]
                 i1=i1[keep]
                 xy=xy[keep,:]
-            query_results[self.attrs['file_%d' % out_file_num]]={
+            # if the file_N attribute begins with ':', it's a group in the current file, so ad the current filename
+            this_query_file=self.attrs['file_%d' % out_file_num]
+            if this_query_file[0] == ':':
+                if dir_root is not None:
+                    this_query_file=self.filename.replace(dir_root,'')+this_query_file
+                else:
+                    this_query_file=self.filename+this_query_file
+            query_results[this_query_file]={
             'type':self.attrs['type_%d' % out_file_num],
             'offset_start':i0,
             'offset_end':i1,
@@ -539,8 +549,11 @@ def get_data_for_geoIndex(query_results, delta=[10000., 10000.], fields=None, da
                 for temp in zip(result['offset_start'], result['offset_end'])]
         if result['type'] == 'ATL11':
             D11_file, pair = this_file.split(':pair')
-            D=[ATL11.data(beam_pair=int(pair), list_of_fields=field_list, field_dict=field_dict).from_file(\
-                filename=D11_file, index_range=np.array(temp)) \
+            if not os.path.isfile(D11_file):
+                print(D11_file)
+            D=[ATL11.data().from_file(\
+                filename=D11_file, index_range=np.array(temp), \
+                pair=int(pair), field_dict=field_dict) \
                 for temp in zip(result['offset_start'], result['offset_end'])]
         if result['type'] == 'ATM_Qfit':
             D=[pc.qFit.data(filename=this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
