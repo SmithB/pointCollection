@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Nov  7 09:42:00 2019
+
+@author: ben
+"""
+
+import pointCollection as pc
+
+import os
+import glob
+import numpy as np
+import matplotlib.pyplot as plt
+
+import argparse
+
+
+def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None,\
+                   verbose=False, delta=[1.e4, 1.e4], SRS_proj4=None):
+    """
+    make a geoindex for the files in a glob string
+    
+    arguments:
+        glob_string: a string that when passed to glob will return a list of files
+        dir_root: directory name in which to root the index
+        index_file: the name of the output index file (defaults to basename(glob_string)/GeoIndex.h5)
+        verbose: should a lot be echoed?  defaults to None
+    """
+    
+    files=glob.glob(glob_string)
+    if index_file is None: 
+        index_file=os.path.dirname(glob_string)+'/GeoIndex.h5'
+    files=glob.glob(glob_string)
+    index_list=[];
+    for file in files:
+        if verbose:
+            print(f"indexing {file}")
+        #if os.path.basename(file)[0:3]=='Geo':
+        #    continue
+        try:
+            index_list += [pc.geoIndex(delta=delta, SRS_proj4=SRS_proj4).for_file(file, file_type) ]
+        except Exception as e:
+            print(f"Exception thrown for file {file}:")
+            print(e)
+    if verbose:
+        print(f"making index file: {index_file}")
+    pc.geoIndex(delta=delta, SRS_proj4=SRS_proj4).from_list(index_list, \
+               dir_root=dir_root)\
+               .to_file(index_file)
+    
+def main():
+    
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--glob_string','-g', type=str, required=True, help="quoted string to pass to glob to find the files to index")
+    parser.add_argument('--type','-t', type=str, required=True, help="file type.  See pointCollection.geoIndex for options")
+    parser.add_argument('--index_file','-i', type=str, help="index file, defaults to GeoIndex.h5 in the dirname of the glob string")
+    parser.add_argument('--dir_root','-r', type=str, help="directory root for the index.  Defaults to None (absolute paths)")
+    parser.add_argument('--bin_size', '-b', type=int, help='index bin size, default=1.e4')
+    parser.add_argument('--hemisphere','-H', type=int, required=True, help='hemisphere, must be 1 or -1, required')
+    parser.add_argument('--verbose','-v', action='store_true')
+    args=parser.parse_args()
+    
+    if args.hemisphere==1:
+        srs_proj4 = '+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs '
+    elif args.hemisphere==-1:
+        srs_proj4 = '+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs '
+    
+    
+    index_for_glob(args.glob_string, dir_root=args.dir_root, \
+                   index_file=args.index_file, \
+                   file_type=args.type,\
+                   verbose=args.verbose,\
+                   delta=[1.e4, 1.e4], \
+                   SRS_proj4=srs_proj4)
+
+if __name__=='__main__':
+    main()
+
+# -H 1 -g "/Volumes/ice2/ben/scf/GL_11/U01/*.h5" --index_file /Volumes/ice2/ben/scf/GL_11/U01/GeoIndex.h5 --dir_root /Volumes/ice2/ben/scf/GL_11/U01 -t "h5_geoindex"
+    
+    
+   #-H 1 -g "/Volumes/ice2/ben/scf/GL_11/U01*/ATL11*.h5" --index_file /Volumes/ice2/ben/scf/GL_11/GeoIndex_U01.h5 --dir_root /Volumes/ice2/ben/scf/GL_11/ -t "h5_geoindex" 
