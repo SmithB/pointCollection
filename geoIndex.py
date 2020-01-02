@@ -13,7 +13,7 @@ import numpy as np
 import re
 import h5py
 from osgeo import osr
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import pointCollection as pc
 import ATL11
 import os
@@ -568,9 +568,9 @@ def get_data_for_geoIndex(query_results, delta=[10000., 10000.], fields=None, da
             D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
             D.filename=this_file
         if result['type'] == 'indexed_h5':
-            D = [pc.indexedH5(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
+            D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
         if result['type'] == 'indexed_h5_from_matlab':
-            D = [ pc.indexedH5(filename=this_file).read([result['x']/1000, result['y']/1000],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
+            D = [ pc.indexedH5.data(filename=this_file).read([result['x']/1000, result['y']/1000],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
         if result['type'] is None:
             D = [data.subset(np.arange(temp[0], temp[1])) for temp in zip(result['offset_start'], result['offset_end'])]
         # add data to list of results.  May be a list or a single result

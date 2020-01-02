@@ -11,12 +11,12 @@ import pointCollection as pc
 import os
 import h5py
 
-class indexedH5(object):
-    def __init__(self, bin_W=[1.e4, 1.e4], filename=None):
+class data(pc.data):
+    def __init__(self, bin_W=[1.e4, 1.e4], **kwargs):
         self.bin_W=bin_W
-        self.filename=filename
+        super().__init__(self, **kwargs)
 
-    def data_to_file(self, D, out_file, time_field='time'):
+    def to_file(self, D, out_file, time_field='time'):
         y_bin_function=np.round(D.y/self.bin_W)
         x_bin_function=np.round(D.x/self.bin_W)
         x_scale=np.nanmax(x_bin_function)-np.nanmin(x_bin_function)
@@ -73,18 +73,18 @@ class indexedH5(object):
                 # this is a file with distinct bins, each with its own set of datasets
                 for xy in zip(xy_bin[0], xy_bin[1]):
                     bin_name='%dE_%dN' % xy
-                for field in fields:
-                    if field in h5f:
-                        if bin_name in h5f[field]:
-                            out_data[field].append(np.array(h5f[field][bin_name]).squeeze())
-                    elif bin_name in h5f:
-                        if field in h5f[bin_name]:
-                            out_data[field].append(np.array(h5f[bin_name][field]).squeeze())
-                    else:
-                        blank_fields.append(field)
+                    for field in fields:
+                        if field in h5f:
+                            if bin_name in h5f[field]:
+                                out_data[field].append(np.array(h5f[field][bin_name]).squeeze())
+                        elif bin_name in h5f:
+                            if field in h5f[bin_name]:
+                                out_data[field].append(np.array(h5f[bin_name][field]).squeeze())
+                        else:
+                            blank_fields.append(field)
             for field in fields:
                 if isinstance(out_data[field], list):
-                    if len(out_data[field])>1:
+                    if len(out_data[field])>1 or isinstance(out_data[field], list):
                         try:
                             temp=list()
                             for item in out_data[field]:
