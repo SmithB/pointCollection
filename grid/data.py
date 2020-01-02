@@ -242,7 +242,7 @@ class data(object):
             self.add_alpha_band(alpha)
         return self
 
-    def index(self, row_ind, col_ind):
+    def index(self, row_ind, col_ind, band_ind=None):
         """
         slice a grid by row or column
         """
@@ -251,7 +251,11 @@ class data(object):
         if len(self.z.shape) == 2:
             self.z=self.z[row_ind,:][:, col_ind]
         else:
-            self.z=self.z[row_ind,:, :][:, col_ind,:]
+            if band_ind is None:
+                self.z=self.z[row_ind,:, :][:, col_ind,:]
+            else:
+                self.z=self.z[row_ind,:, :][:, col_ind, band_ind]
+                self.t=self.t[band_ind]
         self.update_extent()
         return self
 
