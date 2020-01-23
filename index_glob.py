@@ -17,7 +17,7 @@ import argparse
 
 
 def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None,\
-                   verbose=False, delta=[1.e4, 1.e4], SRS_proj4=None):
+                   verbose=False, delta=[1.e4, 1.e4], SRS_proj4=None, relative=False):
     """
     make a geoindex for the files in a glob string
     
@@ -45,12 +45,13 @@ def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None,\
             print(e)
     if verbose:
         print(f"making index file: {index_file}")
-    pc.geoIndex(delta=delta, SRS_proj4=SRS_proj4).from_list(index_list, \
-               dir_root=dir_root)\
-               .to_file(index_file)
+    gI=pc.geoIndex(delta=delta, SRS_proj4=SRS_proj4).from_list(index_list, \
+               dir_root=dir_root)
+    if relative:
+        gI.attrs['dir_root']=None
+    gI.to_file(index_file)
     
 def main():
-    
     parser=argparse.ArgumentParser()
     parser.add_argument('--glob_string','-g', type=str, required=True, help="quoted string to pass to glob to find the files to index")
     parser.add_argument('--type','-t', type=str, required=True, help="file type.  See pointCollection.geoIndex for options")
@@ -59,6 +60,7 @@ def main():
     parser.add_argument('--bin_size', '-b', type=int, help='index bin size, default=1.e4')
     parser.add_argument('--hemisphere','-H', type=int, required=True, help='hemisphere, must be 1 or -1, required')
     parser.add_argument('--verbose','-v', action='store_true')
+    parser.add_argument('--Relative','-R', action='store_true')
     args=parser.parse_args()
     
     if args.hemisphere==1:
@@ -72,7 +74,8 @@ def main():
                    file_type=args.type,\
                    verbose=args.verbose,\
                    delta=[1.e4, 1.e4], \
-                   SRS_proj4=srs_proj4)
+                   SRS_proj4=srs_proj4,\
+                   relative=args.Relative)
 
 if __name__=='__main__':
     main()
