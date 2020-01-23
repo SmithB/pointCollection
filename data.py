@@ -9,7 +9,7 @@ import numpy as np
 from osgeo import osr
 from .pt_blockmedian import pt_blockmedian
 import os
-
+import pyproj
 
 class data(object):
     np.seterr(invalid='ignore')
@@ -118,6 +118,7 @@ class data(object):
 
             for group in field_dict.keys():
                 if group == '__calc_internal__':
+                    self.fields += field_dict[group]
                     continue
                 for field in field_dict[group]:
                     if field not in self.fields:
@@ -149,29 +150,39 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def get_xy(self, proj4_string=None, EPSG=None):
-        '''
-        get projected coordinates for the data.  Adds 'x' and 'y' fields to the data, optionally returns 'self'
-        '''
-        out_srs=osr.SpatialReference()
-        if proj4_string is None and EPSG is not None:
-            out_srs.ImportFromEPSG(EPSG)
-        else:
-            errCode=out_srs.ImportFromProj4(proj4_string)
-            if errCode > 0:
-                errCode=out_srs.ImportFromWkt(proj4_string)
-        ll_srs=osr.SpatialReference()
-        ll_srs.ImportFromEPSG(4326)
-        ct=osr.CoordinateTransformation(ll_srs, out_srs)
-        if self.latitude.size==0:
-            self.x=np.zeros_like(self.latitude)
-            self.y=np.zeros_like(self.latitude)
-        else:
-            x, y, z= list(zip(*[ct.TransformPoint(*xyz) for xyz in zip(np.ravel(self.longitude), np.ravel(self.latitude), np.zeros_like(np.ravel(self.latitude)))]))
-            #x, y= list(zip(*[ct.TransformPoint(*xy) for xy in zip(np.ravel(self.longitude), np.ravel(self.latitude))]))
+    # def get_xy(self, proj4_string=None, EPSG=None):
+    #     '''
+    #     get projected coordinates for the data.  Adds 'x' and 'y' fields to the data, optionally returns 'self'
+    #     '''
+    #     out_srs=osr.SpatialReference()
+    #     if proj4_string is None and EPSG is not None:
+    #         out_srs.ImportFromEPSG(EPSG)
+    #     else:
+    #         errCode=out_srs.ImportFromProj4(proj4_string)
+    #         if errCode > 0:
+    #             errCode=out_srs.ImportFromWkt(proj4_string)
+    #     ll_srs=osr.SpatialReference()
+    #     ll_srs.ImportFromEPSG(4326)
+    #     ct=osr.CoordinateTransformation(ll_srs, out_srs)
+    #     if self.latitude.size==0:
+    #         self.x=np.zeros_like(self.latitude)
+    #         self.y=np.zeros_like(self.latitude)
+    #     else:
+    #         xy=np.array(ct.TransformPoints(np.c_[self.longitude.ravel(), self.latitude.ravel()]))
+    #         self.x=np.reshape(xy[:,0], self.latitude.shape)
+    #         self.y=np.reshape(xy[:,1], self.longitude.shape)
+    #     if 'x' not in self.fields:
+    #         self.fields += ['x','y']
+    #     return self
 
-            self.x=np.reshape(x, self.latitude.shape)
-            self.y=np.reshape(y, self.longitude.shape)
+    def get_xy(self, proj4_string=None, EPSG=None):
+        if proj4_string is not None:
+            crs=proj4_string
+        elif EPSG is not None:
+            crs=EPSG
+        xy=np.array(pyproj.proj.Proj(crs)(self.longitude, self.latitude))
+        self.x=xy[0,:].reshape(self.shape)
+        self.y=xy[1,:].reshape(self.shape)
         if 'x' not in self.fields:
             self.fields += ['x','y']
         return self
@@ -268,7 +279,7 @@ class data(object):
             by_row=True
         if datasets is None:
             datasets=self.fields.copy()
-        if (len(index) == 0) or ( (index.dtype == 'bool') and np.all(index==0)):
+        if (not isinstance(index, slice)) and ((len(index) == 0) or ( (index.dtype == 'bool') and np.all(index==0))):
             dd={key:np.zeros([1,0]) for key in datasets}
         else:
             for field in datasets:
