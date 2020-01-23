@@ -35,7 +35,7 @@ class data(pc.data):
         self.shape=(0,2)
         self.size=0
         self.beam_pair=beam_pair
-        self.beam_type=None
+        self.beam_type=[None, None]
         self.filename=None
 
     def __default_field_dict__(self):
@@ -77,7 +77,7 @@ class data(pc.data):
         # get the strong/weak beam info
         for count, beam_name in enumerate(beam_names):
             try:
-                self.beam_type[count]=h5_f[beam_name]['atlas_beam_type']
+                self.beam_type[count]=h5_f[beam_name].attrs['atlas_beam_type']
             except KeyError:
                 pass  # leave the beam type as the default
         if index_range is None or index_range[1]==-1:
@@ -130,6 +130,9 @@ class data(pc.data):
                         data=np.ones((index_range[1]-index_range[0], 2))
                         for bb in [0, 1]:
                             data[:,bb]=np.float64(h5_f[beam_names[bb]].attrs['atlas_spot_number'])
+                    elif group == "derived" and field == "sigma_geo_r":
+                        # Earlier versions of the data don't include a sigma_geo_r.  This is a fake value
+                        data=np.zeros((index_range[1]-index_range[0], 2)) +0.03
                     elif group == "derived":
                         continue
                     else:
@@ -164,6 +167,8 @@ class data(pc.data):
 
         if "derived" in self.field_dict and "rss_along_track_dh" in self.field_dict['derived']:
             self.get_rss_along_track_dh()
+        if "derived" in self.field_dict and "min_along_track_dh" in self.field_dict['derived']:            
+            setattr(self, 'min_along_track_dh', self.calc_min_along_track_dh())
 
         # assign fields that must be copied from single-value attributes in the
         # h5 file
@@ -181,6 +186,22 @@ class data(pc.data):
     def get_Matlab_time(self):
         self.assign({'matlab_time': 737061. + self.delta_time/24./3600.})
 
+    def calc_min_along_track_dh(self):
+        min_along_track_dh=np.zeros(list(self.shape)+[2])
+        n_pts=self.shape[0]
+        if n_pts > 1:
+            i0=slice(1, n_pts-1)
+            for dim3, ii in enumerate([-1, 1]):
+                i1=slice(1+ii, n_pts-1+ii)
+                dx=self.x_atc[i0,:]-self.x_atc[i1,:]
+                min_along_track_dh[i0,:, dim3] = np.abs(self.h_li[i0,:]-self.dh_fit_dx[i0,:]*dx-self.h_li[i1,:])
+            min_along_track_dh = np.nanmin(min_along_track_dh, axis=2)
+            min_along_track_dh[0,:]=np.abs(self.h_li[1,:]-self.h_li[0,:] - (self.x_atc[1,:]-self.x_atc[0,:])*self.dh_fit_dx[0,:])
+            min_along_track_dh[-1,:]=np.abs(self.h_li[-1,:]-self.h_li[-2,:] - (self.x_atc[-1,:]-self.x_atc[-2,:])*self.dh_fit_dx[-1,:])
+        else:
+            min_along_track_dh=np.zeros([1,2])+np.NaN
+        return min_along_track_dh
+        
     def get_rss_along_track_dh(self):
         self.rss_along_track_dh=np.zeros(self.shape)
         n_pts=self.shape[0]
