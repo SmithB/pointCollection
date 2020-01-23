@@ -14,11 +14,11 @@ import h5py
 class data(pc.data):
     def __init__(self, bin_W=[1.e4, 1.e4], **kwargs):
         self.bin_W=bin_W
-        super().__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     def to_file(self, D, out_file, time_field='time'):
-        y_bin_function=np.round(D.y/self.bin_W)
-        x_bin_function=np.round(D.x/self.bin_W)
+        y_bin_function=np.round(D.y/self.bin_W[0])
+        x_bin_function=np.round(D.x/self.bin_W[1])
         x_scale=np.nanmax(x_bin_function)-np.nanmin(x_bin_function)
         t=getattr(D, time_field)
         t_scale=np.nanmax(t)-np.nanmin(t)
@@ -42,10 +42,14 @@ class data(pc.data):
 
         for key in key_arr:
             this_group='%dE_%dN' % tuple(key*self.bin_W)
-            D.copy_subset(bin_dict[tuple(key)]).to_file(out_file, replace=False, group=this_group)
+            D.copy_subset(bin_dict[tuple(key)]).to_h5(out_file, replace=False, group=this_group)
 
     def read(self, xy_bin, fields=['x','y','time'], index_range=[[-1],[-1]]):
-        out_data={field:list() for field in fields}
+        if isinstance(fields, dict):
+            field_list=[]
+            for key in fields:
+                field_list += fields[key]
+        out_data={field:list() for field in field_list}
         with h5py.File(self.filename,'r') as h5f:
             blank_fields=list()
             if isinstance(xy_bin, np.ndarray):
@@ -53,7 +57,7 @@ class data(pc.data):
 
             if index_range[0][0]>=0:
                 # All the geo bins are together.  Use the index_range variable to read
-                for field in fields:
+                for field in field_list:
                     if field not in h5f:
                         blank_fields.append(field)
                         continue
@@ -73,7 +77,7 @@ class data(pc.data):
                 # this is a file with distinct bins, each with its own set of datasets
                 for xy in zip(xy_bin[0], xy_bin[1]):
                     bin_name='%dE_%dN' % xy
-                    for field in fields:
+                    for field in field_list:
                         if field in h5f:
                             if bin_name in h5f[field]:
                                 out_data[field].append(np.array(h5f[field][bin_name]).squeeze())
@@ -82,7 +86,7 @@ class data(pc.data):
                                 out_data[field].append(np.array(h5f[bin_name][field]).squeeze())
                         else:
                             blank_fields.append(field)
-            for field in fields:
+            for field in field_list:
                 if isinstance(out_data[field], list):
                     if len(out_data[field])>1 or isinstance(out_data[field], list):
                         try:
@@ -103,5 +107,5 @@ class data(pc.data):
                             print(e)
                 else:
                     out_data[field]=np.array(out_data[field])
-        return pc.data(fields=fields).from_dict(out_data)
+        return pc.data(fields=field_list).from_dict(out_data)
 
