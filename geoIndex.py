@@ -21,7 +21,7 @@ import os
 class geoIndex(dict):
     def __init__(self, delta=[1000,1000], SRS_proj4=None, data=None):
         dict.__init__(self)
-        self.attrs={'delta':delta,'SRS_proj4':SRS_proj4, 'n_files':0,'dir_root':None}
+        self.attrs={'delta':delta,'SRS_proj4':SRS_proj4, 'n_files':0, 'dir_root':''}
         self.data=data
         if self.data is not None:
             if hasattr(data,'x'):
@@ -134,7 +134,7 @@ class geoIndex(dict):
             for fileNum in range(index.attrs['n_files']):
                 thisFileName=index.attrs['file_%d' % fileNum]
                 if 'dir_root' in index.attrs and index.attrs['dir_root'] is not None:
-                    thisFileName=index.attrs['dir_root']+'/'+thisFileName
+                    thisFileName=os.path.join(index.attrs['dir_root'],thisFileName)
                 if dir_root is not None:
                     thisFileName=thisFileName.replace(dir_root,'')
                 thisFileType=index.attrs['type_%d' % fileNum]
@@ -193,10 +193,13 @@ class geoIndex(dict):
     def change_root(self, new_root, old_root=None):
         if old_root is None:
             if self.attrs['dir_root'] is not None:
-                old_root = self.attrs['dir_root'].replace('//','/')
+                old_root = self.attrs['dir_root']
+                while os.path.sep*2 in old_root:
+                    old_root=old_root.replace(os.path.sep*2, os.path.sep)
             else:
                 old_root=''
-        new_root = new_root.replace('//','/')
+        while os.path.sep*2 in new_root:
+            new_root = new_root.replace(os.path.sep*2,os.path.sep)
         file_re = re.compile('file_\d+')
         for key in self.attrs.keys():
             if file_re.match(key) is not None:
@@ -242,10 +245,13 @@ class geoIndex(dict):
             temp=list()
             this_field_dict={None:('latitude','longitude','h_li','delta_time')}
             for beam_pair in (1, 2, 3):
-                D=pc.ATL06.data(beam_pair=beam_pair, field_dict=this_field_dict).from_h5(filename).get_xy(self.attrs['SRS_proj4'])
+                D=pc.ATL06.data(beam_pair=beam_pair, field_dict=this_field_dict).from_h5(filename)
+                D.get_xy(self.attrs['SRS_proj4'])
                 if D.latitude.shape[0] > 0:
                     temp.append(geoIndex(delta=self.attrs['delta'], SRS_proj4=\
-                                          self.attrs['SRS_proj4']).from_xy([np.nanmean(D.x, axis=1), np.nanmean(D.y, axis=1)], '%s:pair%d' % (filename_out, beam_pair), 'ATL06', number=number))
+                                          self.attrs['SRS_proj4']).\
+                                from_xy([np.nanmean(D.x, axis=1), np.nanmean(D.y, axis=1)], 
+                                        '%s:pair%d' % (filename_out, beam_pair), 'ATL06', number=number))
             self.from_list(temp, dir_root=dir_root)
         if file_type in ['ATL11']:
             temp=list()
@@ -255,14 +261,14 @@ class geoIndex(dict):
                 D.get_xy(self.attrs['SRS_proj4'])
                 if D.x.shape[0] > 0:
                     temp.append(geoIndex(delta=self.attrs['delta'], \
-                                          SRS_proj4=self.attrs['SRS_proj4']).from_xy([D.x, D.y], '%s:pair%d' % (filename_out, beam_pair), 'ATL06', number=number))
+                                          SRS_proj4=self.attrs['SRS_proj4']).from_xy([D.x, D.y], '%s:pair%d' % (filename_out, beam_pair), 'ATL11', number=number))
             self.from_list(temp)
         if file_type in ['h5']:
             D=pc.data().from_h5(filename, field_dict={None:['x','y']})
             if D.x.size > 0:
                 self.from_xy((D.x, D.y), filename=filename_out, file_type='h5', number=number)
         if file_type in ['ATM_Qfit']:
-            D=pc.Qfit.data().from_file(filename, fields=['latitiude','longitude', 'time'])
+            D=pc.ATM_Qfit.data().from_h5(filename)
             if D.latitude.shape[0] > 0:
                 self.from_latlon(D.latitude, D.longitude,  filename_out, 'ATM_Qfit', number=number)
         if file_type in ['ATM_waveform']:
@@ -377,8 +383,6 @@ class geoIndex(dict):
         #    and the offsets in the file corresponding to each.
         # If 'pad' is provided, include bins between xb-pad*delta and xp+pad*delta (inclusive)
         #     in the query (likewise for y)
-        if 'dir_root' in self.attrs and len(dir_root)==0:
-            dir_root=self.attrs['dir_root']
         delta=self.attrs['delta']
         if isinstance(xyb[0], np.ndarray):
             xyb=[xyb[0].copy().ravel(), xyb[1].copy().ravel()]
@@ -433,13 +437,13 @@ class geoIndex(dict):
                 i0=i0[keep]
                 i1=i1[keep]
                 xy=xy[keep,:]
-            # if the file_N attribute begins with ':', it's a group in the current file, so ad the current filename
+            # if the file_N attribute begins with ':', it's a group in the current file, so add the current filename
             this_query_file=self.attrs['file_%d' % out_file_num]
-            if this_query_file[0] == ':':
-                if dir_root is not None:
-                    this_query_file=self.filename.replace(dir_root,'')+this_query_file
-                else:
-                    this_query_file=self.filename+this_query_file
+            if this_query_file is not None and this_query_file[0] == ':':
+                file_base=self.filename.replace(dir_root,'')
+                if 'dir_root' in self.attrs:
+                    file_base=file_base.replace(self.attrs['dir_root'],'')
+                this_query_file = file_base + this_query_file
             query_results[this_query_file]={
             'type':self.attrs['type_%d' % out_file_num],
             'offset_start':i0,
@@ -447,7 +451,7 @@ class geoIndex(dict):
             'x':xy[:,0],
             'y':xy[:,1]}
         if get_data:
-            query_results=get_data_for_geoIndex(query_results, delta=self.attrs['delta'], fields=fields, dir_root=dir_root)
+            query_results=self.get_data(query_results, fields=fields, dir_root=dir_root)
             if strict is True:
                 # take the subset of data that rounds exactly to the query (OTW, may get data that extend outside)
                 if not isinstance(query_results, list):
@@ -463,6 +467,127 @@ class geoIndex(dict):
                         keep[ii]=True
                     item.subset(keep)
         return query_results
+    
+    def resolve_path(self, filename, dir_root=None):
+        '''
+        figure out where to find a file based on a query result
+    
+        Parameters
+        ----------
+        filename : string
+            a filename provided by an index
+        dir_root : string or None
+            a directory that can be prepended to subdirectories to help find files
+    
+        Returns
+        -------
+        string
+            absolute path for the file to read   
+        '''
+        if dir_root is None:
+            dir_root=''
+        self_dir_root=''
+        if 'dir_root' in self.attrs:
+            self_dir_root=self.attrs['dir_root']
+        # if the filename begins with '/', it is absolute
+        if filename is not None and filename[0]==os.path.sep:
+            return filename
+        # if self.attrs['dir_root'] begins with '/', it is absolute, and overrides the dir_root argument
+        if len(self_dir_root)>0 and self_dir_root==os.path.sep:
+            return os.path.join(self.attrs['dir_root'], filename)
+        # if self.attrs['dir_root'] does not begin with a '/', it is relative
+        if len(self_dir_root) > 0:
+            return os.path.join(dir_root, self.attrs['dir_root'], filename)
+        # if dir_root is provided, prepend it to the filename
+        if len(dir_root) >0 and dir_root[0]==os.path.sep:
+            return os.path.join(dir_root,filename)
+        # otherwise, if len(dir_root) is 0 and self.attrs['dir_root'] is None,
+        # assume that files are relative to the index path
+        if self.filename is not None:
+            return os.path.join(os.path.dirname(self.filename), filename)
+        # if nothing has happened yet, return the filename 
+        return filename
+        
+    def get_data(self, query_results, fields=None,  data=None, dir_root=''):
+        # read the data from a set of query results
+        # Currently the function knows how to read:
+        # h5_geoindex
+        # indexed h5s
+        # Qfit data (waveform and plain)
+        # DEM data (filtered and not)
+        # ATL06 data.
+        # Append more cases as needed
+        out_data=list()
+    
+        # some data types take a dictionary rather than a list of fields
+        if isinstance(fields, dict):
+            field_dict=fields
+            field_list=None
+        else:
+            field_dict=None
+            field_list=fields
+    
+        # if we are querying any DEM data, work out the bounds of the query so we don't have to read the whole DEMs
+        all_types=[query_results[key]['type'] for key in query_results]
+        if 'DEM' in all_types or 'filtered_DEM' in all_types:
+            all_x=list()
+            all_y=list()
+            for key, result in query_results.items():
+                all_x += result['x'].tolist()
+                all_y += result['y'].tolist()
+            bounds=[[np.min(all_x)-self.delta[0]/2, np.max(all_x)+self.delta[0]/2], \
+                    [np.min(all_y)-self.delta[1]/2, np.max(all_y)+self.delta[1]/2]]
+    
+        for file_key, result in query_results.items():
+            this_file=self.resolve_path(file_key, dir_root)
+            if result['type'] == 'h5':
+                D=[pc.data().from_h5(filename=this_file, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
+            if result['type'] == 'h5_geoindex':
+                D=geoIndex().from_file(this_file).query_xy((result['x'], result['y']), fields=fields, get_data=True, dir_root=dir_root)
+            if result['type'] == 'ATL06':
+                if fields is None:
+                    fields={None:(u'latitude',u'longitude',u'h_li',u'delta_time')}
+                D6_file, pair=this_file.split(':pair')
+                D=[pc.ATL06.data(beam_pair=int(pair), fields=field_list, field_dict=field_dict).from_h5(\
+                    filename=D6_file, index_range=np.array(temp)) \
+                    for temp in zip(result['offset_start'], result['offset_end'])]
+            if result['type'] == 'ATL11':
+                D11_file, pair = this_file.split(':pair')
+                if not os.path.isfile(D11_file):
+                    print(D11_file)
+                D=[ATL11.data().from_file(\
+                    filename=D11_file, index_range=np.array(temp), \
+                    pair=int(pair), field_dict=field_dict) \
+                    for temp in zip(result['offset_start'], result['offset_end'])]
+            if result['type'] == 'ATM_Qfit':
+                D=[pc.qFit.data(filename=this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
+            if result['type'] == 'ATM_waveform':
+                D=[pc.atmWaveform(filename=this_file, index_range=np.array(temp), waveform_format=True) for temp in zip(result['offset_start'], result['offset_end'])]
+            if result['type'] == 'DEM':
+                D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
+                D.index(D, np.isfinite(D.z))
+            if result['type'] == 'filtered_DEM':
+                D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
+                D.index(D, np.isfinite(D.z))
+                D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
+                D.filename=this_file
+            if result['type'] == 'indexed_h5':
+                D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
+            if result['type'] == 'indexed_h5_from_matlab':
+                D = [ pc.indexedH5.data(filename=this_file).read([result['x']/1000, result['y']/1000],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
+            if result['type'] is None:
+                D = [data[np.arange(temp[0], temp[1])] for temp in zip(result['offset_start'], result['offset_end'])]
+            # add data to list of results.  May be a list or a single result
+            if isinstance(D,list):
+                for Di in D:
+                    if Di.filename is None:
+                        Di.filename=this_file
+                out_data += D
+            else:
+                if D.filename is None:
+                    D.filename=this_file
+                out_data.append(D)
+        return out_data
 
     def bins_as_array(self):
         """
@@ -496,94 +621,6 @@ class geoIndex(dict):
         pts=unique_points((xy[0].ravel(), xy[1].ravel()), delta=self.attrs['delta'])
         result=[p1 for p1 in ['%d_%d' % p0 for p0 in zip(pts[0], pts[1])] if p1 in self]
         return result
-
-def get_data_for_geoIndex(query_results, delta=[10000., 10000.], fields=None, data=None, dir_root=''):
-    # read the data from a set of query results
-    # Currently the function knows how to read:
-    # h5_geoindex
-    # indexed h5s
-    # Qfit data (waveform and plain)
-    # DEM data (filtered and not)
-    # ATL06 data.
-    # Append more cases as needed
-    if dir_root is not None and len(dir_root)>0:
-        dir_root += '/'
-    out_data=list()
-
-    # some data types take a dictionary rather than a list of fields
-    if isinstance(fields, dict):
-        field_dict=fields
-        field_list=None
-    else:
-        field_dict=None
-        field_list=fields
-
-    # if we are querying any DEM data, work out the bounds of the query so we don't have to read the whole DEMs
-    all_types=[query_results[key]['type'] for key in query_results]
-    if 'DEM' in all_types or 'filtered_DEM' in all_types:
-        all_x=list()
-        all_y=list()
-        for key, result in query_results.items():
-            all_x += result['x'].tolist()
-            all_y += result['y'].tolist()
-        bounds=[[np.min(all_x)-delta[0]/2, np.max(all_x)+delta[0]/2], [np.min(all_y)-delta[1]/2, np.max(all_y)+delta[1]/2]]
-
-    for file_key, result in query_results.items():
-        if dir_root is not None:
-            try:
-                this_file = dir_root + file_key
-            except TypeError:
-                this_file = dir_root + file_key.decode()
-        else:
-            this_file=file_key
-        if result['type'] == 'h5':
-            D=[pc.data().from_h5(filename=this_file, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
-        if result['type'] == 'h5_geoindex':
-            D=geoIndex().from_file(this_file).query_xy((result['x'], result['y']), fields=fields, get_data=True, dir_root=dir_root)
-        if result['type'] == 'ATL06':
-            if fields is None:
-                fields={None:(u'latitude',u'longitude',u'h_li',u'delta_time')}
-            D6_file, pair=this_file.split(':pair')
-            D=[pc.ATL06.data(beam_pair=int(pair), list_of_fields=field_list, field_dict=field_dict).from_file(\
-                filename=D6_file, index_range=np.array(temp)) \
-                for temp in zip(result['offset_start'], result['offset_end'])]
-        if result['type'] == 'ATL11':
-            D11_file, pair = this_file.split(':pair')
-            if not os.path.isfile(D11_file):
-                print(D11_file)
-            D=[ATL11.data().from_file(\
-                filename=D11_file, index_range=np.array(temp), \
-                pair=int(pair), field_dict=field_dict) \
-                for temp in zip(result['offset_start'], result['offset_end'])]
-        if result['type'] == 'ATM_Qfit':
-            D=[pc.qFit.data(filename=this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
-        if result['type'] == 'ATM_waveform':
-            D=[pc.atmWaveform(filename=this_file, index_range=np.array(temp), waveform_format=True) for temp in zip(result['offset_start'], result['offset_end'])]
-        if result['type'] == 'DEM':
-            D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
-            D.index(D, np.isfinite(D.z))
-        if result['type'] == 'filtered_DEM':
-            D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
-            D.index(D, np.isfinite(D.z))
-            D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
-            D.filename=this_file
-        if result['type'] == 'indexed_h5':
-            D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
-        if result['type'] == 'indexed_h5_from_matlab':
-            D = [ pc.indexedH5.data(filename=this_file).read([result['x']/1000, result['y']/1000],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
-        if result['type'] is None:
-            D = [data.subset(np.arange(temp[0], temp[1])) for temp in zip(result['offset_start'], result['offset_end'])]
-        # add data to list of results.  May be a list or a single result
-        if isinstance(D,list):
-            for Di in D:
-                if Di.filename is None:
-                    Di.filename=this_file
-            out_data += D
-        else:
-            if D.filename is None:
-                D.filename=this_file
-            out_data.append(D)
-    return out_data
 
 def unique_points(xy, delta=[1, 1]):
     xr=(np.round(np.array(xy[0])/delta[0])*delta[0]).ravel().tolist()
