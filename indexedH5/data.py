@@ -49,6 +49,8 @@ class data(pc.data):
             field_list=[]
             for key in fields:
                 field_list += fields[key]
+        else:
+            field_list=fields.copy()
         out_data={field:list() for field in field_list}
         with h5py.File(self.filename,'r') as h5f:
             blank_fields=list()

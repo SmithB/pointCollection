@@ -255,7 +255,7 @@ class geoIndex(dict):
             self.from_list(temp, dir_root=dir_root)
         if file_type in ['ATL11']:
             temp=list()
-            this_field_dict={'corrected_h':('ref_pt_lat','ref_pt_lon')}
+            this_field_dict={'corrected_h':('latitude','longitude')}
             for beam_pair in (1, 2, 3):
                 D=ATL11.data().from_file(filename, pair=beam_pair, field_dict=this_field_dict).get_xy(self.attrs['SRS_proj4'])
                 D.get_xy(self.attrs['SRS_proj4'])
