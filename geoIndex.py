@@ -36,7 +36,9 @@ class geoIndex(dict):
         return out
 
     def __copy__(self):
-        # copy method,
+        """
+        copy method,
+        """
         out=geoIndex()
         for attr in self.attrs:
             out.attrs[attr]=self.attrs[attr]
@@ -46,7 +48,9 @@ class geoIndex(dict):
         return out
 
     def copy_subset(self, xyBin=None, pad=None):
-        # copy method, may specify which bins to copy
+        """
+        copy method, may specify which bins to copy
+        """
         out=geoIndex()
         for attr in self.attrs:
             out.attrs[attr]=self.attrs[attr]
@@ -70,9 +74,11 @@ class geoIndex(dict):
         return out
 
     def from_xy(self, xy,  filename=None, file_type=None, number=0, fake_offset_val=None, first_last=None):
-        # build a geoIndex from a list of x, y points, for a specified filename
-        # and file_type.  If the file_type is 'geoIndex', optionally sepecify a
-        # value for 'fake_offset_val'
+        """
+        build a geoIndex from a list of x, y points, for a specified filename
+        and file_type.  If the file_type is 'geoIndex', optionally specify a
+        value for 'fake_offset_val'
+        """
         delta=self.attrs['delta']
         self.filename=filename
         xy_bin=np.round(np.c_[xy[0].ravel(), xy[1].ravel()]/delta).astype(int)
@@ -112,9 +118,11 @@ class geoIndex(dict):
         return self.from_xy([np.array(x),np.array(y)], filename, file_type, number, fake_offset_val)
 
     def from_list(self, index_list, dir_root=''):
-        # build a geoIndex from a list of geo_indices.
-        # Each bin in the resulting geoIndex contains information for reading
-        # the files indexed by the geo_indices in index_list
+        """
+        build a geoIndex from a list of geo_indices.
+        Each bin in the resulting geoIndex contains information for reading
+        the files indexed by the geo_indices in index_list
+        """
         if len(index_list)==0:
             return
         for key in ['dir_root', 'SRS_proj4']:
@@ -173,13 +181,15 @@ class geoIndex(dict):
         return self
 
     def from_file(self, index_file, read_file=False, group='index'):
-        # read geoIndex info from file 'index_file.'
-        # If read_file is set to False, the file is not read, but the
-        # h5_file_index attribute of the resulting geoIndex is set to a
-        # reference to the hdf_file's 'index' attribute.  This seems to be
-        # faster than reading the whole file.
-        
-        h5_f = h5py.File(index_file,'r')
+        """
+        read geoIndex info from file 'index_file.'
+        If read_file is set to False, the file is not read, but the
+        h5_file_index attribute of the resulting geoIndex is set to a
+        reference to the hdf_file's 'index' attribute.  This seems to be
+        faster than reading the whole file.
+        """
+
+        h5_f = h5py.File(os.path.expanduser(index_file),'r')
         h5_i = h5_f[group]
         if read_file:
             for bin in h5_i.keys():
@@ -191,27 +201,28 @@ class geoIndex(dict):
         return self
 
     def change_root(self, new_root, old_root=None):
+        """
+        changes the root path to a new path
+        """
         if old_root is None:
             if self.attrs['dir_root'] is not None:
-                old_root = self.attrs['dir_root']
-                while os.path.sep*2 in old_root:
-                    old_root=old_root.replace(os.path.sep*2, os.path.sep)
+                old_root = os.path.normpath(self.attrs['dir_root'])
             else:
-                old_root=''
-        while os.path.sep*2 in new_root:
-            new_root = new_root.replace(os.path.sep*2,os.path.sep)
+                old_root = ''
+        new_root = os.path.normpath(new_root)
         file_re = re.compile('file_\d+')
         for key in self.attrs.keys():
             if file_re.match(key) is not None:
-                temp = old_root+self.attrs[key]
-                temp=temp.replace(new_root,'')
-                self.attrs[key]=temp
-        self.attrs['dir_root']=new_root
+                temp = os.path.join(old_root,self.attrs[key])
+                self.attrs[key] = temp.replace(new_root,'')
+        self.attrs['dir_root'] = new_root
         return self
 
     def to_file(self, filename):
-        # write the current geoindex to h5 file 'filename'
-        indexF=h5py.File(filename,'a')
+        """
+        write the current geoindex to h5 file 'filename'
+        """
+        indexF = h5py.File(os.path.expanduser(filename),'a')
         if 'index' in indexF:
             del indexF['index']
         indexGrp=indexF.create_group('index')
@@ -236,7 +247,9 @@ class geoIndex(dict):
         return
 
     def for_file(self, filename, file_type, number=0, dir_root=''):
-        # make a geoIndex for file 'filename'
+        """
+        make a geoIndex for file 'filename'
+        """
         self.filename=filename
         if dir_root is not None:
             # eliminate the string in 'dir_root' from the filename
@@ -250,7 +263,7 @@ class geoIndex(dict):
                 if D.latitude.shape[0] > 0:
                     temp.append(geoIndex(delta=self.attrs['delta'], SRS_proj4=\
                                           self.attrs['SRS_proj4']).\
-                                from_xy([np.nanmean(D.x, axis=1), np.nanmean(D.y, axis=1)], 
+                                from_xy([np.nanmean(D.x, axis=1), np.nanmean(D.y, axis=1)],
                                         '%s:pair%d' % (filename_out, beam_pair), 'ATL06', number=number))
             self.from_list(temp, dir_root=dir_root)
         if file_type in ['ATL11']:
@@ -340,8 +353,10 @@ class geoIndex(dict):
         return self.from_list(index_list, dir_root=dir_root)
 
     def query_latlon(self, lat, lon, get_data=True, fields=None):
-        # query the current geoIndex for all bins that match the bin locations
-        # provided in (lat, lon),  Optionally return data, with field query in 'fields'
+        """
+        query the current geoIndex for all bins that match the bin locations
+        provided in (lat, lon),  Optionally return data, with field query in 'fields'
+        """
         out_srs=osr.SpatialReference()
         out_srs.ImportFromProj4(self.attribs['SRS_proj4'])
         ll_srs=osr.SpatialReference()
@@ -354,7 +369,9 @@ class geoIndex(dict):
         return self.query_xy(xb, yb, get_data=get_data, fields=fields)
 
     def query_xy_box(self, xr, yr, get_data=True, fields=None, dir_root=''):
-        # query the current geoIndex for all bins in the box specified by box [xr,yr]
+        """
+        query the current geoIndex for all bins in the box specified by box [xr,yr]
+        """
         xy_bin=self.bins_as_array()
         these=(xy_bin[0] >= xr[0]) & (xy_bin[0] <= xr[1]) &\
             (xy_bin[1] >= yr[0]) & (xy_bin[1] <= yr[1])
@@ -373,16 +390,18 @@ class geoIndex(dict):
         return self_sub, other_sub
 
     def query_xy(self, xyb, cleanup=True, get_data=True, fields=None, pad=None, dir_root='', strict=False):
-        # check if data exist within the current geo index for bins in lists/arrays
-        #     xb and yb.
-        # If argument delta is provided, find the bins in the current geoIndex
-        #     that round to (xb, yb)
-        # If 'delta' is provided, read the underlying data sources, possibly recursively
-        #    otherwise return a query_result: a dict with one entry for each source file
-        #    in the current geoIndex, giving the bin locations provided by that file,
-        #    and the offsets in the file corresponding to each.
-        # If 'pad' is provided, include bins between xb-pad*delta and xp+pad*delta (inclusive)
-        #     in the query (likewise for y)
+        """
+        check if data exist within the current geo index for bins in lists/arrays
+            xb and yb.
+        If argument delta is provided, find the bins in the current geoIndex
+            that round to (xb, yb)
+        If 'delta' is provided, read the underlying data sources, possibly recursively
+            otherwise return a query_result: a dict with one entry for each source file
+            in the current geoIndex, giving the bin locations provided by that file,
+            and the offsets in the file corresponding to each.
+        If 'pad' is provided, include bins between xb-pad*delta and xp+pad*delta (inclusive)
+            in the query (likewise for y)
+        """
         delta=self.attrs['delta']
         if isinstance(xyb[0], np.ndarray):
             xyb=[xyb[0].copy().ravel(), xyb[1].copy().ravel()]
@@ -467,23 +486,23 @@ class geoIndex(dict):
                         keep[ii]=True
                     item.subset(keep)
         return query_results
-    
+
     def resolve_path(self, filename, dir_root=None):
-        '''
+        """
         figure out where to find a file based on a query result
-    
+
         Parameters
         ----------
         filename : string
             a filename provided by an index
         dir_root : string or None
             a directory that can be prepended to subdirectories to help find files
-    
+
         Returns
         -------
         string
-            absolute path for the file to read   
-        '''
+            absolute path for the file to read
+        """
         if dir_root is None:
             dir_root=''
         self_dir_root=''
@@ -505,20 +524,22 @@ class geoIndex(dict):
         # assume that files are relative to the index path
         if self.filename is not None:
             return os.path.join(os.path.dirname(self.filename), filename)
-        # if nothing has happened yet, return the filename 
+        # if nothing has happened yet, return the filename
         return filename
-        
+
     def get_data(self, query_results, fields=None,  data=None, dir_root=''):
-        # read the data from a set of query results
-        # Currently the function knows how to read:
-        # h5_geoindex
-        # indexed h5s
-        # Qfit data (waveform and plain)
-        # DEM data (filtered and not)
-        # ATL06 data.
-        # Append more cases as needed
+        """
+        read the data from a set of query results
+        Currently the function knows how to read:
+        h5_geoindex
+        indexed h5s
+        Qfit data (waveform and plain)
+        DEM data (filtered and not)
+        ATL06 data.
+        Append more cases as needed
+        """
         out_data=list()
-    
+
         # some data types take a dictionary rather than a list of fields
         if isinstance(fields, dict):
             field_dict=fields
@@ -526,7 +547,7 @@ class geoIndex(dict):
         else:
             field_dict=None
             field_list=fields
-    
+
         # if we are querying any DEM data, work out the bounds of the query so we don't have to read the whole DEMs
         all_types=[query_results[key]['type'] for key in query_results]
         if 'DEM' in all_types or 'filtered_DEM' in all_types:
@@ -537,7 +558,7 @@ class geoIndex(dict):
                 all_y += result['y'].tolist()
             bounds=[[np.min(all_x)-self.delta[0]/2, np.max(all_x)+self.delta[0]/2], \
                     [np.min(all_y)-self.delta[1]/2, np.max(all_y)+self.delta[1]/2]]
-    
+
         for file_key, result in query_results.items():
             this_file=self.resolve_path(file_key, dir_root)
             if result['type'] == 'h5':
@@ -591,7 +612,7 @@ class geoIndex(dict):
 
     def bins_as_array(self):
         """
-            return an array containing the locations for all the bins in an index
+        return an array containing the locations for all the bins in an index
         """
         if len(self)>0:
             xy_bin=np.c_[[np.fromstring(key, sep='_') for key in self.keys()]]
@@ -644,7 +665,9 @@ def pad_bins(xyb, pad, delta):
 
 
 def append_data(group, field, newdata):
-    # utility function that can append data either to an hdf5 field or a dict of numpy arrays
+    """
+    utility function that can append data either to an hdf5 field or a dict of numpy arrays
+    """
     try:
         old_shape=np.array(group[field].shape)
         new_shape=old_shape.copy()

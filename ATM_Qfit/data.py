@@ -22,7 +22,8 @@ class data(pc.data):
     def __internal_field_calc__(self, field_dict):
         # find the date and time number in filename
         if 'days_J2k' in field_dict['__calc_internal__']:
-            m=re.search(r"ATM1B.*_(\d\d\d\d)(\d\d)(\d\d)_(\d\d)(\d\d)(\d\d).*.h5",self.filename)
+            m=re.search(r"ATM1B.*_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2}).*.h5",self.filename)
+			# create list of date variables
             this_time=[int(m.group(ind+1)) for ind in range(6)]
 
             t0=datetime(*this_time[0:3]) + timedelta(hours=this_time[3], minutes=this_time[4], seconds=this_time[5])-datetime(2000, 1, 1, 0, 0, 0)
