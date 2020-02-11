@@ -187,7 +187,11 @@ class data(object):
             crs=proj4_string
         elif EPSG is not None:
             crs=EPSG
-        xy=np.array(pyproj.proj.Proj(crs)(self.longitude, self.latitude))
+        if hasattr(pyproj, 'proj'):
+            xy=np.array(pyproj.proj.Proj(crs)(self.longitude, self.latitude))
+        else:
+            assert EPSG is not None
+            xy=np.array(pyproj.Proj("+init=epsg:"+str(EPSG))(self.longitude, self.latitude))
         self.x=xy[0,:].reshape(self.shape)
         self.y=xy[1,:].reshape(self.shape)
         if 'x' not in self.fields:
