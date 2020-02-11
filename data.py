@@ -59,12 +59,17 @@ class data(object):
         """
         When data size and shape may have changed, update the size and shape atttributes
         """
+        self.size=[0]
+        self.shape=[0]
         for field in self.fields:
-            temp=getattr(self, field)
-            if hasattr(temp, 'size'):
-                self.size=temp.size
-                self.shape=temp.shape
-                break
+            try:
+                temp=getattr(self, field)
+                if hasattr(temp, 'size'):
+                    self.size=temp.size
+                    self.shape=temp.shape
+                    break
+            except AttributeError:
+                pass
         return self
 
     def __getitem__(self, *args, **kwargs):
