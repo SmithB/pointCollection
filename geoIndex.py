@@ -52,6 +52,7 @@ class geoIndex(dict):
         copy method, may specify which bins to copy
         """
         out=geoIndex()
+        out.filename=self.filename
         for attr in self.attrs:
             out.attrs[attr]=self.attrs[attr]
         #out.attrs=self.attrs.copy()
@@ -484,7 +485,7 @@ class geoIndex(dict):
                     for xybi in zip(xyb[0], xyb[1]):
                         ii=(xr==xybi[0]) & (yr==xybi[1])
                         keep[ii]=True
-                    item.subset(keep)
+                    item.index(keep)
         return query_results
 
     def resolve_path(self, filename, dir_root=None):
@@ -581,7 +582,7 @@ class geoIndex(dict):
                     pair=int(pair), field_dict=field_dict) \
                     for temp in zip(result['offset_start'], result['offset_end'])]
             if result['type'] == 'ATM_Qfit':
-                D=[pc.qFit.data(filename=this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
+                D=[pc.ATM_Qfit.data().from_h5(this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
             if result['type'] == 'ATM_waveform':
                 D=[pc.atmWaveform(filename=this_file, index_range=np.array(temp), waveform_format=True) for temp in zip(result['offset_start'], result['offset_end'])]
             if result['type'] == 'DEM':
