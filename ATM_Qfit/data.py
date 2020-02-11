@@ -27,6 +27,6 @@ class data(pc.data):
             this_time=[int(m.group(ind+1)) for ind in range(6)]
 
             t0=datetime(*this_time[0:3]) + timedelta(hours=this_time[3], minutes=this_time[4], seconds=this_time[5])-datetime(2000, 1, 1, 0, 0, 0)
-            t0=t0.days+t0.seconds/24./3600
+            t0=np.float64(t0.days)+np.float64(t0.seconds)/24./3600
 
-            self.days_J2K=t0+self.rel_time/24./3600.
+            self.days_J2k = t0 + self.rel_time.astype(np.float64)/24./3600.
