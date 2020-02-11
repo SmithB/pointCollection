@@ -35,16 +35,16 @@ def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None,\
     index_list=[];
     for file in files:
         if verbose:
-            print(f"indexing {file}")
+            print(f"index_glob: indexing {file}")
         #if os.path.basename(file)[0:3]=='Geo':
         #    continue
         try:
             index_list += [pc.geoIndex(delta=delta, SRS_proj4=SRS_proj4).for_file(file, file_type) ]
         except Exception as e:
-            print(f"Exception thrown for file {file}:")
+            print(f"index_glob: Exception thrown for file {file}:")
             print(e)
     if verbose:
-        print(f"making index file: {index_file}")
+        print(f"index_glob: making index file: {index_file}")
     gI=pc.geoIndex(delta=delta, SRS_proj4=SRS_proj4).from_list(index_list, \
                dir_root=dir_root)
     if relative:
@@ -57,7 +57,7 @@ def main():
     parser.add_argument('--type','-t', type=str, required=True, help="file type.  See pointCollection.geoIndex for options")
     parser.add_argument('--index_file','-i', type=str, help="index file, defaults to GeoIndex.h5 in the dirname of the glob string")
     parser.add_argument('--dir_root','-r', type=str, help="directory root for the index.  Defaults to None (absolute paths)")
-    parser.add_argument('--bin_size', '-b', type=int, help='index bin size, default=1.e4')
+    parser.add_argument('--bin_size', '-b', type=int, default=1.e4,  help='index bin size, default=1.e4')
     parser.add_argument('--hemisphere','-H', type=int, required=True, help='hemisphere, must be 1 or -1, required')
     parser.add_argument('--verbose','-v', action='store_true')
     parser.add_argument('--Relative','-R', action='store_true')
@@ -73,7 +73,7 @@ def main():
                    index_file=args.index_file, \
                    file_type=args.type,\
                    verbose=args.verbose,\
-                   delta=[1.e4, 1.e4], \
+                   delta=[np.float(args.bin_size), np.float(args.bin_size)], \
                    SRS_proj4=srs_proj4,\
                    relative=args.Relative)
 
