@@ -373,7 +373,10 @@ class data(object):
         else:
             self.fields=[key for key in dd.keys()]
         #work out a default size for arrays:
-        default_shape=dd[next(iter(dd))].shape
+        try:
+            default_shape=dd[next(iter(dd))].shape
+        except StopIteration:
+            print("HERE!")
         for field in self.fields:
             if field in dd:
                 setattr(self, field, dd[field])
@@ -402,7 +405,10 @@ class data(object):
                     if this_D is None:
                         continue
                     try:
-                        data_list.append(getattr(this_D, field).ravel())
+                        if np.array(self.shape).size > 1:
+                            data_list.append(getattr(this_D,field))
+                        else:
+                            data_list.append(getattr(this_D, field).ravel())
                     except AttributeError:
                         print("Problem with field %s" % field)
                 #data_list=[getattr(this_D, field).ravel() for this_D in D_list if this_D is not None]
@@ -456,7 +462,7 @@ class data(object):
             by_row=True
         if datasets is None:
             datasets=self.fields.copy()
-        if (not isinstance(index, slice)) and ((len(index) == 0) or ( (index.dtype == 'bool') and np.all(index==0))):
+        if (not isinstance(index, (slice, int, np.integer, float, np.float))) and ((len(index) == 0) or ( (index.dtype == 'bool') and np.all(index==0))):
             dd={key:np.zeros([1,0]) for key in datasets}
         else:
             for field in datasets:
