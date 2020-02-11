@@ -63,7 +63,7 @@ def make_queue(index_file, queue_file, tile_W=2.e5, hemisphere=-1, \
             if field_dict_json is not None:
                 this_str += f" -j {field_dict_json}"
             if verbose: 
-                print(this_str)
+                print("make_tiles--adding to queue: \n \t "+this_str)
             qh.write(this_str+'\n')
 
 def main():
@@ -96,7 +96,7 @@ def main():
     
     if args.xy[0] is not None:
         if args.queue_file is not None:
-            print("must specify one of --queue_file or --xy, not both.")
+            print("make_index: must specify one of --queue_file or --xy, not both.")
             sys.exit(1)
         make_tile(args.index_file, xy0=args.xy, tile_W=args.tile_W, 
                   srs_proj4=srs_proj4, file_type=args.type, out_dir=args.out_dir,
