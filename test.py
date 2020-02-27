@@ -11,8 +11,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import glob
-
-test_dir='/Users/ben/git_repos/pointCollection/test_data/for_geoindex'
-
-test_files=glob.glob(test_dir+'/*.h5')
-gi_2=pc.geoIndex(delta=[10,10]).for_files(test_files,'h5')
+ATL06_file='../pointCollection/test_data/ATL06_20190205041106_05910210_209_01.h5'
+Dsub=pc.data().from_h5(ATL06_file, field_dict={'/gt1l/land_ice_segments':['h_li', 'segment_id']})
+print(Dsub.h_li[0:100])
