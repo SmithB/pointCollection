@@ -130,16 +130,21 @@ class data(object):
                     if field not in self.fields:
                         self.fields.append(field)
                     try:
+                        # define the groups
                         if group is None:
-                            if self.columns==0 or self.columns is None:
-                                setattr(self, field, np.array(h5_f[field][ind]).transpose())
-                            else:
-                                setattr(self, field, np.array(h5_f[field][:,ind]).transpose())
+                            ds=h5_f[field]
                         else:
-                            if self.columns==0 or self.columns is None:
-                                setattr(self, field, np.array(h5_f[group][field][ind]).transpose())
-                            else:
-                                setattr(self, field, np.array(h5_f[group][field][:,ind]).transpose())
+                            ds=h5_f[group][field]
+                        # read the data:
+                        if self.columns==0 or self.columns is None:
+                            setattr(self, field, np.array(ds[ind]))
+                        else:
+                            setattr(self, field, np.array(ds[ind,:]))
+                        # check if there is a '_FillValue' defined in the dataset
+                        if '_FillValue' in ds.attrs:
+                            if ds.dtype in ['float32', 'float64']:
+                                bad=getattr(self, field)==ds.attrs['_FillValue']
+                                getattr(self, field)[bad]=np.NaN
                     except KeyError:
                         nan_fields.append(field)
                 # find the first populated field
