@@ -228,24 +228,24 @@ class geoIndex(dict):
         indexF = h5py.File(os.path.expanduser(filename),'a')
         if 'index' in indexF:
             del indexF['index']
-        indexGrp=indexF.create_group('index')
+        indexGrp=indexF.create_group('index'.encode('ASCII'))
         if 'n_files' in self.attrs:
-            indexGrp.attrs['n_files'] = self.attrs['n_files']
+            indexGrp.attrs['n_files'.encode('ASCII')] = self.attrs['n_files']
         else:
-            indexGrp.attrs['n_files']=0
+            indexGrp.attrs['n_files'.encode('ASCII')]=0
         if 'dir_root' in self.attrs and self.attrs['dir_root'] is not None:
-            indexGrp.attrs['dir_root']=self.attrs['dir_root']
-        indexGrp.attrs['delta'] = self.attrs['delta']
-        indexGrp.attrs['SRS_proj4'] = self.attrs['SRS_proj4']
+            indexGrp.attrs['dir_root'.encode('ASCII')]=self.attrs['dir_root'].encode('ASCII')
+        indexGrp.attrs['delta'.encode('ASCII')] = self.attrs['delta']
+        indexGrp.attrs['SRS_proj4'.encode('ASCII')] = self.attrs['SRS_proj4'].encode('ASCII')
         for key in self.keys():
-            indexGrp.create_group(key)
+            indexGrp.create_group(key.encode('ASCII'))
             for field in ['file_num','offset_start','offset_end']:
-                indexGrp[key].create_dataset(field,data=self[key][field])
+                indexGrp[key].create_dataset(field.encode('ASCII'),data=self[key][field])
         for ii in range(self.attrs['n_files']):
             this_key='file_%d' % ii
-            indexGrp.attrs[this_key]=self.attrs[this_key]
+            indexGrp.attrs[this_key.encode('ASCII')]=self.attrs[this_key].encode('ASCII')
             this_type='type_%d' % ii
-            indexGrp.attrs[this_type]=self.attrs[this_type]
+            indexGrp.attrs[this_type.encode('ASCII')]=self.attrs[this_type].encode('ASCII')
         indexF.close()
         return
 
