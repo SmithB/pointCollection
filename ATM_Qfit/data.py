@@ -73,7 +73,7 @@ class data(pc.data):
         # check that the number of blocks per record is less than MAXARG
         MAXARG = 14
         if (n_blocks > MAXARG):
-        	raise Exception('ERROR: Unexpected number of variables')
+            raise Exception('ERROR: Unexpected number of variables')
 
         # read over header text
         header_count = 0
