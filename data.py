@@ -97,6 +97,8 @@ class data(object):
                     setattr(out, field, temp.copy())
                 except AttributeError:
                     setattr(out, field, temp)
+        out.size=self.size
+        out.shape=self.shape
         return out
 
     def from_h5(self, filename, group=None, field_dict=None, index_range=None):
