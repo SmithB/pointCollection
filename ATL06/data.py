@@ -13,6 +13,7 @@ ATL06 data structure
 import pointCollection as pc
 import h5py
 import numpy as np
+import warnings
 
 class data(pc.data):
     def __init__(self, fields=None, SRS_proj4=None, field_dict=None, beam_pair=2, columns=2):
@@ -195,7 +196,13 @@ class data(pc.data):
                 i1=slice(1+ii, n_pts-1+ii)
                 dx=self.x_atc[i0,:]-self.x_atc[i1,:]
                 min_along_track_dh[i0,:, dim3] = np.abs(self.h_li[i0,:]-self.dh_fit_dx[i0,:]*dx-self.h_li[i1,:])
-            min_along_track_dh = np.nanmin(min_along_track_dh, axis=2)
+            # Note that np.nanmin will throw a RuntimeWarning in the (common)
+            # case where both ends of the segment have an undefined difference.
+            # Catch this error to avoid distractions:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                min_along_track_dh = np.nanmin(min_along_track_dh, axis=2)
+
             min_along_track_dh[0,:]=np.abs(self.h_li[1,:]-self.h_li[0,:] - (self.x_atc[1,:]-self.x_atc[0,:])*self.dh_fit_dx[0,:])
             min_along_track_dh[-1,:]=np.abs(self.h_li[-1,:]-self.h_li[-2,:] - (self.x_atc[-1,:]-self.x_atc[-2,:])*self.dh_fit_dx[-1,:])
         else:
