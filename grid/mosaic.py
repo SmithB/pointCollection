@@ -4,6 +4,10 @@
 mosaic.py
 Routines for creating a weighted mosaic from a series of tiles
 Written by Tyler Sutterley (03/2020)
+
+UPDATE HISTORY:
+    Updated 03/2020: check number of dimensions of z if only a single band
+    Written 03/2020
 """
 
 import os
@@ -48,13 +52,16 @@ class mosaic(data):
 
     def update_dimensions(self, temp):
         """
-        update the dimensions of the mosaic
+        update the dimensions of the mosaic with new extents
         """
         # get number of bands
-        ny,nx,self.dimensions[2] = np.shape(temp.z)
-        # calculate y dimensions
+        if (np.ndim(temp.z) == 3):
+            ny,nx,self.dimensions[2] = np.shape(temp.z)
+        else:
+            self.dimensions[2] = 1
+        # calculate y dimensions with new extents
         self.dimensions[0] = np.int((self.extent[3] - self.extent[2])/self.spacing[1]) + 1
-        # calculate x dimensions
+        # calculate x dimensions with new extents
         self.dimensions[1] = np.int((self.extent[1] - self.extent[0])/self.spacing[0]) + 1
         # calculate x and y arrays
         self.x = np.linspace(self.extent[0],self.extent[1],self.dimensions[1])
