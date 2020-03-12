@@ -28,10 +28,16 @@ import argparse
 import numpy as np
 import pointCollection as pc
 
-def main():
+import sys
+def main(argv):
     """
     Create a weighted mosaic from a series of tiles
     """
+
+    # account for a bug in argparse that misinterprets negative agruents
+    for i, arg in enumerate(argv):
+        if (arg[0] == '-') and arg[1].isdigit(): argv[i] = ' ' + arg
+
     parser=argparse.ArgumentParser()
     parser.add_argument('--directory','-d', type=str, default=os.getcwd(), help='directory to run')
     parser.add_argument('--glob_string','-g', type=str, default='/*/*.h5', help='quoted string to pass to glob to find the files')
@@ -54,7 +60,7 @@ def main():
 
     # find list of valid files
     file_list = []
-    for file in glob.glob(args.directory+args.glob_string):
+    for file in glob.glob(args.directory +'/'+args.glob_string):
         xc,yc=[int(item)*1.e3 for item in re.compile('E(.*)_N(.*).h5').search(file).groups()]
         if ((xc >=xmin) and (xc <= xmax) & (yc >= ymin) and (yc <= ymax)):
             file_list.append(file)
@@ -103,4 +109,4 @@ def main():
     os.chmod(os.path.join(args.directory,'mosaic.h5'), args.mode)
 
 if __name__=='__main__':
-    main()
+    main(sys.argv)
