@@ -82,7 +82,11 @@ class mosaic(data):
         Create a weight matrix for a given grid
         Apply the weights if specified
         """
+        # find dimensions of matrix
+        if (np.ndim(self.z) == 2):
+            self.z = self.z[:,:,None]
         ny,nx,nband = np.shape(self.z)
+        # allocate for weights matrix
         self.weight = np.ones((ny,nx), dtype=np.float)
         gridx,gridy = np.meshgrid(self.x,self.y)
         # pad the weight matrix
