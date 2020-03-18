@@ -15,10 +15,13 @@ COMMAND LINE OPTIONS:
     -F X, --field X: input HDF5 field map
     -p X, --pad X: pad width in meters for weights
     -f X, --feather X: feathering width in meters for weights
+    -O X, --output X: output filename
     -v, --verbose: verbose output of run
     -m X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 03/2020: adding argparse bug fix for negative arguments
+        made output filename a command line option
     Written 03/2020
 """
 import os
@@ -28,10 +31,18 @@ import argparse
 import numpy as np
 import pointCollection as pc
 
-def main():
+import sys
+def main(argv):
     """
     Create a weighted mosaic from a series of tiles
     """
+
+    # account for a bug in argparse that misinterprets negative arguments
+    # this bug may be fixed in some versions of argparse
+    # but this should keep compatibility
+    for i, arg in enumerate(argv):
+        if (arg[0] == '-') and arg[1].isdigit(): argv[i] = ' ' + arg
+
     parser=argparse.ArgumentParser()
     parser.add_argument('--directory','-d', type=str, default=os.getcwd(), help='directory to run')
     parser.add_argument('--glob_string','-g', type=str, default='/*/*.h5', help='quoted string to pass to glob to find the files')
@@ -40,6 +51,7 @@ def main():
     parser.add_argument('--field','-F', type=str, nargs='+', default=['z','dz'], help='input HDF5 field map')
     parser.add_argument('--pad','-p', type=float, default=1e4, help='pad width in meters for weights')
     parser.add_argument('--feather','-f', type=float, default=2e4, help='feathering width in meters for weights')
+    parser.add_argument('--output','-O', type=str, default='mosaic.h5',  help='output filename')
     parser.add_argument('--verbose','-v', default=False, action='store_true', help='verbose output of run')
     parser.add_argument('--mode','-m', default=0o775, help='permissions mode of output mosaic')
     args=parser.parse_args()
@@ -54,7 +66,7 @@ def main():
 
     # find list of valid files
     file_list = []
-    for file in glob.glob(args.directory+args.glob_string):
+    for file in glob.glob(args.directory +'/'+args.glob_string):
         xc,yc=[int(item)*1.e3 for item in re.compile('E(.*)_N(.*).h5').search(file).groups()]
         if ((xc >=xmin) and (xc <= xmax) & (yc >= ymin) and (yc <= ymax)):
             file_list.append(file)
@@ -68,7 +80,7 @@ def main():
         mosaic.update_spacing(temp)
         # update the extents of the output mosaic
         mosaic.update_bounds(temp)
-        # update dimensions of output mosaic
+        # update dimensions of output mosaic with new extents
         mosaic.update_dimensions(temp)
 
     # create output mosaic
@@ -98,9 +110,9 @@ def main():
     mosaic.data[mosaic.mask] = mosaic.fill_value
 
     # output mosaic to HDF5
-    mosaic.to_h5(os.path.join(args.directory,'mosaic.h5'),
+    mosaic.to_h5(os.path.join(args.directory,args.output),
         field_list=['x','y','t','data','weight'])
-    os.chmod(os.path.join(args.directory,'mosaic.h5'), args.mode)
+    os.chmod(os.path.join(args.directory,args.output), args.mode)
 
 if __name__=='__main__':
-    main()
+    main(sys.argv)

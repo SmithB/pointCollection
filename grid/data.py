@@ -45,7 +45,7 @@ class data(object):
         self.update_extent()
         return self
     
-    def from_geotif(self, file, bands=None, bounds=None, skip=1, min_res=None, date_format=None):
+    def from_geotif(self, file, bands=None, bounds=None, extent=None, skip=1, min_res=None, date_format=None):
         """
         Read a raster from a geotif
         """
@@ -74,6 +74,10 @@ class data(object):
         jj=np.arange(0, band.YSize)+0.5
         x=GT[0]+GT[1]*ii
         y=GT[3]+GT[5]*jj
+
+        if extent is not None:
+            bounds=[[extent[0], extent[1]], [extent[2], extent[3]]]
+
         if bounds is not None:
             cols = np.where(( x>=bounds[0][0] ) & ( x<= bounds[0][1] ))[0]
             rows = np.where(( y>=bounds[1][0] ) & ( y<= bounds[1][1] ))[0]
