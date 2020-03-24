@@ -13,3 +13,4 @@ dependencies:
   - gdal
   - pip:
      - git+https://github.com/suzanne64/ATL11.git
+     - git+https://github.com/tsutterley/pyTMD.git
