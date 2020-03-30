@@ -16,7 +16,7 @@ class data(pc.data):
         self.bin_W=bin_W
         super().__init__(**kwargs)
 
-    def to_file(self, D, out_file, time_field='time'):
+    def to_file(self, D, out_file, time_field='time', append=True, ind_fields=['x','y','time']):
         y_bin_function=np.round(D.y/self.bin_W[0])
         x_bin_function=np.round(D.x/self.bin_W[1])
         x_scale=np.nanmax(x_bin_function)-np.nanmin(x_bin_function)
@@ -37,12 +37,14 @@ class data(pc.data):
         key_order=np.argsort(key_arr[:,1]-np.min(key_arr[:,1])*x_scale+(key_arr[:,0]-np.min(key_arr[:,0])))
         key_arr=key_arr[key_order,:]
 
-        if os.path.isfile(out_file):
-            os.remove(out_file)
-
         for key in key_arr:
             this_group='%dE_%dN' % tuple(key*self.bin_W)
-            D.copy_subset(bin_dict[tuple(key)]).to_h5(out_file, replace=False, group=this_group)
+            if append and os.path.isfile(out_file):
+                D.copy_subset(bin_dict[tuple(key)]).append_to_h5(out_file, \
+                             ind_fields=ind_fields, group=this_group)
+            else:
+                D.copy_subset(bin_dict[tuple(key)]).to_h5(out_file, \
+                             replace=False, group=this_group)
 
     def read(self, xy_bin, fields=['x','y','time'], index_range=[[-1],[-1]]):
         if isinstance(fields, dict):
