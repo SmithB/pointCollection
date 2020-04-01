@@ -12,6 +12,20 @@ import numpy as np
 import os
 import sys
 import scipy.stats as sps
+import argparse
+
+def get_map(map_file, bounds=None):
+    #if bounds is None:
+    #    print("map file is " + map_file)
+    #    backgrnd=pc.grid.data().from_geotif(map_file)
+    #else:
+    backgrnd=pc.grid.data().from_geotif(map_file, bounds=bounds)
+
+    if backgrnd.z.ndim >2:
+        backgrnd.z=backgrnd.z[:,:,0].astype(float)
+    cr=sps.scoreatpercentile(backgrnd.z[np.isfinite(backgrnd.z) & (backgrnd.z > np.min(backgrnd.z)) ], [16, 84])
+    backgrnd.show(cmap='gray', vmin=cr[0]-np.diff(cr), vmax=cr[1]+np.diff(cr))
+
 
 class IndexPicker:
     def __init__(self, fig, index_file, map_file=None, W=4e4, datatype='ATL06'):
@@ -24,10 +38,7 @@ class IndexPicker:
         if fig is None:
             self.fig=plt.figure()
             if map_file is not None:
-                print("map file is " + map_file)
-                backgrnd=pc.map.data().from_geotif(map_file)
-                cr=sps.scoreatpercentile(backgrnd.z[np.isfinite(backgrnd.z)], [16, 84])
-                hi=backgrnd.show(cmap='gray', vmin=cr[0]-np.diff(cr), vmax=cr[1]+np.diff(cr))
+                get_map(map_file, None)
             print("about to plot %d points" % len(self.xy[0]))
             plt.plot(self.xy[0], self.xy[1],'.')
             print("starting picker")
@@ -39,6 +50,7 @@ class IndexPicker:
         if not event.dblclick:
             return
         print('click', event)
+        print(self)
         if self.datatype=='ATL06':
             field_dict={None:['delta_time','h_li','h_li_sigma','latitude','longitude','atl06_quality_summary','segment_id','sigma_geo_h'],
                         'fit_statistics':['dh_fit_dx'],
@@ -54,6 +66,8 @@ class IndexPicker:
                                'spot_crossing', 'along_track_rss',\
                                'atl06_quality_summary','cycle_number'],
                             'ref_surf':['x_atc','y_atc']}
+        elif self.datatype=='CS2':
+            field_dict={'None':['x','y','time','h']}
         W=self.W
         self.fig.gca().plot(event.xdata, event.ydata,'m*')
         self.fig.canvas.draw()
@@ -63,13 +77,18 @@ class IndexPicker:
                    event.xdata+np.array([-W/2, W/2]), event.ydata+np.array([-W/2, W/2]), fields=field_dict)
 
         #D=geo_index().from_file(self.index_file).query_xy_box((self.xy[0][best], self.xy[1][best]), fields=field_dict)
+        print(f"click: index_file is {self.index_file}")
+
         TrackPicker(D, self.map_file, self.index_file, self.datatype)
 
 class TrackPicker:
     def __init__(self, D, map_file, index_file, datatype):
         self.files=[]
         self.datatype=datatype
-        srs_proj4=pc.geoIndex.from_file(index_file).attrs['SRS_proj4']
+        self.map_file=map_file
+        self.index_file=index_file
+        print(f"TrackPicker: index_file is {index_file}")
+        srs_proj4=pc.geoIndex().from_file(index_file).attrs['SRS_proj4']
         if datatype == 'ATL06':
             for ii, Di in enumerate(D):
                 Di.get_xy(srs_proj4)
@@ -85,12 +104,14 @@ class TrackPicker:
                        'x':Di.x, 'y':Di.y, 'file_num':np.zeros_like(Di.x)+ii,
                        'h_corr':Di.corrected_h.h_corr[:,-1].ravel()}))
            self.D_all=pc.data().from_list(D_list)
+        else:
+            self.D_all=pc.data().from_list(D)
         self.D=D
         XR=[np.nanmin(self.D_all.x), np.nanmax(self.D_all.x)]
         YR=[np.nanmin(self.D_all.y), np.nanmax(self.D_all.y)]
         self.fig=plt.figure()
         if map_file is not None:
-            pc.grid.data().from_geotif(map_file, bounds=[XR, YR]).show(cmap='gray')
+            get_map(map_file, bounds=[XR, YR])
         #for Di in D:
         #    plt.plot(Di.x, Di.y,'.')
         if self.datatype=='ATL06':
@@ -99,6 +120,10 @@ class TrackPicker:
             plt.scatter(self.D_all.x, self.D_all.y, 6, c=self.D_all.h_corr); plt.colorbar()
         elif self.datatype=='ATM_waveform_fit':
             plt.scatter(self.D_all.x, self.D_all.y, 6, c=np.log10(self.D_all.K0))
+        elif self.datatype=='CS2':
+            plt.scatter(self.D_all.x, self.D_all.y, 6, c=self.D_all.h); plt.colorbar()
+            hax=plt.axes([0.7, 0.05, 0.25, 0.25])
+            hax.hist((self.D_all.time-730486)/365.25+2000, 100)
         self.cid=self.fig.canvas.mpl_connect('button_press_event', self)
         plt.show()
 
@@ -140,7 +165,13 @@ class TrackPicker:
 def main():
     #fig=plt.figure()
     fig=None
-    IndexPicker(fig, sys.argv[1], sys.argv[2], sys.argv[3])
+    parser=argparse.ArgumentParser("IndexPicker: class to make clickable maps of a geoIndex")
+    parser.add_argument("index_file", type=str)
+    parser.add_argument("data_type", type=str)
+    parser.add_argument("--map_file",'-m', type=str)
+    args=parser.parse_args()
+
+    IndexPicker(fig, args.index_file, map_file=args.map_file, datatype=args.data_type)
     #plt.show(block=True)
 
 if __name__=='__main__':
