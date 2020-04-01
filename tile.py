@@ -57,7 +57,7 @@ class tile(object):
         if self.D is not None:
             for Di in self.D:
                 if not hasattr(Di,'x'):
-                    Di.get_xy(Di.srs_proj4)
+                    Di.get_xy(self.SRS_proj4)
                 Di.index((np.abs(Di.x-self.xy0[0])<self.tile_W/2) & \
                             (np.abs(Di.y-self.xy0[1])<self.tile_W/2))
         return self
