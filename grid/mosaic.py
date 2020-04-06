@@ -151,7 +151,7 @@ class mosaic(data):
             h5[field].dims[0].attach_scale(h5['y'])
             h5[field].dims[1].label='x'
             h5[field].dims[1].attach_scale(h5['x'])
-            if (np.ndim(data) == 3):
+            if (np.ndim(data) == 3) and ('t' in dims):
                 h5[field].dims[2].label='t'
                 h5[field].dims[2].attach_scale(h5['t'])
         # close the HDF5 file

@@ -322,7 +322,7 @@ class data(object):
                     print("IndexError")
         return self.copy_attrs().from_dict(dd, fields=datasets)
 
-    def to_h5(self, fileOut, replace=True, group='/'):
+    def to_h5(self, fileOut, replace=True,  group='/', extensible=True):
         """
         write a data object to an hdf5 file
         """
@@ -332,12 +332,49 @@ class data(object):
             h5f_out=h5py.File(fileOut,'w')
         else:
             h5f_out=h5py.File(fileOut,'r+')
+
         if group is not None:
             if not group in h5f_out:
                 h5f_out.create_group(group)
         for field in self.fields:
-            h5f_out.create_dataset(group+'/'+field,data=getattr(self,field),  compression="gzip")
+            this_data=getattr(self, field)
+            maxshape=this_data.shape
+            if extensible:
+                maxshape=list(maxshape)
+                maxshape[0]=None
+            h5f_out.create_dataset(group+'/'+field,data=this_data,  \
+                                   compression="gzip", maxshape=tuple(maxshape))
         h5f_out.close()
+
+    def append_to_h5(self, file, group='/', ind_fields=['x','y','time']):
+
+        """
+        Append new data to a group in an existing file on disk.  Only those
+        data that are not in the original dataset are appended.
+        N.B.  NOT TESTED
+        """
+
+        with h5py.File(file,'r+') as h5f:
+            if group in h5f:
+                M_old = np.c_[tuple([np.array(h5f[group][field]).ravel() for field in ind_fields])]
+                M_new=np.c_[tuple([getattr(self, field).ravel() for field in ind_fields])]
+                new_ind = new_rows(M_new, M_old)
+                old_N=M_old.shape[0]
+            else:
+                new_ind=np.ones(self.size, dtype=bool)
+            new_N=new_ind.sum()
+            for field in self.fields:
+                if group in h5f and field in h5f[group]:
+                    h5f[group][field].resize((old_N+new_N,))
+                    h5f[group][field][-new_N:]=getattr(self, field)[new_ind]
+                else:
+                    this_data=getattr(self, field)
+                    maxshape=list(this_data.shape)
+                    maxshape=list(maxshape)
+                    maxshape[0]=None
+                    h5f.create_dataset(group+'/'+field,data=this_data,  \
+                                   compression="gzip", maxshape=tuple(maxshape))
+
 
     def assign(self,d):
         for key in d.keys():
@@ -360,3 +397,15 @@ class data(object):
             setattr(self, field, getattr(self, field).ravel())
         self.__update_size_and_shape__()
         return self
+
+def new_rows(A, B):
+    """
+    Return the rows in A that are not in B
+
+    Helper function
+    Solution from https://stackoverflow.com/questions/8317022/get-intersecting-rows-across-two-2d-numpy-arrays
+    """
+    _, ncols=A.shape
+    dtype={'names':['f{}'.format(i) for i in range(ncols)],
+       'formats':ncols * [A.dtype]}
+    return ~np.in1d(A.view(dtype), B.view(dtype))

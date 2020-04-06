@@ -110,8 +110,11 @@ def main(argv):
     mosaic.data[mosaic.mask] = mosaic.fill_value
 
     # output mosaic to HDF5
+    fields=['x','y', 'data','weight']
+    if mosaic.t.dtype in (int, float, np.int, np.float):
+        fields += 't'
     mosaic.to_h5(os.path.join(args.directory,args.output),
-        field_list=['x','y','t','data','weight'])
+        field_list=fields)
     os.chmod(os.path.join(args.directory,args.output), args.mode)
 
 if __name__=='__main__':
