@@ -44,6 +44,8 @@ def make_tile(index_file, xy0, tile_W=2.e5, srs_proj4=None, \
     tile=getattr(pc, file_type).tile
     
     fields=[]
+    if field_dict is None:
+        field_dict=tile().__default_field_dict__()
     for key in field_dict:
         fields += field_dict[key]
     
@@ -66,10 +68,15 @@ def make_queue(index_file, queue_file, tile_W=2.e5, hemisphere=-1, \
                 print("make_tiles--adding to queue: \n \t "+this_str)
             qh.write(this_str+'\n')
 
-def main():
+def main(argv):
+
+    # account for a bug in argparse that misinterprets negative agruents
+    for i, arg in enumerate(argv):
+        if (arg[0] == '-') and arg[1].isdigit(): argv[i] = ' ' + arg
+
     parser=argparse.ArgumentParser()
     parser.add_argument('--index_file','-i', type=str, help="index file, defaults to GeoIndex.h5 in the dirname of the glob string")
-    parser.add_argument('--tile_W', '-W', type=int, default=2.e5,  help='tile width, default=200000')
+    parser.add_argument('--tile_W', '-W', type=float, default=2.e5,  help='tile width, default=200000')
     parser.add_argument('--hemisphere','-H', type=int, required=True, help='hemisphere, must be 1 or -1, required')
     parser.add_argument('--verbose','-v', action='store_true')
     parser.add_argument('--type','-t', type=str, required=True, help="file type.  See datatypes with 'index' methods in pointCollection")
@@ -108,4 +115,4 @@ def main():
                    verbose=args.verbose)
 
 if __name__=='__main__':
-    main()
+    main(sys.argv)
