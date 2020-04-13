@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import h5py
 import scipy.interpolate as si
+from scipy.stats import scoreatpercentile
 import pointCollection as pc
 from . import WV_date
 
@@ -146,14 +147,19 @@ class data(object):
        self.update_extent()
        return self
 
-    def to_geotif(self, out_file, srs_proj4=None, srs_wkt=None,  srs_epsg=None):
+    def to_geotif(self, out_file, field='z', srs_proj4=None, srs_wkt=None,  srs_epsg=None):
         """
         Write a grid object to a geotif.
         """
-        nx=self.z.shape[1]
-        ny=self.z.shape[0]
-        if len(self.z.shape)>2:
-            n_bands=self.z.shape[2]
+        if  field != 'z':
+            z=getattr(self, field)
+        else:
+            z=self.z
+
+        nx=z.shape[1]
+        ny=z.shape[0]
+        if len(z.shape)>2:
+            n_bands=z.shape[2]
         else:
             n_bands=1;
         dx=np.abs(np.diff(self.x[0:2]))[0]
@@ -174,10 +180,10 @@ class data(object):
 
         out_ds.SetProjection(sr.ExportToWkt())
         if n_bands == 1:
-            out_ds.GetRasterBand(1).WriteArray(self.z[::-1,:])
+            out_ds.GetRasterBand(1).WriteArray(z[::-1,:])
         else:
             for band in range(n_bands):
-                out_ds.GetRasterBand(band+1).WriteArray(self.z[::-1,:,band])
+                out_ds.GetRasterBand(band+1).WriteArray(z[::-1,:,band])
         out_ds.FlushCache()
         out_ds = None
 
@@ -280,14 +286,25 @@ class data(object):
            print("Error is" )
            print(e)
 
-    def show(self, band=None, ax=None, xy_scale=1,  **kwargs):
+    def show(self, band=None, ax=None, xy_scale=1, gradient=False, stretch_pct=None, **kwargs):
         kwargs['extent']=np.array(self.extent)*xy_scale
         kwargs['origin']='lower'
         if band is None:
             zz=self.z
         else:
             zz=self.z[:,:,band]
-        
+
+        if gradient:
+            zz=np.gradient(zz, self.x[1]-self.x[0], self.y[1]-self.y[0])[0]
+            if 'stretch_pct' not in kwargs:
+                stretch_pct=[5, 95]
+            if 'cmap' not in kwargs:
+                kwargs['cmap']='gray'
+        if stretch_pct is not None:
+            LH=scoreatpercentile(zz.ravel()[np.isfinite(zz.ravel())], stretch_pct)
+            kwargs['vmin']=LH[0]
+            kwargs['vmax']=LH[1]
+        print(kwargs)
         if ax is None:
             h_im = plt.imshow(zz, **kwargs)
         else:
