@@ -56,6 +56,14 @@ class data(pc.data):
         out_data={field:list() for field in field_list}
         with h5py.File(self.filename,'r') as h5f:
             blank_fields=list()
+
+            if xy_bin is None:
+                xy_bin=[[],[]]
+                for key in h5f['x'].keys():
+                    xx, yy=map(float, key.replace('N','').split('E_'))
+                    xy_bin[0].append(xx)
+                    xy_bin[1].append(yy)
+
             if isinstance(xy_bin, np.ndarray):
                 xy_bin=[xy_bin[:,0], xy_bin[:,1]]
 
@@ -107,9 +115,16 @@ class data(pc.data):
                             elif len(temp)==1:
                                 out_data[field]=temp[0]
                         except ValueError as e:
-                            print("ValueError in read_indexed_h5_file, continuing")
+                            print("ValueError in indexedH5.read(), continuing")
                             print(e)
                 else:
                     out_data[field]=np.array(out_data[field])
-        return pc.data(fields=field_list).from_dict(out_data)
+            out_data = pc.data(fields=field_list).from_dict(out_data)
+            for field in out_data.fields:
+                try:
+                    assert(getattr(out_data, field).shape==out_data.shape)
+                except AssertionError as e:
+                    print(f"Indexed H5: problem with field {field}: expected shape {out_data.shape}, found shape {getattr(out_data, field).shape}" )
+                    raise(e)
+        return out_data
 
