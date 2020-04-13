@@ -17,4 +17,6 @@ setup(
     ],
     packages=find_packages(),
     install_requires=['numpy','scipy','pyproj','h5py','netCDF4','matplotlib','gdal'],
+    dependency_links=['https://github.com/suzanne64/ATL11/tarball/master',
+        'https://github.com/tsutterley/pyTMD/tarball/master'],
 )
