@@ -29,6 +29,7 @@ import re
 import glob
 import argparse
 import numpy as np
+import matplotlib.pyplot as plt
 import pointCollection as pc
 
 import sys
@@ -53,6 +54,7 @@ def main(argv):
     parser.add_argument('--feather','-f', type=float, default=2e4, help='feathering width in meters for weights')
     parser.add_argument('--output','-O', type=str, default='mosaic.h5',  help='output filename')
     parser.add_argument('--verbose','-v', default=False, action='store_true', help='verbose output of run')
+    parser.add_argument('--show','-s', action="store_true")
     parser.add_argument('--mode','-m', default=0o775, help='permissions mode of output mosaic')
     args=parser.parse_args()
 
@@ -117,5 +119,12 @@ def main(argv):
         field_list=fields)
     os.chmod(os.path.join(args.directory,args.output), args.mode)
 
+    if args.show:
+        if len(mosaic.z.shape) > 2:
+            plt.imshow(mosaic.z[:,:,-1]-mosaic.z[:,:,0], extent=mosaic.extent)
+        else:
+            mosaic.z.show()
+        plt.colorbar()
+        plt.show()
 if __name__=='__main__':
     main(sys.argv)

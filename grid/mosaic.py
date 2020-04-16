@@ -21,7 +21,7 @@ class mosaic(data):
         self.x=None
         self.y=None
         self.t=None
-        self.data=None
+        self.z=None
         self.mask=None
         self.weight=None
         self.extent=[np.inf,-np.inf,np.inf,-np.inf]
