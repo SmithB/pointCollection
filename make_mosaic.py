@@ -48,8 +48,10 @@ def main(argv):
     parser.add_argument('--directory','-d', type=str, default=os.getcwd(), help='directory to run')
     parser.add_argument('--glob_string','-g', type=str, default='/*/*.h5', help='quoted string to pass to glob to find the files')
     parser.add_argument('--range','-r', type=float, nargs='+', help='valid range of tiles [xmin,xmax,ymin,ymax]')
-    parser.add_argument('--group','-G', type=str, default='dz/', help='input HDF5 group')
-    parser.add_argument('--field','-F', type=str, nargs='+', default=['z','dz'], help='input HDF5 field map')
+    parser.add_argument('--in_group','-G', type=str, default='/', help='input HDF5 group')
+    parser.add_argument('--out_group', type=str, help='output df5 group (specify "/" for root; default is the same as the input group')
+    #parser.add_argument('--field','-F', type=str, nargs='+', default=['z','dz'], help='input HDF5 field map')
+    parser.add_argument('--fields','-F', type=str, nargs='+', default=['z'], help='input HDF5 fields')
     parser.add_argument('--pad','-p', type=float, default=1e4, help='pad width in meters for weights')
     parser.add_argument('--feather','-f', type=float, default=2e4, help='feathering width in meters for weights')
     parser.add_argument('--output','-O', type=str, default='mosaic.h5',  help='output filename')
@@ -64,7 +66,10 @@ def main(argv):
     else:
         xmin,xmax,ymin,ymax = [-np.inf,np.inf,-np.inf,np.inf]
     # convert field mapping from list to dict
-    field_mapping = {args.field[0]:args.field[1]}
+    #field_mapping = {args.field[0]:args.field[1]}
+
+    if args.out_group is None:
+        args.out_group=args.in_group
 
     # find list of valid files
     file_list = []
@@ -77,7 +82,8 @@ def main(argv):
     mosaic=pc.grid.mosaic()
     for file in file_list:
         # read ATL14 grid from HDF5
-        temp=pc.grid.mosaic().from_h5(file, group=args.group, field_mapping=field_mapping)
+        #temp=pc.grid.mosaic().from_h5(file, group=args.group, field_mapping=field_mapping)
+        temp=pc.grid.data().from_h5(file, group=args.in_group, fields=[])
         # update grid spacing of output mosaic
         mosaic.update_spacing(temp)
         # update the extents of the output mosaic
@@ -86,18 +92,27 @@ def main(argv):
         mosaic.update_dimensions(temp)
 
     # create output mosaic
-    mosaic.data = np.zeros(mosaic.dimensions)
+    mosaic.assign({field:np.zeros(mosaic.dimensions) for field in args.fields})
+    #mosaic.data = np.zeros(mosaic.dimensions)
     mosaic.mask = np.ones(mosaic.dimensions,dtype=np.bool)
     mosaic.weight = np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
     for file in file_list:
         # read ATL14 grid from HDF5
-        temp=pc.grid.mosaic().from_h5(file, group=args.group, field_mapping=field_mapping)
-        temp=temp.weights(pad=args.pad, feather=args.feather, apply=True)
+        temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
+        # calc weights
+
+        temp.weights(pad=args.pad, feather=args.feather, apply=False)
+
         # get the image coordinates of the input file
         iy,ix = mosaic.image_coordinates(temp)
-        for band in range(mosaic.dimensions[2]):
-            mosaic.data[iy,ix,band] += temp.z[:,:,band]
-            mosaic.mask[iy,ix,band] = False
+        for field in args.fields:
+            if mosaic.dimensions[2]==1:
+                getattr(mosaic, field)[iy,ix,0] += getattr(temp, field)[:,:]*temp.weight
+                mosaic.mask[iy, ix]=False
+            else:
+                for band in range(mosaic.dimensions[2]):
+                    getattr(mosaic, field)[iy,ix,band] += getattr(temp, field)[:,:,band]*temp.weight
+                    mosaic.mask[iy,ix,band] = False
         # add weights to total weight matrix
         mosaic.weight[iy,ix] += temp.weight[:,:]
 
@@ -107,17 +122,20 @@ def main(argv):
     # normalize weights
     iy,ix = np.nonzero(mosaic.weight > 0)
     for band in range(mosaic.dimensions[2]):
-        mosaic.data[iy,ix,band] /= mosaic.weight[iy,ix]
+        for field in mosaic.fields:
+            getattr(mosaic, field)[iy,ix,band] /= mosaic.weight[iy,ix]
     # replace invalid points with fill_value
-    mosaic.data[mosaic.mask] = mosaic.fill_value
+    for field in mosaic.fields:
+        getattr(mosaic, field)[mosaic.mask] = mosaic.fill_value
 
-    # output mosaic to HDF5
-    fields=['x','y', 'data','weight']
-    if mosaic.t.dtype in (int, float, np.int, np.float):
-        fields += 't'
-    mosaic.to_h5(os.path.join(args.directory,args.output),
-        field_list=fields)
-    os.chmod(os.path.join(args.directory,args.output), args.mode)
+    mosaic.to_h5(os.path.join(args.directory,args.output), group=args.out_group)
+    # # output mosaic to HDF5
+    # fields=['x','y', 'data','weight']
+    # if mosaic.t.dtype in (int, float, np.int, np.float):
+    #     fields += 't'
+    # mosaic.to_h5(os.path.join(args.directory,args.output),
+    #     field_list=fields)
+    # os.chmod(os.path.join(args.directory,args.output), args.mode)
 
     if args.show:
         if len(mosaic.z.shape) > 2:
