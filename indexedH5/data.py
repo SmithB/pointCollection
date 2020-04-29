@@ -73,18 +73,18 @@ class data(pc.data):
                     if field not in h5f:
                         blank_fields.append(field)
                         continue
-                # make sure the index range gets iterated over properly.
-                if len(index_range[0])<2:
-                    if len(h5f[field].shape)>1:
-                        out_data[field].append(np.array(h5f[field][0,int(index_range[0]):int(index_range[1])]))
-                    else:
-                        out_data[field].append(np.array(h5f[field][int(index_range[0]):int(index_range[1])]))
-                else:
-                    for i0_i1 in zip(index_range[0], index_range[1]):
+                    # make sure the index range gets iterated over properly.
+                    if len(index_range[0])<2:
                         if len(h5f[field].shape)>1:
-                            out_data[field].append(np.array(h5f[field][0,i0_i1[0]:i0_i1[1]]))
+                            out_data[field].append(np.array(h5f[field][0,int(index_range[0]):int(index_range[1])]))
                         else:
-                            out_data[field].append(np.array(h5f[field][i0_i1[0]:i0_i1[1]]))
+                            out_data[field].append(np.array(h5f[field][int(index_range[0]):int(index_range[1])]))
+                    else:
+                        for i0_i1 in zip(index_range[0], index_range[1]):
+                            if len(h5f[field].shape)>1:
+                                out_data[field].append(np.array(h5f[field][0,i0_i1[0]:i0_i1[1]]))
+                            else:
+                                out_data[field].append(np.array(h5f[field][i0_i1[0]:i0_i1[1]]))
             else:
                 # this is a file with distinct bins, each with its own set of datasets
                 for xy in zip(xy_bin[0], xy_bin[1]):
