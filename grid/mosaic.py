@@ -17,11 +17,12 @@ import scipy.ndimage
 from .data import data
 
 class mosaic(data):
-    def __init__(self):
-        self.x=None
-        self.y=None
-        self.t=None
-        self.z=None
+    def __init__(self, **kwargs):
+        #self.x=None
+        #self.y=None
+        #self.t=None
+        #self.z=None
+        super().__init__(**kwargs)
         self.mask=None
         self.weight=None
         self.extent=[np.inf,-np.inf,np.inf,-np.inf]
@@ -55,8 +56,11 @@ class mosaic(data):
         update the dimensions of the mosaic with new extents
         """
         # get number of bands
-        if (np.ndim(temp.z) == 3):
-            ny,nx,self.dimensions[2] = np.shape(temp.z)
+        #if (np.ndim(temp.z) == 3):
+        if hasattr(temp,'t') and hasattr(temp.t, 'size') and temp.t.size > 0:
+            self.dimensions[2]=temp.t.size
+            #ny,nx,self.dimensions[2] = np.shape(temp.z)
+            self.t=temp.t.copy()
         else:
             self.dimensions[2] = 1
         # calculate y dimensions with new extents
@@ -66,7 +70,6 @@ class mosaic(data):
         # calculate x and y arrays
         self.x = np.linspace(self.extent[0],self.extent[1],self.dimensions[1])
         self.y = np.linspace(self.extent[2],self.extent[3],self.dimensions[0])
-        self.t = np.copy(temp.t)
         return self
 
     def image_coordinates(self, temp):
@@ -83,9 +86,14 @@ class mosaic(data):
         Apply the weights if specified
         """
         # find dimensions of matrix
-        if (np.ndim(self.z) == 2):
-            self.z = self.z[:,:,None]
-        ny,nx,nband = np.shape(self.z)
+        sh = getattr(self, self.fields[0]).shape
+        if len(sh)==3:
+            nband=sh[2]
+        else:
+            nband=1
+        ny=sh[0]
+        nx=sh[1]
+
         # allocate for weights matrix
         self.weight = np.ones((ny,nx), dtype=np.float)
         gridx,gridy = np.meshgrid(self.x,self.y)
@@ -120,39 +128,43 @@ class mosaic(data):
             self.weight[indy,indx] = gauss[indy,indx]
         # if applying the weights to the original z data
         if apply:
-            for band in range(nband):
-                self.z[:,:,band] *= self.weight
+            for field in self.fields:
+                if nband > 1:
+                    for band in range(nband):
+                        getattr(self, field)[:,:,band] *= self.weight
+                else:
+                    getattr(self, field)[:,:] *= self.weight
         return self
 
-    def to_h5(self, fileOut, field_list=None, replace=True):
-        """
-        write a mosaic object to an hdf5 file
-        """
-        # if overwriting the HDF5 file or presently non-existent
-        if replace or not os.path.isfile(fileOut):
-            if os.path.isfile(fileOut):
-                os.remove(fileOut)
-            fileID=h5py.File(fileOut,'w')
-        else:
-            fileID=h5py.File(fileOut,'r+')
-        # write dimensions to HDF5
-        h5 = {}
-        dims = [field for field in field_list if field in ('x','y','t')]
-        for field in dims:
-            h5[field] = fileID.create_dataset(field, data=getattr(self,field),
-                compression="gzip")
-        # write variables to HDF5
-        for field in sorted(set(field_list) - set(dims)):
-            data = getattr(self,field)
-            h5[field] = fileID.create_dataset(field, data=data,
-                fillvalue=self.fill_value, compression="gzip")
-            # attach dimensions
-            h5[field].dims[0].label='y'
-            h5[field].dims[0].attach_scale(h5['y'])
-            h5[field].dims[1].label='x'
-            h5[field].dims[1].attach_scale(h5['x'])
-            if (np.ndim(data) == 3) and ('t' in dims):
-                h5[field].dims[2].label='t'
-                h5[field].dims[2].attach_scale(h5['t'])
-        # close the HDF5 file
-        fileID.close()
+    # def to_h5(self, fileOut, fields, replace=True):
+    #     """
+    #     write a mosaic object to an hdf5 file
+    #     """
+    #     # if overwriting the HDF5 file or presently non-existent
+    #     if replace or not os.path.isfile(fileOut):
+    #         if os.path.isfile(fileOut):
+    #             os.remove(fileOut)
+    #         fileID=h5py.File(fileOut,'w')
+    #     else:
+    #         fileID=h5py.File(fileOut,'r+')
+    #     # write dimensions to HDF5
+    #     h5 = {}
+    #     dims = [field for field in fields if field in ('x','y','t')]
+    #     for field in dims:
+    #         h5[field] = fileID.create_dataset(field, data=getattr(self,field),
+    #             compression="gzip")
+    #     # write variables to HDF5
+    #     for field in sorted(set(fields) - set(dims)):
+    #         data = getattr(self,field)
+    #         h5[field] = fileID.create_dataset(field, data=data,
+    #             fillvalue=self.fill_value, compression="gzip")
+    #         # attach dimensions
+    #         h5[field].dims[0].label='y'
+    #         h5[field].dims[0].attach_scale(h5['y'])
+    #         h5[field].dims[1].label='x'
+    #         h5[field].dims[1].attach_scale(h5['x'])
+    #         if (np.ndim(data) == 3) and ('t' in dims):
+    #             h5[field].dims[2].label='t'
+    #             h5[field].dims[2].attach_scale(h5['t'])
+    #     # close the HDF5 file
+    #     fileID.close()

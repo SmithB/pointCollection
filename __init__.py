@@ -20,4 +20,4 @@ from .bin_rows import bin_rows
 from .pt_blockmedian import pt_blockmedian
 from .geoIndex import geoIndex
 from pointCollection import grid
-
+from pointCollection.unique_by_rows import unique_by_rows

@@ -13,7 +13,7 @@ import os
 class tile(object):
     '''
     A tile is a datafile containing a collection of points from a list of other
-    files.  It is written as a pointCollectin.indexedH5 file, and contains
+    files.  It is written as a pointCollection.indexedH5 file, and contains
     a list of the files that contributed to it, as well as a source_file_num
     dataset that points to each source file
     '''

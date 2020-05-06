@@ -163,32 +163,6 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-
-    # def get_xy(self, proj4_string=None, EPSG=None):
-    #     """
-    #     get projected coordinates for the data.  Adds 'x' and 'y' fields to the data, optionally returns 'self'
-    #     """
-    #     out_srs=osr.SpatialReference()
-    #     if proj4_string is None and EPSG is not None:
-    #         out_srs.ImportFromEPSG(EPSG)
-    #     else:
-    #         errCode=out_srs.ImportFromProj4(proj4_string)
-    #         if errCode > 0:
-    #             errCode=out_srs.ImportFromWkt(proj4_string)
-    #     ll_srs=osr.SpatialReference()
-    #     ll_srs.ImportFromEPSG(4326)
-    #     ct=osr.CoordinateTransformation(ll_srs, out_srs)
-    #     if self.latitude.size==0:
-    #         self.x=np.zeros_like(self.latitude)
-    #         self.y=np.zeros_like(self.latitude)
-    #     else:
-    #         xy=np.array(ct.TransformPoints(np.c_[self.longitude.ravel(), self.latitude.ravel()]))
-    #         self.x=np.reshape(xy[:,0], self.latitude.shape)
-    #         self.y=np.reshape(xy[:,1], self.longitude.shape)
-    #     if 'x' not in self.fields:
-    #         self.fields += ['x','y']
-    #     return self
-
     def get_xy(self, proj4_string=None, EPSG=None):
         if proj4_string is not None:
             crs=proj4_string
@@ -246,7 +220,7 @@ class data(object):
                     if this_D is None:
                         continue
                     try:
-                        if np.array(self.shape).size > 1:
+                        if self.columns>1:
                             data_list.append(getattr(this_D,field))
                         else:
                             data_list.append(getattr(this_D, field).ravel())

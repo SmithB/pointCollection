@@ -14,39 +14,79 @@ import scipy.interpolate as si
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
 from . import WV_date
+import os
 
 class data(object):
-    def __init__(self):
+    def __init__(self, fields=None):
         self.x=None
         self.y=None
-        self.z=None
         self.projection=None
         self.filename=None
         self.extent=None
-        self.interpolator=None
-        self.nan_interpolator=None
+        self.interpolator={}
+        self.nan_interpolator={}
         self.time=None
+        self.size=None
+        self.shape=None
+        if fields is None:
+            self.fields=list()
+        else:
+            self.fields=fields
+        for field in self.fields:
+            setattr(self, field, None)
 
-    def __copy__(self):
+    def __copy__(self, fields=None):
+        if fields is None:
+            fields=self.fields
         temp=pc.grid.data()
-        for field in ['x','y','z','projection','filename','extent','time']:
+        for field in ['x','y','projection','filename','extent','time'] + fields:
             setattr(temp, field, getattr(self, field))
+        temp.__update_size_and_shape__()
         return temp
 
-    def copy(self):
+    def __repr__(self):
+        out=f"{self.__class__} with shape {self.shape},"+"\n"
+        out += f"with fields:"+"\n"
+        out += f"{self.fields}"
+        return out
+
+    def copy(self, fields=None):
         return self.__copy__()
 
-    def update_extent(self):
+    def __getitem__(self, *args, **kwargs):
+        """
+        wrapper for the copy_subset() method
+        """
+        return self.copy_subset(*args, **kwargs)
+
+    def __update_extent__(self):
         self.extent=[np.min(self.x), np.max(self.x), np.min(self.y), np.max(self.y)]
 
+    def __update_size_and_shape__(self):
+        for field in ['z']+self.fields:
+            try:
+                self.size=getattr(self, field).size
+                self.shape=getattr(self, field).shape
+            except Exception:
+                pass
+
     def from_dict(self, thedict):
-        for field in ['x','y','z','projection','filename','extent','time']:
-            if field in thedict:
+        for field in thedict:
                 setattr(self, field, thedict[field])
-        self.update_extent()
+                if field not in self.fields:
+                    self.fields.append(field)
+        self.__update_extent__()
+        self.__update_size_and_shape__()
         return self
-    
-    def from_geotif(self, file, bands=None, bounds=None, extent=None, skip=1, min_res=None, date_format=None):
+
+    def assign(self, newdata):
+        for field in newdata.keys():
+            setattr(self, field, newdata[field])
+            if field not in self.fields:
+                self.fields.append(field)
+        return self
+
+    def from_geotif(self, file, field='z', bands=None, bounds=None, extent=None, skip=1, min_res=None, date_format=None):
         """
         Read a raster from a geotif
         """
@@ -110,24 +150,43 @@ class data(object):
         y=y[rows]
         self.x=x
         self.y=y[::-1]
-        self.z=z
+        self.assign({field: z})
         self.projection=proj
-        self.update_extent()
+        self.__update_extent__()
+        self.__update_size_and_shape__()
         return self
 
-    def from_h5(self, h5_file, field_mapping={}, group='/', bounds=None, skip=1):
+    def from_h5(self, h5_file, field_mapping={}, group='/', fields=None, bounds=None, skip=1):
        """
        Read a raster from an hdf5 file
        """
+
        self.filename=h5_file
-       fields={'x':'x','y':'y','z':'z','t':'t'}
-       fields.update(field_mapping)
+       dims=['x','y','t','time']
+
+
+       if group[0] != '/':
+            group='/'+group
        t=None
        with h5py.File(h5_file,'r') as h5f:
-           x=np.array(h5f[group+fields['x']])
-           y=np.array(h5f[group+fields['y']])
-           if fields['t'] in h5f[group]:
-               t=np.array(h5f[group+fields['t']])
+           x=np.array(h5f[group+'/x'])
+           y=np.array(h5f[group+'/y'])
+           if 't' in h5f[group]:
+               t=np.array(h5f[group]['t'])
+           elif 'time' in h5f[group]:
+               t=np.array(h5f[group]['time'])
+
+           # if no field mapping provided, add everything in the group
+           if len(field_mapping.keys()) ==0:
+               for key in h5f[group].keys():
+                   if key in dims:
+                       continue
+                   if fields is not None and key not in fields:
+                       continue
+                   if key not in field_mapping:
+                       if hasattr(h5f[group][key],'shape'):
+                           field_mapping.update({key:key})
+
            if bounds is not None:
                cols = np.where(( x>=bounds[0][0] ) & ( x<= bounds[0][1] ))[0]
                rows = np.where(( y>=bounds[1][0] ) & ( y<= bounds[1][1] ))[0]
@@ -135,26 +194,55 @@ class data(object):
                rows=np.arange(y.size, dtype=int)
                cols=np.arange(x.size, dtype=int)
            if len(rows) > 0 and len(cols) > 0:
-               zfield=h5f[group+fields['z']]
-               if len(zfield.shape) == 2:
-                   self.z=np.array(h5f[group+fields['z']][rows[0]:rows[-1]+1, cols[0]:cols[-1]+1])
-               else:
-                   self.z=np.array(zfield[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,:])
+               for self_field in field_mapping:
+                   f_field_name=group+'/'+field_mapping[self_field]
+                   if f_field_name not in h5f:
+                       continue
+                   f_field=h5f[f_field_name]
+
+                   if len(h5f[f_field_name].shape) == 2:
+                       setattr(self, self_field,\
+                               np.array(h5f[f_field_name][rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
+                   else:
+                       setattr(self, self_field,\
+                               np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,:]))
+                   if self_field not in self.fields:
+                        self.fields.append(self_field)
                self.x=x[cols]
                self.y=y[rows]
                if t is not None:
                    self.t=t
-       self.update_extent()
+       self.__update_extent__()
+       self.__update_size_and_shape__()
        return self
+
+    def to_h5(self, out_file, fields=None, group='/'):
+
+        mode='w'
+        if os.path.isfile(out_file):
+            mode='r+'
+
+        if fields is None:
+            fields=self.fields
+        if group[0] != '/':
+            group='/'+group
+        with h5py.File(out_file,mode) as h5f:
+            try:
+                h5f.create_group(group)
+            except Exception:
+                pass
+            for field in ['x','y','time', 't'] + fields:
+                try:
+                    h5f.create_dataset(group+'/'+field, data=getattr(self, field))
+                except Exception:
+                    pass
 
     def to_geotif(self, out_file, field='z', srs_proj4=None, srs_wkt=None,  srs_epsg=None):
         """
         Write a grid object to a geotif.
         """
-        if  field != 'z':
-            z=getattr(self, field)
-        else:
-            z=self.z
+
+        z=getattr(self, field)
 
         nx=z.shape[1]
         ny=z.shape[0]
@@ -187,39 +275,40 @@ class data(object):
         out_ds.FlushCache()
         out_ds = None
 
-    def as_points(self, keep_all=False):
+    def as_points(self, field='z', keep_all=False):
         """
         Return a pointCollection.data object containing the points in the grid
         """
         x,y=np.meshgrid(self.x, self.y)
         if keep_all:
             result =  pc.data(filename=self.filename).\
-                from_dict({'x':x.ravel(),'y':y.ravel(),'z':self.z.ravel()})
+                from_dict({'x':x.ravel(),'y':y.ravel(),'z':getattr(self, field).ravel()})
         else:
-            good=np.isfinite(self.z).ravel()
+            good=np.isfinite(getattr(self, field)).ravel()
             result = pc.data(filename=self.filename).\
-                from_dict({'x':x.ravel()[good],'y':y.ravel()[good],'z':self.z.ravel()[good]})
+                from_dict({'x':x.ravel()[good],'y':y.ravel()[good],'z':getattr(self, field).ravel()[good]})
         if self.time is not None:
-            result.assign({'time':self.time+np.zeros_like(self.z)})
+            result.assign({'time':self.time+np.zeros_like(getattr(self, field))})
         return result
 
-    def add_alpha_band(self, alpha=None, nodata_vals=None):
+    def add_alpha_band(self, alpha=None, field='z', nodata_vals=None):
+
         if alpha is None:
             if nodata_vals is not None:
-                alpha=np.ones_like(self.z[:,:,0])
+                alpha=np.ones_like(getattr(self, field)[:,:,0])
                 if hasattr(nodata_vals, 'len') and len(nodata_vals)==3:
                     for ii in range(3):
-                        alpha[~np.isfinite(self.z[:,:,ii]) | (self.z[:,:,ii]==nodata_vals[ii])]=0
+                        alpha[~np.isfinite(getattr(self, field)[:,:,ii]) | (getattr(self, field)[:,:,ii]==nodata_vals[ii])]=0
                 elif nodata_vals is not None:
-                    alpha[np.all(~np.isfinite(self.z) | (self.z==nodata_vals), axis=2)]=0
+                    alpha[np.all(~np.isfinite(getattr(self, field)) | (getattr(self, field)==nodata_vals), axis=2)]=0
             else:
-                alpha=np.any(~np.isfinite(self.z), axis=2)
-        if len(self.z.shape)==3 and self.z.shape[2]==4:
-            self.z[:,:,-1]=alpha
+                alpha=np.any(~np.isfinite(getattr(self, field)), axis=2)
+        if len(getattr(self, field).shape)==3 and getattr(self, field).shape[2]==4:
+            getattr(self, field)[:,:,-1]=alpha
         else:
             if len(alpha.shape)<3:
                 alpha.shape=(alpha.shape[0], alpha.shape[1], 1)
-            self.z=np.concatenate([self.z, alpha], axis=2)
+            setattr(self, field, np.concatenate([getattr(self, field), alpha], axis=2))
         return self
 
     def get_date(self, date_format=None):
@@ -232,44 +321,56 @@ class data(object):
             self.time = WV_date.WV_MatlabDate(self.filename)
         return self
 
-    def normalize(self, z0=[0., 255.], z1=[0., 1.], truncate=True, dtype=np.float64):
+    def normalize(self, field='z', z0=[0., 255.], z1=[0., 1.], truncate=True, dtype=np.float64):
         """
         Normalize the z range.
         """
-        self.z=((self.z.astype(np.float64))-z0[0])/(z0[1]-z0[0])*(z1[1]-z1[0])+z1[0]
+        getattr(self, field)[:] = (getattr(self, field).astype(np.float64)-z0[0])/(z0[1]-z0[0])*(z1[1]-z1[0])+z1[0]
         if truncate:
-            self.z[self.z < z1[0]]=z1[0]
-            self.z[self.z > z1[1]]=z1[1]
-        self.z=self.z.astype(dtype)
+            getattr(self, field)[getattr(self, field) < z1[0]] = z1[0]
+            getattr(self, field)[getattr(self, field) > z1[1]] = z1[1]
+        setattr(self, field, getattr(self, field).astype(dtype))
         return self
 
-    def toRGB(self, cmap, caxis=None, alpha=None):
+    def toRGB(self, cmap, field='z', caxis=None, alpha=None):
+        """
+        Convert a field to RGB
+        """
         if caxis is None:
-            caxis=[self.z.min(), self.z.max()]
+            caxis=[getattr(self, field).min(), getattr(self, field).max()]
         self.normalize(z0=caxis)
-        self.z=cmap(self.z)
+        setattr(self, field, cmap(getattr(self, field)))
         if alpha is not None:
             self.add_alpha_band(alpha)
         return self
 
-    def index(self, row_ind, col_ind, band_ind=None):
+    def index(self, row_ind, col_ind, fields=None, band_ind=None):
         """
         slice a grid by row or column
+        
         """
+        if fields is None:
+            fields=self.fields
+
         self.x=self.x[col_ind]
         self.y=self.y[row_ind]
-        if len(self.z.shape) == 2:
-            self.z=self.z[row_ind,:][:, col_ind]
-        else:
-            if band_ind is None:
-                self.z=self.z[row_ind,:, :][:, col_ind,:]
+        for field in fields:
+            if len(getattr(self, field).shape) == 2:
+                setattr(self, field, getattr(self, field)[row_ind,:][:, col_ind])
             else:
-                self.z=self.z[row_ind,:, :][:, col_ind, band_ind]
-                self.t=self.t[band_ind]
-        self.update_extent()
+                if band_ind is None:
+                    setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,:])
+                else:
+                    setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,band_ind])
+                    self.t=self.t[band_ind]
+        self.__update_extent__()
+        self.__update_size_and_shape__()
         return self
 
-    def subset(self, XR, YR):
+    def copy_subset(self, rc_ind, band_ind=None, fields=None):
+        return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=band_ind)
+
+    def crop(self, XR, YR, fields=None):
         """
         Return a subset of a grid by x and y range
         """
@@ -277,7 +378,7 @@ class data(object):
         col_ind = np.where((self.x >= XR[0]) & (self.x <= XR[1]))[0]
         row_ind = np.where((self.y >= YR[0]) & (self.y <= YR[1]))[0]
         try:
-           self.index(row_ind, col_ind)
+           self.index(row_ind, col_ind, fields)
            return self
         except Exception as e:
            print("grid: self extent is: ", self.extent)
@@ -286,16 +387,16 @@ class data(object):
            print("Error is" )
            print(e)
 
-    def show(self, band=None, ax=None, xy_scale=1, gradient=False, stretch_pct=None, **kwargs):
+    def show(self, field='z', band=None, ax=None, xy_scale=1, gradient=False, stretch_pct=None, **kwargs):
         kwargs['extent']=np.array(self.extent)*xy_scale
         kwargs['origin']='lower'
         if band is None:
-            zz=self.z
+            zz=getattr(self, field)
         else:
-            zz=self.z[:,:,band]
+            zz=getattr(self, field)[:,:,band]
 
         if gradient:
-            zz=np.gradient(zz, self.x[1]-self.x[0], self.y[1]-self.y[0])[0]
+            zz=np.gradient(zz.squeeze(), self.x[1]-self.x[0], self.y[1]-self.y[0])[0]
             if 'stretch_pct' not in kwargs:
                 stretch_pct=[5, 95]
             if 'cmap' not in kwargs:
@@ -311,26 +412,26 @@ class data(object):
             h_im = ax.imshow(zz, **kwargs)
         return h_im
 
-    def interp(self, x, y, gridded=False, band=0):
+    def interp(self, x, y, gridded=False, band=0, field='z'):
         """
         interpolate a grid to a set of x and y points
         """
-        if self.interpolator is None:
-            if len(self.z.shape) > 2:
-                z0 = self.z[:,:,band]
+        if field not in self.interpolator:
+            if len(getattr(self, field).shape) > 2:
+                z0 = getattr(self, field)[:,:,band]
             else:
-                z0 = self.z.copy()
+                z0 = getattr(self, field).copy()
             NaN_mask =  np.isfinite(z0)==0
             z0[NaN_mask] = 0
 
             if self.y[1]> self.y[0]:
-                self.interpolator = si.RectBivariateSpline(self.y, self.x, z0)
+                self.interpolator[field] = si.RectBivariateSpline(self.y, self.x, z0)
                 if np.any(NaN_mask.ravel()):
-                    self.maskinterpolator = si.RectBivariateSpline(self.y, self.x, NaN_mask.astype(float), kx=1, ky=1)
+                    self.nan_interpolator[field] = si.RectBivariateSpline(self.y, self.x, NaN_mask.astype(float), kx=1, ky=1)
             else:
-                self.interpolator = si.RectBivariateSpline(self.y[::-1], self.x, z0[::-1,:], kx=1, ky=1)
+                self.interpolator[field] = si.RectBivariateSpline(self.y[::-1], self.x, z0[::-1,:], kx=1, ky=1)
                 if np.any(NaN_mask.ravel()):
-                    self.nan_interpolator = si.RectBivariateSpline(self.y[::-1], self.x, NaN_mask[::-1,:].astype(float), kx=1, ky=1)
+                    self.nan_interpolator[field] = si.RectBivariateSpline(self.y[::-1], self.x, NaN_mask[::-1,:].astype(float), kx=1, ky=1)
 
         if gridded:
             result=np.zeros((len(y), len(x)))
@@ -340,8 +441,8 @@ class data(object):
                 good_x = slice(good_x[0], good_x[-1]+1)
                 good_y = slice(good_y[0], good_y[-1]+1)
 
-                result[good_y, good_x] = self.interpolator(y[good_y], x[good_x])
-                if self.nan_interpolator is not None:
+                result[good_y, good_x] = self.interpolator[field](y[good_y], x[good_x])
+                if field in self.nan_interpolator:
                     to_NaN=np.ones_like(result, dtype=bool)
                     to_NaN[good_y, good_x] = self.nan_interpoator(y[good_y], x[good_x])
                     result[to_NaN] = np.NaN
@@ -350,11 +451,11 @@ class data(object):
             good = (x >= np.min(self.x)) & (x <= np.max(self.x)) & \
                    (y >= np.min(self.y)) & (y <= np.max(self.y))
 
-            result[good]=self.interpolator.ev(y[good], x[good])
-        if self.nan_interpolator is not None:
+            result[good]=self.interpolator[field].ev(y[good], x[good])
+        if field in self.nan_interpolator:
             to_NaN = good
             # nan_interpolator returns nonzero for NaN points in self.z
-            to_NaN[good] = self.nan_interpolator.ev(y[good], x[good]) != 0
+            to_NaN[good] = self.nan_interpolator[field].ev(y[good], x[good]) != 0
             result[to_NaN] = np.NaN
         return result
 
