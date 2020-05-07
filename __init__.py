@@ -16,6 +16,8 @@ from pointCollection import CS2_retracked_SW
 from pointCollection import ATL06
 from pointCollection import indexedH5
 from pointCollection import ATM_WF
+from pointCollection import glah12
+from pointCollection import ATL11
 from .bin_rows import bin_rows
 from .pt_blockmedian import pt_blockmedian
 from .geoIndex import geoIndex
