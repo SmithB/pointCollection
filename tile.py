@@ -18,11 +18,11 @@ class tile(object):
     dataset that points to each source file
     '''
 
-    def __init__(self, xy0=None, bin_W=[1.e4, 1.e4], tile_W=1.e5, SRS_proj4=None, time_field=None, z_field=None):
+    def __init__(self, D=None, xy0=None, bin_W=[1.e4, 1.e4], tile_W=1.e5, SRS_proj4=None, time_field=None, z_field=None):
         self.bin_W=bin_W
         self.tile_W=tile_W
         self.SRS_proj4=SRS_proj4
-        self.D=None
+        self.D=D
         self.xy0=xy0
         if time_field is None:
             self.time_field = self.__time_field__()
