@@ -59,11 +59,18 @@ class data(pc.data):
 
             if xy_bin is None:
                 xy_bin=[[],[]]
-                for key in h5f['x'].keys():
-                    xx, yy=map(float, key.replace('N','').split('E_'))
-                    xy_bin[0].append(xx)
-                    xy_bin[1].append(yy)
-
+                if 'x' in h5f.keys():
+                    for key in h5f['x'].keys():
+                        xx, yy=map(float, key.replace('N','').split('E_'))
+                        xy_bin[0].append(xx)
+                        xy_bin[1].append(yy)
+                else:
+                    for key in h5f.keys():
+                        if 'E_' not in key:
+                            continue
+                        xx, yy=map(float, key.replace('N','').split('E_'))
+                        xy_bin[0].append(xx)
+                        xy_bin[1].append(yy)
             if isinstance(xy_bin, np.ndarray):
                 xy_bin=[xy_bin[:,0], xy_bin[:,1]]
 
@@ -98,6 +105,7 @@ class data(pc.data):
                                 out_data[field].append(np.array(h5f[bin_name][field]).squeeze())
                         else:
                             blank_fields.append(field)
+
             for field in field_list:
                 if isinstance(out_data[field], list):
                     if len(out_data[field])>1 or isinstance(out_data[field], list):

@@ -138,7 +138,7 @@ class data(object):
                         else:
                             ds=h5_f[group][field]
                         # read the data:
-                        if self.columns==0 or self.columns is None:
+                        if self.columns==0 or self.columns is None or (ds.ndim==1):
                             setattr(self, field, np.array(ds[ind]))
                         else:
                             setattr(self, field, np.array(ds[ind,:]))

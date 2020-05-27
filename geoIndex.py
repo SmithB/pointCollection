@@ -15,7 +15,6 @@ import h5py
 from osgeo import osr
 #import matplotlib.pyplot as plt
 import pointCollection as pc
-import ATL11
 import os
 
 class geoIndex(dict):
@@ -271,9 +270,9 @@ class geoIndex(dict):
             self.from_list(temp, dir_root=dir_root)
         if file_type in ['ATL11']:
             temp=list()
-            this_field_dict={'corrected_h':('latitude','longitude')}
             for beam_pair in (1, 2, 3):
-                D=ATL11.data().from_file(filename, pair=beam_pair, field_dict=this_field_dict).get_xy(self.attrs['SRS_proj4'])
+                field_dict={f'pt{beam_pair}/corrected_h':['latitude','longitude']}
+                D=pc.data().from_h5(filename, field_dict=field_dict).get_xy(self.attrs['SRS_proj4'])
                 D.get_xy(self.attrs['SRS_proj4'])
                 if D.x.shape[0] > 0:
                     temp.append(geoIndex(delta=self.attrs['delta'], \
@@ -291,6 +290,12 @@ class geoIndex(dict):
             D=pc.ATMwaveform.data().from_h5(filename)
             if D.latitude.shape[0] > 0:
                 self.from_latlon(D.latitude, D.longitude,  filename_out, 'ATM_waveform', number=number)
+        if file_type in ['glah12']:
+            if int(re.compile('lat_0=(\S+)').search(self.SRS_proj4).group(1))<0:
+                D=pc.glah12.data().from_h5(filename, lat_range=[-90, -60])
+            else:
+                D=pc.glah12.data().from_h5(filename, lat_range=[60, 90])
+            self.from_latlon(D.latitude, D.longitude, filename_out, 'glah12', number=number)
         if file_type in ['filtered_DEM', 'DEM'] :
             D=pc.grid.data().from_geotif(filename, bands=[1], min_res=self.attrs['delta'][0]/10).as_points()
             if D.size > 0:
