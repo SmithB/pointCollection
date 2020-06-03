@@ -1,8 +1,14 @@
 from setuptools import setup, find_packages
+
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
 setup(
-    name='Utilities for organizing and manipulating point data',
+    name='pointCollection',
     version='1.0.0.0',
-    description='Python',
+    description='Utilities for organizing and manipulating point data',
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     url='https://github.com/SmithB/pointCollection',
     author='Ben Smith',
     author_email='besmith@uw.edu',
