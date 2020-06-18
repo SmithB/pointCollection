@@ -25,7 +25,7 @@ class data(pc.data):
             field_dict={'corrected_h':['latitude','longitude','h_corr',\
                                    'h_corr_sigma', 'h_corr_sigma_systematic',\
                                    'delta_time','quality_summary', 'ref_pt'], \
-                    'ref_surf': ['dem_h']}
+                    'ref_surf': ['dem_h', 'x_atc']}
         return {self.pair_name+'/'+key:field_dict[key] for key in field_dict}
 
     def __tile_fields__(self):
