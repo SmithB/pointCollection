@@ -586,7 +586,7 @@ class geoIndex(dict):
                 D11_file, pair = this_file.split(':pair')
                 if not os.path.isfile(D11_file):
                     print(D11_file)
-                D=[ATL11.data().from_file(\
+                D=[pc.ATL11.data().from_h5(\
                     filename=D11_file, index_range=np.array(temp), \
                     pair=int(pair), field_dict=field_dict) \
                     for temp in zip(result['offset_start'], result['offset_end'])]
