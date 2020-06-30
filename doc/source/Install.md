@@ -20,14 +20,25 @@ gdal-config --datadir
 ```
 The pointCollection installation uses the `gdal-config` routines to set the GDAL package version.  
 
+On an Ubuntu LTS system we noticed that gdal.h was installed in /usr/include, while gdal-config pointed to /usr/lib.  We were able to allow gdal to compile by issuing these commands:
+```bash
+export CPLUS_INCLUDE_PATH=/usr/include/gdal
+export C_INCLUDE_PATH=/usr/include/gdal
+```
+
 #### Installation
-Can then install using `setuptools`:
+There are three ways to install the cloned repository.  For any of these three, issue the commands within the pointCollection directory:
+Install using `setuptools`:
 ```bash
 python setup.py install
 ```
 or `pip`:
 ```bash
 python3 -m pip install --user .
+```
+A third option for installing the library with a symbolic link (so that the files can be editied without reinstalling) is to use pip:
+```bash
+pip3 install -e ./ --user
 ```
 Alternatively can install the pointCollection utilities directly from GitHub with `pip`:
 ```
