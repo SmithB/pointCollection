@@ -8,3 +8,4 @@ Python utilities for organizing and manipulating point data
     :caption: Getting Started:
 
     Install.md
+    Citations.md
