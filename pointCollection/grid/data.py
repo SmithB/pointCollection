@@ -73,7 +73,7 @@ class data(object):
     def from_dict(self, thedict):
         for field in thedict:
                 setattr(self, field, thedict[field])
-                if field not in self.fields:
+                if field not in self.fields and field not in ['x','y','time']:
                     self.fields.append(field)
         self.__update_extent__()
         self.__update_size_and_shape__()
