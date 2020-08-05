@@ -212,7 +212,7 @@ class geoIndex(dict):
             else:
                 old_root = ''
         new_root = os.path.normpath(new_root)
-        file_re = re.compile('file_\d+')
+        file_re = re.compile(r'file_\d+')
         for key in self.attrs.keys():
             if file_re.match(key) is not None:
                 temp = os.path.join(old_root,self.attrs[key])
@@ -291,7 +291,7 @@ class geoIndex(dict):
             if D.latitude.shape[0] > 0:
                 self.from_latlon(D.latitude, D.longitude,  filename_out, 'ATM_waveform', number=number)
         if file_type in ['glah12']:
-            if int(re.compile('lat_0=(\S+)').search(self.SRS_proj4).group(1))<0:
+            if int(re.compile(r'lat_0=(\S+)').search(self.SRS_proj4).group(1))<0:
                 D=pc.glah12.data().from_h5(filename, lat_range=[-90, -60])
             else:
                 D=pc.glah12.data().from_h5(filename, lat_range=[60, 90])
@@ -330,7 +330,7 @@ class geoIndex(dict):
                 # there is no index-- just a bunch of bins, maybe?
                 first_last=None
                 fake_offset=-1
-                bin_re=re.compile("(.*)E_(.*)N");
+                bin_re=re.compile(r"(.*)E_(.*)N");
                 xy=[[], []]
                 for key in h5f:
                     m=bin_re.match(key)
