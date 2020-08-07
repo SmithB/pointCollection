@@ -96,13 +96,17 @@ def main(argv):
     #mosaic.data = np.zeros(mosaic.dimensions)
     mosaic.mask = np.ones(mosaic.dimensions,dtype=np.bool)
     mosaic.weight = np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
-    for file in file_list:
+    for count, file in enumerate(file_list):
         # read ATL14 grid from HDF5
         temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
-        # calc weights
-
-        temp.weights(pad=args.pad, feather=args.feather, apply=False)
-
+        # calc weights  Note that these are all the same, so we only have to calculate
+        # the first set.  After that we can just copy the first
+        if count==0:
+            temp.weights(pad=args.pad, feather=args.feather, apply=False)
+            last_weight=temp.weight.copy()
+        else:
+            temp.weight=last_weight.copy()
+            
         # get the image coordinates of the input file
         iy,ix = mosaic.image_coordinates(temp)
         for field in args.fields:
