@@ -156,15 +156,15 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def from_h5(self, h5_file, field_mapping={}, group='/', fields=None, bounds=None, skip=1):
+    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, skip=1):
        """
        Read a raster from an hdf5 file
        """
 
+       if field_mapping is None:
+            field_mapping={}
        self.filename=h5_file
        dims=['x','y','t','time']
-
-
        if group[0] != '/':
             group='/'+group
        t=None
@@ -177,7 +177,7 @@ class data(object):
                t=np.array(h5f[group]['time'])
 
            # if no field mapping provided, add everything in the group
-           if len(field_mapping.keys()) ==0:
+           if len(field_mapping.keys())==0:
                for key in h5f[group].keys():
                    if key in dims:
                        continue
@@ -186,7 +186,6 @@ class data(object):
                    if key not in field_mapping:
                        if hasattr(h5f[group][key],'shape'):
                            field_mapping.update({key:key})
-
            if bounds is not None:
                cols = np.where(( x>=bounds[0][0] ) & ( x<= bounds[0][1] ))[0]
                rows = np.where(( y>=bounds[1][0] ) & ( y<= bounds[1][1] ))[0]
@@ -405,7 +404,7 @@ class data(object):
             LH=scoreatpercentile(zz.ravel()[np.isfinite(zz.ravel())], stretch_pct)
             kwargs['vmin']=LH[0]
             kwargs['vmax']=LH[1]
-        print(kwargs)
+
         if ax is None:
             h_im = plt.imshow(zz, **kwargs)
         else:
