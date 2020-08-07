@@ -24,7 +24,7 @@ class data(pc.data):
         # find the date and time number in filename
         if 'days_J2k' in field_dict['__calc_internal__']:
             m=re.search(r"ATM1B.*_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2}).*.h5",self.filename)
-			# create list of date variables
+            # create list of date variables
             this_time=[int(m.group(ind+1)) for ind in range(6)]
 
             t0=datetime(*this_time[0:3]) + timedelta(hours=this_time[3], minutes=this_time[4], seconds=this_time[5])-datetime(2000, 1, 1, 0, 0, 0)
@@ -43,8 +43,7 @@ class data(pc.data):
         # open the filename in binary read mode
         fid = os.fdopen(fd, 'rb')
         # regular expression pattern for extracting parameters
-        rx = re.compile(('(BLATM1B|ILATM1B|ILNSA1B)_((\d{4})|(\d{2}))'
-        	'(\d{2})(\d{2})(.*?)\.qi$'),re.VERBOSE)
+        rx = re.compile((r'(BLATM1B|ILATM1B|ILNSA1B)_((\d{4})|(\d{2}))(\d{2})(\d{2})(.*?)\.qi$'),re.VERBOSE)
         # extract mission and other parameters from filename
         match_object = rx.match(os.path.basename(filename))
         # convert year, month and day to float variables
@@ -53,7 +52,7 @@ class data(pc.data):
         day = np.float(match_object.group(6))
         # early ATM date strings omitted century and millenia (e.g. 93 for 1993)
         if match_object.group(4):
-        	year = (year + 1900.0) if (year >= 90) else (year + 2000.0)
+            year = (year + 1900.0) if (year >= 90) else (year + 2000.0)
 
         # get the number of variables and the endianness of the file
         # assume initially big endian (all input data 32-bit integers)

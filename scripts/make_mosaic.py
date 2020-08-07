@@ -74,7 +74,7 @@ def main(argv):
     # find list of valid files
     file_list = []
     for file in glob.glob(args.directory +'/'+args.glob_string):
-        xc,yc=[int(item)*1.e3 for item in re.compile('E(.*)_N(.*).h5').search(file).groups()]
+        xc,yc=[int(item)*1.e3 for item in re.compile(r'E(.*)_N(.*).h5').search(file).groups()]
         if ((xc >=xmin) and (xc <= xmax) & (yc >= ymin) and (yc <= ymax)):
             file_list.append(file)
 
