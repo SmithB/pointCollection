@@ -41,6 +41,7 @@ class data(object):
         temp=pc.grid.data()
         for field in ['x','y','projection','filename','extent','time'] + fields:
             setattr(temp, field, getattr(self, field))
+        temp.fields=fields.copy()
         temp.__update_size_and_shape__()
         return temp
 
