@@ -7,6 +7,8 @@ To use this repository, please fork into your own account and then clone onto yo
 ```bash
 git clone https://github.com/SmithB/pointCollection.git
 ```
+pointCollection requires Python3.6 or higher  
+
 #### Dependencies
 pointCollection is dependent on some open source programs:
 - [gdal](https://gdal.org/index.html)
