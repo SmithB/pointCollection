@@ -9,10 +9,11 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: [3.5, 3.6, 3.7, 3.8]
+        os: [ubuntu-latest, macos-latest]
+        python-version: [3.6, 3.7, 3.8]
 
     steps:
     - uses: actions/checkout@v2
@@ -20,14 +21,28 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
+    - name: Install dependencies for Linux
+      if: matrix.os == 'ubuntu-latest'
       run: |
-        sudo apt-get install gdal-bin libgdal-dev libproj-dev proj-data proj-bin libgeos-dev libhdf5-dev libnetcdf-dev
+        sudo apt-get install gdal-bin libgdal-dev libproj-dev proj-data proj-bin \
+            libgeos-dev libhdf5-dev libnetcdf-dev
         pip install --upgrade pip
         pip install flake8 pytest pytest-cov numpy
         export CPLUS_INCLUDE_PATH=/usr/include/gdal
         export C_INCLUDE_PATH=/usr/include/gdal
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install .
+    - name: Install dependencies for MacOS
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install proj
+        brew install geos
+        brew install gdal
+        brew install hdf5
+        brew install netcdf
+        pip install --upgrade pip
+        pip install --upgrade setuptools
+        pip install flake8 pytest pytest-cov numpy
+        pip install .
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
@@ -36,5 +51,4 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        pip install --no-deps .
         pytest
