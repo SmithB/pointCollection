@@ -80,17 +80,19 @@ def main(argv):
 
     # get bounds, grid spacing and dimensions of output mosaic
     mosaic=pc.grid.mosaic()
-    for file in file_list:
+    for file in file_list.copy():
         # read ATL14 grid from HDF5
-        #temp=pc.grid.mosaic().from_h5(file, group=args.group, field_mapping=field_mapping)
-        temp=pc.grid.data().from_h5(file, group=args.in_group, fields=[])
-        # update grid spacing of output mosaic
-        mosaic.update_spacing(temp)
-        # update the extents of the output mosaic
-        mosaic.update_bounds(temp)
-        # update dimensions of output mosaic with new extents
-        mosaic.update_dimensions(temp)
-
+        try:
+            temp=pc.grid.data().from_h5(file, group=args.in_group, fields=[])
+            # update grid spacing of output mosaic
+            mosaic.update_spacing(temp)
+            # update the extents of the output mosaic
+            mosaic.update_bounds(temp)
+            # update dimensions of output mosaic with new extents
+            mosaic.update_dimensions(temp)
+        except Exception:
+            print("failed to read "+ file)
+            file_list.remove(file)
     # create output mosaic
     mosaic.assign({field:np.zeros(mosaic.dimensions) for field in args.fields})
     #mosaic.data = np.zeros(mosaic.dimensions)
