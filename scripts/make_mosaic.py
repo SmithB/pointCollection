@@ -91,7 +91,7 @@ def main(argv):
             # update dimensions of output mosaic with new extents
             mosaic.update_dimensions(temp)
         except Exception:
-            print("failed to read "+ file)
+            print(f"failed to read group {args.in_group} "+ file)
             file_list.remove(file)
     # create output mosaic
     mosaic.assign({field:np.zeros(mosaic.dimensions) for field in args.fields})
