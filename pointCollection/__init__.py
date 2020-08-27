@@ -18,9 +18,11 @@ from pointCollection import indexedH5
 from pointCollection import ATM_WF
 from pointCollection import glah12
 from pointCollection import ATL11
+from pointCollection import grid
 from .bin_rows import bin_rows
 from .pt_blockmedian import pt_blockmedian
 from .geoIndex import geoIndex
-from pointCollection import grid
+from .points_to_grid import points_to_grid
+from .points_to_grid import apply_bin_fn
 from pointCollection.unique_by_rows import unique_by_rows
 from pointCollection.reconstruct_ATL06_tracks import reconstruct_ATL06_tracks
