@@ -296,6 +296,18 @@ class data(object):
                     print("IndexError")
         return self.copy_attrs().from_dict(dd, fields=datasets)
 
+    def clipped(self, bounds, return_index=False, **kwargs):
+        """
+        return a copy of a subset of the object falling within specified bounds
+        
+        the bounds are specified as (XR, YR)
+        """
+        ind = (self.x >= bounds[0][0]) & (self.x <= bounds[0][1]) &\
+              (self.y >= bounds[1][0]) & (self.y <= bounds[1][1])
+        if return_index:
+            return ind
+        return self.copy_subset(ind, **kwargs)
+
     def to_h5(self, fileOut, replace=True,  group='/', extensible=True):
         """
         write a data object to an hdf5 file
