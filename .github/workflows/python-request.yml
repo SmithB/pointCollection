@@ -24,6 +24,7 @@ jobs:
     - name: Install dependencies for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
+        sudo apt-get update
         sudo apt-get install gdal-bin libgdal-dev libproj-dev proj-data proj-bin \
             libgeos-dev libhdf5-dev libnetcdf-dev
         pip install --upgrade pip
