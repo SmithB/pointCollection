@@ -45,19 +45,22 @@ class crossover_data(pc.data):
         D_at.index(np.in1d(D_at.ref_pt[:,0], u_pt_xo))
 
         theshape=(u_pt_xo.size, n_cycles,2)
-        self.assign({field:np.zeros(theshape)+np.NaN for field in D_xo.fields})
+        all_fields=set(D_xo.fields+D_at.fields)
+        self.assign({field:np.zeros(theshape)+np.NaN for field in all_fields})
 
         row=np.searchsorted( u_pt_xo, D_at.ref_pt.ravel())
         col=D_at.cycle_number.ravel().astype(int)-1
-        for field in self.fields:
-            if field not in D_at.fields:
-                continue
-            getattr(self, field).flat[np.ravel_multi_index((row, col, np.zeros_like(row, dtype=int)), theshape)]=getattr(D_at, field).ravel()
+        self_ind0=np.ravel_multi_index((row, col, np.zeros_like(row, dtype=int)), theshape)
+        for field in D_at.fields:
+            getattr(self, field).flat[self_ind0]=getattr(D_at, field).ravel()
 
         row=np.searchsorted(u_pt_xo, D_xo.ref_pt)
         col=D_xo.cycle_number.astype(int)-1
+        self_ind1=np.ravel_multi_index((row, col, 1+np.zeros_like(row, dtype=int)), theshape)
+
         for field in self.fields:
-            getattr(self, field).flat[np.ravel_multi_index((row, col, 1+np.zeros_like(row, dtype=int)), theshape)]=getattr(D_xo, field)
+            if field in D_xo.fields:
+                getattr(self, field).flat[self_ind1]=getattr(D_xo, field)
 
         self.__update_size_and_shape__()
         return self
