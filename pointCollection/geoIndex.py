@@ -271,7 +271,7 @@ class geoIndex(dict):
         if file_type in ['ATL11']:
             temp=list()
             for beam_pair in (1, 2, 3):
-                field_dict={f'pt{beam_pair}/corrected_h':['latitude','longitude']}
+                field_dict={f'pt{beam_pair}':['latitude','longitude']}
                 D=pc.data().from_h5(filename, field_dict=field_dict).get_xy(self.attrs['SRS_proj4'])
                 D.get_xy(self.attrs['SRS_proj4'])
                 if D.x.shape[0] > 0:

@@ -27,7 +27,10 @@ def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None,\
         index_file: the name of the output index file (defaults to basename(glob_string)/GeoIndex.h5)
         verbose: should a lot be echoed?  defaults to None
     """
-    
+
+    if dir_root is not None and dir_root[-1] != '/':
+        dir_root += '/'
+
     files=glob.glob(glob_string)
     if index_file is None: 
         index_file=os.path.dirname(glob_string)+'/GeoIndex.h5'
