@@ -50,12 +50,16 @@ class crossover_data(pc.data):
             self.pair_name = f'pt{int(self.pair)}'
         if D_at is None:
             D_at=pc.ATL11.data().from_h5(filename, pair=pair)
-            ref_pt_range = [np.nanmin(D_at.ref_pt), np.nanmax(D_at.ref_pt)]
-            ref_pts=pc.data().from_h5(filename, group=self.pair_name+'/crossing_track_data', field_dict={None:'ref_pt'})
-            ind=np.flatnonzero((ref_pts >=ref_pt_range[0]) & (ref_pts <=ref_pt_range[0]))
-            index_range=[np.min(ind), np.max(ind)]
-        else:
             index_range=None
+        else:
+            ref_pt_range = [np.nanmin(D_at.ref_pt), np.nanmax(D_at.ref_pt)]
+            temp=pc.data().from_h5(filename, field_dict={self.pair_name+'/crossing_track_data':['ref_pt']})
+            ind=np.flatnonzero((temp.ref_pt >= ref_pt_range[0]) & (temp.ref_pt <=ref_pt_range[1]))
+            if len(ind)==0:
+                index_range=[None, None]
+            else:
+                index_range=[np.min(ind), np.max(ind)]
+            
         D_xo=pc.data().from_h5(filename, group=self.pair_name+'/crossing_track_data', field_dict=self.__default_XO_field_dict__(), index_range=index_range)
         D_xo.index(np.isfinite(D_xo.ref_pt) & np.isfinite(D_xo.cycle_number))
         with h5py.File(filename,'r') as h5f:

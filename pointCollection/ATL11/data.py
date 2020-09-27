@@ -72,7 +72,7 @@ class data(pc.data):
         with h5py.File(filename,'r') as h5f:
             cycle_number = np.array(h5f[self.pair_name]['cycle_number'])
 
-        if 'field_dict' in kwargs:
+        if 'field_dict' in kwargs and kwargs['field_dict'] is not None:
             kwargs['field_dict']=self.__convert_field_dict__(kwargs['field_dict'].copy())
 
         super().from_h5(filename, **kwargs)
