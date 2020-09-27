@@ -128,6 +128,8 @@ class data(object):
             cols=np.arange(band.XSize, dtype=int)
         z=list()
         for band_num in bands:
+            if band_num > ds.RasterCount:
+                raise AttributeError()
             band=ds.GetRasterBand(int(band_num))
             z.append(band.ReadAsArray(int(cols[0]), int(rows[0]), int(cols[-1]-cols[0]+1), int(rows[-1]-rows[0]+1))[::-1,:])
             if skip > 1:
@@ -288,7 +290,7 @@ class data(object):
             result = pc.data(filename=self.filename).\
                 from_dict({'x':x.ravel()[good],'y':y.ravel()[good],'z':getattr(self, field).ravel()[good]})
         if self.time is not None:
-            result.assign({'time':self.time+np.zeros_like(getattr(self, field))})
+            result.assign({'time':self.time+np.zeros_like(getattr(result, field))})
         return result
 
     def add_alpha_band(self, alpha=None, field='z', nodata_vals=None):

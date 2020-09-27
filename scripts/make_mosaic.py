@@ -116,9 +116,12 @@ def main(argv):
                 getattr(mosaic, field)[iy,ix,0] += getattr(temp, field)[:,:]*temp.weight
                 mosaic.mask[iy, ix]=False
             else:
-                for band in range(mosaic.dimensions[2]):
-                    getattr(mosaic, field)[iy,ix,band] += getattr(temp, field)[:,:,band]*temp.weight
-                    mosaic.mask[iy,ix,band] = False
+                try:
+                    for band in range(mosaic.dimensions[2]):
+                        getattr(mosaic, field)[iy,ix,band] += getattr(temp, field)[:,:,band]*temp.weight
+                        mosaic.mask[iy,ix,band] = False
+                except IndexError:
+                    print(f"problem with field {field} in file {file}")
         # add weights to total weight matrix
         mosaic.weight[iy,ix] += temp.weight[:,:]
 

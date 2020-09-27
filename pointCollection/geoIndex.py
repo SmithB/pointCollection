@@ -566,8 +566,9 @@ class geoIndex(dict):
             for key, result in query_results.items():
                 all_x += result['x'].tolist()
                 all_y += result['y'].tolist()
-            bounds=[[np.min(all_x)-self.delta[0]/2, np.max(all_x)+self.delta[0]/2], \
-                    [np.min(all_y)-self.delta[1]/2, np.max(all_y)+self.delta[1]/2]]
+            delta=self.attrs['delta']
+            bounds=[[np.min(all_x)-delta[0]/2, np.max(all_x)+delta[0]/2], \
+                    [np.min(all_y)-delta[1]/2, np.max(all_y)+delta[1]/2]]
 
         for file_key, result in query_results.items():
             this_file=self.resolve_path(file_key, dir_root)
@@ -598,9 +599,13 @@ class geoIndex(dict):
                 D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
                 D.index(D, np.isfinite(D.z))
             if result['type'] == 'filtered_DEM':
-                D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
-                D.index(D, np.isfinite(D.z))
-                D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
+                D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
+                try:
+                    D1=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[2], date_format='year').as_points(keep_all=True)
+                    D.assign({'sigma':D1.z})
+                    D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
+                except AttributeError:
+                    D.index(np.isfinite(D.z))
                 D.filename=this_file
             if result['type'] == 'indexed_h5':
                 D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]

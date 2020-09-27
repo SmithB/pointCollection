@@ -27,13 +27,36 @@ class crossover_data(pc.data):
         return {self.pair_name+'/'+key:field_dict[key] for key in field_dict}
 
 
-    def from_h5(self, filename, pair=None):
+    def from_h5(self, filename, pair=None, D_at=None):
+        '''
+        Read crossover data from a file.  
+
+        inputs:
+            filename: the file to read
+            pair: the pair to read from the file
+            D_at (optional): along-track data already read from the file.  Only
+                the reference points within D_at will be read.
+        outputs:
+            self: a data structure with fields of shape n_points x n_cycles x 2
+              The first dimension gives different crosover points
+              The second dimension has one entry for each cycle in the dataset
+              The third dimension separates reference-point data (index 0)
+                 and crossing-track data (index 1)
+        '''
+
         if pair is None:
             pair=self.pair
         else:
             self.pair_name = f'pt{int(self.pair)}'
-        D_at=pc.ATL11.data().from_h5(filename, pair=pair)
-        D_xo=pc.data().from_h5(filename, group=self.pair_name+'/crossing_track_data', field_dict=self.__default_XO_field_dict__())
+        if D_at is None:
+            D_at=pc.ATL11.data().from_h5(filename, pair=pair)
+            ref_pt_range = [np.nanmin(D_at.ref_pt), np.nanmax(D_at.ref_pt)]
+            ref_pts=pc.data().from_h5(filename, group=self.pair_name+'/crossing_track_data', field_dict={None:'ref_pt'})
+            ind=np.flatnonzero((ref_pts >=ref_pt_range[0]) & (ref_pts <=ref_pt_range[0]))
+            index_range=[np.min(ind), np.max(ind)]
+        else:
+            index_range=None
+        D_xo=pc.data().from_h5(filename, group=self.pair_name+'/crossing_track_data', field_dict=self.__default_XO_field_dict__(), index_range=index_range)
         D_xo.index(np.isfinite(D_xo.ref_pt) & np.isfinite(D_xo.cycle_number))
         with h5py.File(filename,'r') as h5f:
             rgt=int(h5f[self.pair_name].attrs['ReferenceGroundTrack'])
