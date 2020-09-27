@@ -43,11 +43,17 @@ class crossover_data(pc.data):
               The third dimension separates reference-point data (index 0)
                  and crossing-track data (index 1)
         '''
-
+        if D_at is not None:
+            # make the pair match the pair for D_at
+            pair=D_at.pair
+            
         if pair is None:
             pair=self.pair
         else:
-            self.pair_name = f'pt{int(self.pair)}'
+            self.pair=pair
+ 
+        self.pair_name = f'pt{int(self.pair)}'
+    
         if D_at is None:
             D_at=pc.ATL11.data().from_h5(filename, pair=pair)
             index_range=None
