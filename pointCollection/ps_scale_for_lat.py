@@ -26,7 +26,7 @@ def ps_scale_for_lat(lat):
             https://pubs/usgs.gov/pp/1395/report.pdf  
     '''
 
-    if lat > 0:
+    if np.nanmean(lat) > 0:
         hemisphere=1
     else:
         hemisphere=-1
