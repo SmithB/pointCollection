@@ -91,6 +91,7 @@ class data(object):
         """
         Read a raster from a geotif
         """
+        print(f"bounds={bounds}")
         self.filename=file
         if date_format is not None:
             self.get_date(date_format)
@@ -446,7 +447,7 @@ class data(object):
                 result[good_y, good_x] = self.interpolator[field](y[good_y], x[good_x])
                 if field in self.nan_interpolator:
                     to_NaN=np.ones_like(result, dtype=bool)
-                    to_NaN[good_y, good_x] = self.nan_interpoator(y[good_y], x[good_x])
+                    to_NaN[good_y, good_x] = self.nan_interpolator[field](y[good_y], x[good_x])
                     result[to_NaN] = np.NaN
         else:
             result = np.zeros_like(x)+np.NaN
@@ -454,11 +455,11 @@ class data(object):
                    (y >= np.min(self.y)) & (y <= np.max(self.y))
 
             result[good]=self.interpolator[field].ev(y[good], x[good])
-        if field in self.nan_interpolator:
-            to_NaN = good
-            # nan_interpolator returns nonzero for NaN points in self.z
-            to_NaN[good] = self.nan_interpolator[field].ev(y[good], x[good]) != 0
-            result[to_NaN] = np.NaN
+            if field in self.nan_interpolator:
+                to_NaN = good
+                # nan_interpolator returns nonzero for NaN points in self.z
+                to_NaN[good] = self.nan_interpolator[field].ev(y[good], x[good]) != 0
+                result[to_NaN] = np.NaN
         return result
 
     def bounds(self, pad=0):
