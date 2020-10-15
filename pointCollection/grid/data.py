@@ -41,6 +41,7 @@ class data(object):
         temp=pc.grid.data()
         for field in ['x','y','projection','filename','extent','time'] + fields:
             setattr(temp, field, getattr(self, field))
+        temp.fields=fields.copy()
         temp.__update_size_and_shape__()
         return temp
 
@@ -73,7 +74,7 @@ class data(object):
     def from_dict(self, thedict):
         for field in thedict:
                 setattr(self, field, thedict[field])
-                if field not in self.fields:
+                if field not in self.fields and field not in ['x','y','time']:
                     self.fields.append(field)
         self.__update_extent__()
         self.__update_size_and_shape__()
@@ -90,6 +91,7 @@ class data(object):
         """
         Read a raster from a geotif
         """
+        print(f"bounds={bounds}")
         self.filename=file
         if date_format is not None:
             self.get_date(date_format)
@@ -127,6 +129,8 @@ class data(object):
             cols=np.arange(band.XSize, dtype=int)
         z=list()
         for band_num in bands:
+            if band_num > ds.RasterCount:
+                raise AttributeError()
             band=ds.GetRasterBand(int(band_num))
             z.append(band.ReadAsArray(int(cols[0]), int(rows[0]), int(cols[-1]-cols[0]+1), int(rows[-1]-rows[0]+1))[::-1,:])
             if skip > 1:
@@ -156,15 +160,15 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def from_h5(self, h5_file, field_mapping={}, group='/', fields=None, bounds=None, skip=1):
+    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, skip=1):
        """
        Read a raster from an hdf5 file
        """
 
+       if field_mapping is None:
+            field_mapping={}
        self.filename=h5_file
        dims=['x','y','t','time']
-
-
        if group[0] != '/':
             group='/'+group
        t=None
@@ -177,7 +181,7 @@ class data(object):
                t=np.array(h5f[group]['time'])
 
            # if no field mapping provided, add everything in the group
-           if len(field_mapping.keys()) ==0:
+           if len(field_mapping.keys())==0:
                for key in h5f[group].keys():
                    if key in dims:
                        continue
@@ -186,7 +190,6 @@ class data(object):
                    if key not in field_mapping:
                        if hasattr(h5f[group][key],'shape'):
                            field_mapping.update({key:key})
-
            if bounds is not None:
                cols = np.where(( x>=bounds[0][0] ) & ( x<= bounds[0][1] ))[0]
                rows = np.where(( y>=bounds[1][0] ) & ( y<= bounds[1][1] ))[0]
@@ -288,7 +291,7 @@ class data(object):
             result = pc.data(filename=self.filename).\
                 from_dict({'x':x.ravel()[good],'y':y.ravel()[good],'z':getattr(self, field).ravel()[good]})
         if self.time is not None:
-            result.assign({'time':self.time+np.zeros_like(getattr(self, field))})
+            result.assign({'time':self.time+np.zeros_like(getattr(result, field))})
         return result
 
     def add_alpha_band(self, alpha=None, field='z', nodata_vals=None):
@@ -405,7 +408,7 @@ class data(object):
             LH=scoreatpercentile(zz.ravel()[np.isfinite(zz.ravel())], stretch_pct)
             kwargs['vmin']=LH[0]
             kwargs['vmax']=LH[1]
-        print(kwargs)
+
         if ax is None:
             h_im = plt.imshow(zz, **kwargs)
         else:
@@ -444,7 +447,7 @@ class data(object):
                 result[good_y, good_x] = self.interpolator[field](y[good_y], x[good_x])
                 if field in self.nan_interpolator:
                     to_NaN=np.ones_like(result, dtype=bool)
-                    to_NaN[good_y, good_x] = self.nan_interpoator(y[good_y], x[good_x])
+                    to_NaN[good_y, good_x] = self.nan_interpolator[field](y[good_y], x[good_x])
                     result[to_NaN] = np.NaN
         else:
             result = np.zeros_like(x)+np.NaN
@@ -452,11 +455,11 @@ class data(object):
                    (y >= np.min(self.y)) & (y <= np.max(self.y))
 
             result[good]=self.interpolator[field].ev(y[good], x[good])
-        if field in self.nan_interpolator:
-            to_NaN = good
-            # nan_interpolator returns nonzero for NaN points in self.z
-            to_NaN[good] = self.nan_interpolator[field].ev(y[good], x[good]) != 0
-            result[to_NaN] = np.NaN
+            if field in self.nan_interpolator:
+                to_NaN = good
+                # nan_interpolator returns nonzero for NaN points in self.z
+                to_NaN[good] = self.nan_interpolator[field].ev(y[good], x[good]) != 0
+                result[to_NaN] = np.NaN
         return result
 
     def bounds(self, pad=0):

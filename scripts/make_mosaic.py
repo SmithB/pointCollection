@@ -74,35 +74,41 @@ def main(argv):
     # find list of valid files
     file_list = []
     for file in glob.glob(args.directory +'/'+args.glob_string):
-        xc,yc=[int(item)*1.e3 for item in re.compile('E(.*)_N(.*).h5').search(file).groups()]
+        xc,yc=[int(item)*1.e3 for item in re.compile(r'E(.*)_N(.*).h5').search(file).groups()]
         if ((xc >=xmin) and (xc <= xmax) & (yc >= ymin) and (yc <= ymax)):
             file_list.append(file)
 
     # get bounds, grid spacing and dimensions of output mosaic
     mosaic=pc.grid.mosaic()
-    for file in file_list:
+    for file in file_list.copy():
         # read ATL14 grid from HDF5
-        #temp=pc.grid.mosaic().from_h5(file, group=args.group, field_mapping=field_mapping)
-        temp=pc.grid.data().from_h5(file, group=args.in_group, fields=[])
-        # update grid spacing of output mosaic
-        mosaic.update_spacing(temp)
-        # update the extents of the output mosaic
-        mosaic.update_bounds(temp)
-        # update dimensions of output mosaic with new extents
-        mosaic.update_dimensions(temp)
-
+        try:
+            temp=pc.grid.data().from_h5(file, group=args.in_group, fields=[])
+            # update grid spacing of output mosaic
+            mosaic.update_spacing(temp)
+            # update the extents of the output mosaic
+            mosaic.update_bounds(temp)
+            # update dimensions of output mosaic with new extents
+            mosaic.update_dimensions(temp)
+        except Exception:
+            print(f"failed to read group {args.in_group} "+ file)
+            file_list.remove(file)
     # create output mosaic
     mosaic.assign({field:np.zeros(mosaic.dimensions) for field in args.fields})
     #mosaic.data = np.zeros(mosaic.dimensions)
     mosaic.mask = np.ones(mosaic.dimensions,dtype=np.bool)
     mosaic.weight = np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
-    for file in file_list:
+    for count, file in enumerate(file_list):
         # read ATL14 grid from HDF5
         temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
-        # calc weights
-
-        temp.weights(pad=args.pad, feather=args.feather, apply=False)
-
+        # calc weights  Note that these are all the same, so we only have to calculate
+        # the first set.  After that we can just copy the first
+        if count==0:
+            temp.weights(pad=args.pad, feather=args.feather, apply=False)
+            last_weight=temp.weight.copy()
+        else:
+            temp.weight=last_weight.copy()
+            
         # get the image coordinates of the input file
         iy,ix = mosaic.image_coordinates(temp)
         for field in args.fields:
@@ -110,9 +116,12 @@ def main(argv):
                 getattr(mosaic, field)[iy,ix,0] += getattr(temp, field)[:,:]*temp.weight
                 mosaic.mask[iy, ix]=False
             else:
-                for band in range(mosaic.dimensions[2]):
-                    getattr(mosaic, field)[iy,ix,band] += getattr(temp, field)[:,:,band]*temp.weight
-                    mosaic.mask[iy,ix,band] = False
+                try:
+                    for band in range(mosaic.dimensions[2]):
+                        getattr(mosaic, field)[iy,ix,band] += getattr(temp, field)[:,:,band]*temp.weight
+                        mosaic.mask[iy,ix,band] = False
+                except IndexError:
+                    print(f"problem with field {field} in file {file}")
         # add weights to total weight matrix
         mosaic.weight[iy,ix] += temp.weight[:,:]
 

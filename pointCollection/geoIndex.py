@@ -212,7 +212,7 @@ class geoIndex(dict):
             else:
                 old_root = ''
         new_root = os.path.normpath(new_root)
-        file_re = re.compile('file_\d+')
+        file_re = re.compile(r'file_\d+')
         for key in self.attrs.keys():
             if file_re.match(key) is not None:
                 temp = os.path.join(old_root,self.attrs[key])
@@ -271,7 +271,7 @@ class geoIndex(dict):
         if file_type in ['ATL11']:
             temp=list()
             for beam_pair in (1, 2, 3):
-                field_dict={f'pt{beam_pair}/corrected_h':['latitude','longitude']}
+                field_dict={f'pt{beam_pair}':['latitude','longitude']}
                 D=pc.data().from_h5(filename, field_dict=field_dict).get_xy(self.attrs['SRS_proj4'])
                 D.get_xy(self.attrs['SRS_proj4'])
                 if D.x.shape[0] > 0:
@@ -291,7 +291,7 @@ class geoIndex(dict):
             if D.latitude.shape[0] > 0:
                 self.from_latlon(D.latitude, D.longitude,  filename_out, 'ATM_waveform', number=number)
         if file_type in ['glah12']:
-            if int(re.compile('lat_0=(\S+)').search(self.SRS_proj4).group(1))<0:
+            if int(re.compile(r'lat_0=(\S+)').search(self.SRS_proj4).group(1))<0:
                 D=pc.glah12.data().from_h5(filename, lat_range=[-90, -60])
             else:
                 D=pc.glah12.data().from_h5(filename, lat_range=[60, 90])
@@ -330,7 +330,7 @@ class geoIndex(dict):
                 # there is no index-- just a bunch of bins, maybe?
                 first_last=None
                 fake_offset=-1
-                bin_re=re.compile("(.*)E_(.*)N");
+                bin_re=re.compile(r"(.*)E_(.*)N");
                 xy=[[], []]
                 for key in h5f:
                     m=bin_re.match(key)
@@ -566,8 +566,9 @@ class geoIndex(dict):
             for key, result in query_results.items():
                 all_x += result['x'].tolist()
                 all_y += result['y'].tolist()
-            bounds=[[np.min(all_x)-self.delta[0]/2, np.max(all_x)+self.delta[0]/2], \
-                    [np.min(all_y)-self.delta[1]/2, np.max(all_y)+self.delta[1]/2]]
+            delta=self.attrs['delta']
+            bounds=[[np.min(all_x)-delta[0]/2, np.max(all_x)+delta[0]/2], \
+                    [np.min(all_y)-delta[1]/2, np.max(all_y)+delta[1]/2]]
 
         for file_key, result in query_results.items():
             this_file=self.resolve_path(file_key, dir_root)
@@ -598,9 +599,13 @@ class geoIndex(dict):
                 D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
                 D.index(D, np.isfinite(D.z))
             if result['type'] == 'filtered_DEM':
-                D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
-                D.index(D, np.isfinite(D.z))
-                D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
+                D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
+                try:
+                    D1=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[2], date_format='year').as_points(keep_all=True)
+                    D.assign({'sigma':D1.z})
+                    D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
+                except AttributeError:
+                    D.index(np.isfinite(D.z))
                 D.filename=this_file
             if result['type'] == 'indexed_h5':
                 D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]

@@ -9,7 +9,7 @@ import re
 from datetime import date
 
 def WV_date(filename):
-    date_re=re.compile('\d\d.*_(2\d\d\d)(\d\d)(\d\d)_')
+    date_re=re.compile(r'\d\d.*_(2\d\d\d)(\d\d)(\d\d)_')
     m=date_re.search(filename)
     if m is None:
         return np.NaN
@@ -28,4 +28,3 @@ def WV_MatlabDate(filename):
     this_delta=this_date-date(1, 1, 1)
     this_delta=this_delta.days+this_delta.seconds/24./3600.+367.
     return this_delta
-

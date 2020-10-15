@@ -10,16 +10,25 @@ import numpy as np
 import pointCollection as pc
 from .bin_rows import bin_rows
 
-def apply_bin_fn(D_pt, res, fn=None, field='z'):
-    
+def apply_bin_fn(D_pt, res, fn=None, fields=['z']):
+
     pt_dict=bin_rows(np.c_[np.round(D_pt.x/res)*res, np.round(D_pt.y/res)*res])
     keys=list(pt_dict.keys())
-    
-    z=np.array([fn(D_pt, pt_dict[key]) for key in keys])
-    N=np.array([len(pt_dict[key]) for key in keys])
-    keys=np.array(keys)
-    return pc.data(filename=D_pt.filename)\
-        .from_dict({'x':keys[:,0], 'y':keys[:,1], field:z,'count':N})
+    xy=np.array(keys)
+    result=pc.data(filename=D_pt.filename)\
+        .from_dict({'x':xy[:,0].ravel(), 'y':xy[:,1].ravel(), 'count':np.array([len(pt_dict[key]) for key in keys])})
+    for field in fields:
+        result.assign({field:np.zeros(len(keys), dtype=float)})
+    z=np.zeros((len(keys), len(fields)))
+    for ii, key in enumerate(keys):
+        temp=fn(D_pt, pt_dict[key])
+        if len(fields)==1:
+            z[ii]=temp
+        else:
+            z[ii,:]=temp
+    for col, field in enumerate(fields):
+        result.assign({field:z[:, col].ravel()})
+    return result
     
 
 def points_to_grid(D_pt, res, grid=None, field='z', background=np.NaN):

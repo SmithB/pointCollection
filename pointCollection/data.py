@@ -171,12 +171,30 @@ class data(object):
         if hasattr(pyproj, 'proj'):
             xy=np.array(pyproj.proj.Proj(crs)(self.longitude, self.latitude))
         else:
-            assert EPSG is not None
-            xy=np.array(pyproj.Proj("+init=epsg:"+str(EPSG))(self.longitude, self.latitude))
+            if EPSG is not None:
+                xy=np.array(pyproj.Proj("+init=epsg:"+str(EPSG))(self.longitude, self.latitude))
+            else:
+                xy=np.array(pyproj.Proj(crs)(self.longitude, self.latitude))
         self.x=xy[0,:].reshape(self.shape)
         self.y=xy[1,:].reshape(self.shape)
         if 'x' not in self.fields:
             self.fields += ['x','y']
+        return self
+
+    def get_latlon(self, proj4_string=None, EPSG=None):
+        if proj4_string is not None:
+            crs=proj4_string
+        elif EPSG is not None:
+            crs=EPSG
+        if hasattr(pyproj, 'proj'):
+            lonlat=np.array(pyproj.proj.Proj(crs)(self.x, self.y, inverse=True))
+        else:
+            if EPSG is not None:
+                lonlat=np.array(pyproj.Proj("+init=epsg:"+str(EPSG))(self.x, self.y))
+            else:
+                lonlat=np.array(pyproj.Proj(crs)(self.x, self.y))
+        self.assign({"longitude":lonlat[0,:].reshape(self.shape), \
+                     "latitude":lonlat[1,:].reshape(self.shape)})
         return self
 
     def from_dict(self, dd, fields=None):
@@ -295,6 +313,18 @@ class data(object):
                 except IndexError:
                     print("IndexError")
         return self.copy_attrs().from_dict(dd, fields=datasets)
+
+    def clipped(self, bounds, return_index=False, **kwargs):
+        """
+        return a copy of a subset of the object falling within specified bounds
+        
+        the bounds are specified as (XR, YR)
+        """
+        ind = (self.x >= bounds[0][0]) & (self.x <= bounds[0][1]) &\
+              (self.y >= bounds[1][0]) & (self.y <= bounds[1][1])
+        if return_index:
+            return ind
+        return self.copy_subset(ind, **kwargs)
 
     def to_h5(self, fileOut, replace=True,  group='/', extensible=True):
         """

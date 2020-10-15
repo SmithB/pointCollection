@@ -22,10 +22,10 @@ class data(pc.data):
 
     def __default_field_dict__(self, field_weight='light'):
         if field_weight=='light':
-            field_dict={None:['latitude','longitude','h_corr',\
+            field_dict={'corrected_h':['latitude','longitude','h_corr',\
                                    'h_corr_sigma', 'h_corr_sigma_systematic',\
                                    'delta_time','quality_summary', 'ref_pt'], \
-                    'ref_surf': ['dem_h', 'x_atc','fit_quality']}
+                    'ref_surf': ['dem_h', 'x_atc']}
         return self.__convert_field_dict__(field_dict)
 
     def __convert_field_dict__(self, field_dict):
@@ -34,7 +34,7 @@ class data(pc.data):
         for key in field_dict:
             if key is None:
                 temp[self.pair_name]=field_dict[key]
-            elif key in ['__calc_internal__']:
+            if key in ['__calc_internal__']:
                 # skip appending the pair name to the __calc_internal__ field
                 temp[key]=field_dict[key]
             else:
@@ -66,13 +66,12 @@ class data(pc.data):
 
     def from_h5(self, filename, pair=None, field_weight='light', tile_fields=True, **kwargs):
         if pair is not None:
-            self.pair=pair
-            self.pair_name=f'pt{int(pair)}'
-            self.field_dict=self.__default_field_dict__(field_weight=field_weight)
+           self.pair_name=f'pt{int(pair)}'
+           self.field_dict=self.__default_field_dict__(field_weight=field_weight)
         with h5py.File(filename,'r') as h5f:
-            cycle_number = np.array(h5f[self.pair_name]['cycle_number'])
+            cycle_number = np.array(h5f[self.pair_name]['corrected_h']['cycle_number'])
 
-        if 'field_dict' in kwargs and kwargs['field_dict'] is not None:
+        if 'field_dict' in kwargs:
             kwargs['field_dict']=self.__convert_field_dict__(kwargs['field_dict'].copy())
 
         super().from_h5(filename, **kwargs)

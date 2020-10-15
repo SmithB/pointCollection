@@ -18,6 +18,7 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 UPDATE HISTORY:
+    Updated 08/2020: flake8 compatible binary regular expression strings
     Forked 02/2020 from read_cryosat_L1b.py
     Updated 11/2019: empty placeholder dictionary for baseline D DSD headers
     Updated 09/2019: added netCDF4 read function for baseline D
@@ -110,7 +111,7 @@ class data(pc.data):
         # Validity Stop Date and Time
         # Baseline Identifier
         # Version Number
-        regex_pattern = '(.*?)_({0})_({1})_(\d+T?\d+)_(\d+T?\d+)_(.*?)(\d+)'
+        regex_pattern = r'(.*?)_({0})_({1})_(\d+T?\d+)_(\d+T?\d+)_(.*?)(\d+)'
         rx = re.compile(regex_pattern.format(regex_class,regex_products),re.VERBOSE)
         # extract file information from filename
         MI,CLASS,PRODUCT,START,STOP,BASELINE,VERSION=rx.findall(fileBasename).pop()
@@ -180,13 +181,10 @@ class data(pc.data):
 
         # get dataset MODE from PRODUCT portion of file name
         # set record sizes and DS_TYPE for read_DSD function
-        self.MODE = re.findall('(LRM|FDM|SAR|SIN)', PRODUCT).pop()
+        self.MODE = re.findall('(LRM|SAR|SIN)', PRODUCT).pop()
         if (self.MODE == 'LRM'):
             i_record_size = i_record_size_LRM_L1b
             DS_TYPE = 'CS_L1B'
-        elif (self.MODE == 'FDM'):
-            i_record_size = i_record_size_FDM_L1b
-            DS_TYPE = 'SIR_L1B_FDM'
         elif (self.MODE == 'SAR'):
             i_record_size = i_record_size_SAR_L1b
             DS_TYPE = 'CS_L1B'
@@ -216,16 +214,16 @@ class data(pc.data):
         if (j_num_DSR*i_record_size != file_info.st_size):
             # If there are MPH/SPH/DSD headers
             s_MPH_fields = self.read_MPH(full_filename)
-            j_sph_size = np.int32(re.findall('[-+]?\d+',s_MPH_fields['SPH_SIZE']).pop())
+            j_sph_size = np.int32(re.findall(r'[-+]?\d+',s_MPH_fields['SPH_SIZE']).pop())
             s_SPH_fields = self.read_SPH(full_filename, j_sph_size)
             # extract information from DSD fields
             s_DSD_fields = self.read_DSD(full_filename, DS_TYPE=DS_TYPE)
             # extract DS_OFFSET
-            j_DS_start = np.int32(re.findall('[-+]?\d+',s_DSD_fields['DS_OFFSET']).pop())
+            j_DS_start = np.int32(re.findall(r'[-+]?\d+',s_DSD_fields['DS_OFFSET']).pop())
             # extract number of DSR in the file
-            j_num_DSR = np.int32(re.findall('[-+]?\d+',s_DSD_fields['NUM_DSR']).pop())
+            j_num_DSR = np.int32(re.findall(r'[-+]?\d+',s_DSD_fields['NUM_DSR']).pop())
             # check the record size
-            j_DSR_size = np.int32(re.findall('[-+]?\d+',s_DSD_fields['DSR_SIZE']).pop())
+            j_DSR_size = np.int32(re.findall(r'[-+]?\d+',s_DSD_fields['DSR_SIZE']).pop())
             #  minimum size is start of the read plus number of records to read
             j_check_size = j_DS_start + (j_DSR_size*j_num_DSR)
             if verbose:
@@ -348,13 +346,13 @@ class data(pc.data):
         # Validity Stop Date and Time
         # Baseline Identifier
         # Version Number
-        regex_pattern = '(.*?)_({0})_({1})_(\d+T?\d+)_(\d+T?\d+)_(.*?)(\d+)'
+        regex_pattern = r'(.*?)_({0})_({1})_(\d+T?\d+)_(\d+T?\d+)_(.*?)(\d+)'
         rx = re.compile(regex_pattern.format(regex_class,regex_products),re.VERBOSE)
         # extract file information from filename
         MI,CLASS,PRODUCT,START,STOP,BASELINE,VERSION=rx.findall(fileBasename).pop()
         print(full_filename) if verbose else None
         # get dataset MODE from PRODUCT portion of file name
-        self.MODE = re.findall('(LRM|FDM|SAR|SIN)', PRODUCT).pop()
+        self.MODE = re.findall(r'(LRM|FDM|SAR|SIN)', PRODUCT).pop()
         # read level-2 CryoSat-2 data from netCDF4 file
         CS_L1b_mds = self.cryosat_baseline_D(full_filename, unpack=unpack)
 
@@ -418,19 +416,19 @@ class data(pc.data):
         # number of text lines in standard MPH
         n_MPH_lines = 41
         # check that first line of header matches PRODUCT
-        if not bool(re.match(b'PRODUCT\=\"(.*)(?=\")',file_contents[0])):
+        if not bool(re.match(br'PRODUCT\=\"(.*)(?=\")',file_contents[0])):
             raise IOError('File does not start with a valid PDS MPH')
         # read MPH header text
         s_MPH_fields = {}
         for i in range(n_MPH_lines):
             # use regular expression operators to read headers
-            if bool(re.match(b'(.*?)\=\"(.*)(?=\")',file_contents[i])):
+            if bool(re.match(br'(.*?)\=\"(.*)(?=\")',file_contents[i])):
                 # data fields within quotes
-                field,value=re.findall(b'(.*?)\=\"(.*)(?=\")',file_contents[i]).pop()
+                field,value=re.findall(br'(.*?)\=\"(.*)(?=\")',file_contents[i]).pop()
                 s_MPH_fields[field.decode('utf-8')] = value.decode('utf-8').rstrip()
-            elif bool(re.match(b'(.*?)\=(.*)',file_contents[i])):
+            elif bool(re.match(br'(.*?)\=(.*)',file_contents[i])):
                 # data fields without quotes
-                field,value=re.findall(b'(.*?)\=(.*)',file_contents[i]).pop()
+                field,value=re.findall(br'(.*?)\=(.*)',file_contents[i]).pop()
                 s_MPH_fields[field.decode('utf-8')] = value.decode('utf-8').rstrip()
 
         # Return block name array to calling function
@@ -448,43 +446,43 @@ class data(pc.data):
         # number of text lines in standard MPH
         n_MPH_lines = 41
         # compile regular expression operator for reading headers
-        rx = re.compile(b'(.*?)\=\"?(.*)',re.VERBOSE)
+        rx = re.compile(br'(.*?)\=\"?(.*)',re.VERBOSE)
         # check first line of header matches SPH_DESCRIPTOR
-        if not bool(re.match(b'SPH\_DESCRIPTOR\=',file_contents[n_MPH_lines+1])):
+        if not bool(re.match(br'SPH\_DESCRIPTOR\=',file_contents[n_MPH_lines+1])):
             raise IOError('File does not have a valid PDS DSD')
         # read SPH header text (no binary control characters)
         s_SPH_lines = [li for li in file_contents[n_MPH_lines+1:] if rx.match(li)
-            and not re.search(b'[^\x20-\x7e]+',li)]
+            and not re.search(br'[^\x20-\x7e]+',li)]
 
         # extract SPH header text
         s_SPH_fields = {}
         c = 0
         while (c < len(s_SPH_lines)):
             # check if line is within DS_NAME portion of SPH header
-            if bool(re.match(b'DS_NAME',s_SPH_lines[c])):
+            if bool(re.match(br'DS_NAME',s_SPH_lines[c])):
                 # add dictionary for DS_NAME
-                field,value=re.findall(b'(.*?)\=\"(.*)(?=\")',s_SPH_lines[c]).pop()
+                field,value=re.findall(br'(.*?)\=\"(.*)(?=\")',s_SPH_lines[c]).pop()
                 key = value.decode('utf-8').rstrip()
                 s_SPH_fields[key] = {}
                 for line in s_SPH_lines[c+1:c+7]:
-                    if bool(re.match(b'(.*?)\=\"(.*)(?=\")',line)):
+                    if bool(re.match(br'(.*?)\=\"(.*)(?=\")',line)):
                         # data fields within quotes
-                        dsfield,dsvalue=re.findall(b'(.*?)\=\"(.*)(?=\")',line).pop()
+                        dsfield,dsvalue=re.findall(br'(.*?)\=\"(.*)(?=\")',line).pop()
                         s_SPH_fields[key][dsfield.decode('utf-8')] = dsvalue.decode('utf-8').rstrip()
-                    elif bool(re.match(b'(.*?)\=(.*)',line)):
+                    elif bool(re.match(br'(.*?)\=(.*)',line)):
                         # data fields without quotes
-                        dsfield,dsvalue=re.findall(b'(.*?)\=(.*)',line).pop()
+                        dsfield,dsvalue=re.findall(br'(.*?)\=(.*)',line).pop()
                         s_SPH_fields[key][dsfield.decode('utf-8')] = dsvalue.decode('utf-8').rstrip()
                 # add 6 to counter to go to next entry
                 c += 6
             # use regular expression operators to read headers
-            elif bool(re.match(b'(.*?)\=\"(.*)(?=\")',s_SPH_lines[c])):
+            elif bool(re.match(br'(.*?)\=\"(.*)(?=\")',s_SPH_lines[c])):
                 # data fields within quotes
-                field,value=re.findall(b'(.*?)\=\"(.*)(?=\")',s_SPH_lines[c]).pop()
+                field,value=re.findall(br'(.*?)\=\"(.*)(?=\")',s_SPH_lines[c]).pop()
                 s_SPH_fields[field.decode('utf-8')] = value.decode('utf-8').rstrip()
-            elif bool(re.match(b'(.*?)\=(.*)',s_SPH_lines[c])):
+            elif bool(re.match(br'(.*?)\=(.*)',s_SPH_lines[c])):
                 # data fields without quotes
-                field,value=re.findall(b'(.*?)\=(.*)',s_SPH_lines[c]).pop()
+                field,value=re.findall(br'(.*?)\=(.*)',s_SPH_lines[c]).pop()
                 s_SPH_fields[field.decode('utf-8')] = value.decode('utf-8').rstrip()
             # add 1 to counter to go to next line
             c += 1
@@ -509,11 +507,11 @@ class data(pc.data):
         # Level-1b CryoSat DS_NAMES within files
         regex_patterns = []
         if (DS_TYPE == 'CS_L1B'):
-            regex_patterns.append(b'DS_NAME\="SIR_L1B_LRM[\s+]*"')
-            regex_patterns.append(b'DS_NAME\="SIR_L1B_SAR[\s+]*"')
-            regex_patterns.append(b'DS_NAME\="SIR_L1B_SARIN[\s+]*"')
+            regex_patterns.append(br'DS_NAME\="SIR_L1B_LRM[\s+]*"')
+            regex_patterns.append(br'DS_NAME\="SIR_L1B_SAR[\s+]*"')
+            regex_patterns.append(br'DS_NAME\="SIR_L1B_SARIN[\s+]*"')
         elif (DS_TYPE == 'SIR_L1B_FDM'):
-            regex_patterns.append(b'DS_NAME\="SIR_L1B_FDM[\s+]*"')
+            regex_patterns.append(br'DS_NAME\="SIR_L1B_FDM[\s+]*"')
         # find the DSD starting line within the SPH header
         c = 0
         Flag = False
@@ -534,13 +532,13 @@ class data(pc.data):
         s_DSD_fields = {}
         for i in range(DSD_START,DSD_START+n_DSD_lines):
             # use regular expression operators to read headers
-            if bool(re.match(b'(.*?)\=\"(.*)(?=\")',file_contents[i])):
+            if bool(re.match(br'(.*?)\=\"(.*)(?=\")',file_contents[i])):
                 # data fields within quotes
-                field,value=re.findall(b'(.*?)\=\"(.*)(?=\")',file_contents[i]).pop()
+                field,value=re.findall(br'(.*?)\=\"(.*)(?=\")',file_contents[i]).pop()
                 s_DSD_fields[field.decode('utf-8')] = value.decode('utf-8').rstrip()
-            elif bool(re.match(b'(.*?)\=(.*)',file_contents[i])):
+            elif bool(re.match(br'(.*?)\=(.*)',file_contents[i])):
                 # data fields without quotes
-                field,value=re.findall(b'(.*?)\=(.*)',file_contents[i]).pop()
+                field,value=re.findall(br'(.*?)\=(.*)',file_contents[i]).pop()
                 s_DSD_fields[field.decode('utf-8')] = value.decode('utf-8').rstrip()
 
         # Return block name array to calling function
@@ -978,11 +976,11 @@ class data(pc.data):
 
         # set the mask from day variables
         mask_20Hz = CS_l1b_mds['Location']['Day'].data == CS_l1b_mds['Location']['Day'].fill_value
-        Location_keys = [key for key in CS_l1b_mds['Location'].keys() if not re.search('Spare',key)]
-        Data_keys = [key for key in CS_l1b_mds['Data'].keys() if not re.search('Spare',key)]
-        Geometry_keys = [key for key in CS_l1b_mds['Geometry'].keys() if not re.search('Spare',key)]
-        Wfm_1Hz_keys = [key for key in CS_l1b_mds['Waveform_1Hz'].keys() if not re.search('Spare',key)]
-        Wfm_20Hz_keys = [key for key in CS_l1b_mds['Waveform_20Hz'].keys() if not re.search('Spare',key)]
+        Location_keys = [key for key in CS_l1b_mds['Location'].keys() if not re.search(r'Spare',key)]
+        Data_keys = [key for key in CS_l1b_mds['Data'].keys() if not re.search(r'Spare',key)]
+        Geometry_keys = [key for key in CS_l1b_mds['Geometry'].keys() if not re.search(r'Spare',key)]
+        Wfm_1Hz_keys = [key for key in CS_l1b_mds['Waveform_1Hz'].keys() if not re.search(r'Spare',key)]
+        Wfm_20Hz_keys = [key for key in CS_l1b_mds['Waveform_20Hz'].keys() if not re.search(r'Spare',key)]
         for key in Location_keys:
             CS_l1b_mds['Location'][key].mask = mask_20Hz.copy()
         for key in Data_keys:
@@ -1447,11 +1445,11 @@ class data(pc.data):
 
         # set the mask from day variables
         mask_20Hz = CS_l1b_mds['Location']['Day'].data == CS_l1b_mds['Location']['Day'].fill_value
-        Location_keys = [key for key in CS_l1b_mds['Location'].keys() if not re.search('Spare',key)]
-        Data_keys = [key for key in CS_l1b_mds['Data'].keys() if not re.search('Spare',key)]
-        Geometry_keys = [key for key in CS_l1b_mds['Geometry'].keys() if not re.search('Spare',key)]
-        Wfm_1Hz_keys = [key for key in CS_l1b_mds['Waveform_1Hz'].keys() if not re.search('Spare',key)]
-        Wfm_20Hz_keys = [key for key in CS_l1b_mds['Waveform_20Hz'].keys() if not re.search('Spare',key)]
+        Location_keys = [key for key in CS_l1b_mds['Location'].keys() if not re.search(r'Spare',key)]
+        Data_keys = [key for key in CS_l1b_mds['Data'].keys() if not re.search(r'Spare',key)]
+        Geometry_keys = [key for key in CS_l1b_mds['Geometry'].keys() if not re.search(r'Spare',key)]
+        Wfm_1Hz_keys = [key for key in CS_l1b_mds['Waveform_1Hz'].keys() if not re.search(r'Spare',key)]
+        Wfm_20Hz_keys = [key for key in CS_l1b_mds['Waveform_20Hz'].keys() if not re.search(r'Spare',key)]
         for key in Location_keys:
             CS_l1b_mds['Location'][key].mask = mask_20Hz.copy()
         for key in Data_keys:
