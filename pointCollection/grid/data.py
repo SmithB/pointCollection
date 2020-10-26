@@ -91,7 +91,7 @@ class data(object):
         """
         Read a raster from a geotif
         """
-        print(f"bounds={bounds}")
+
         self.filename=file
         if date_format is not None:
             self.get_date(date_format)
@@ -371,6 +371,8 @@ class data(object):
         return self
 
     def copy_subset(self, rc_ind, band_ind=None, fields=None):
+        if fields is None:
+            fields=self.fields
         return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=band_ind)
 
     def crop(self, XR, YR, fields=None):
