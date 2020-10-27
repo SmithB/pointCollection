@@ -74,7 +74,7 @@ class data(object):
     def from_dict(self, thedict):
         for field in thedict:
                 setattr(self, field, thedict[field])
-                if field not in self.fields and field not in ['x','y','time']:
+                if field not in self.fields and field not in ['x','y','time', 't']:
                     self.fields.append(field)
         self.__update_extent__()
         self.__update_size_and_shape__()
@@ -235,10 +235,16 @@ class data(object):
             except Exception:
                 pass
             for field in ['x','y','time', 't'] + fields:
-                try:
-                    h5f.create_dataset(group+'/'+field, data=getattr(self, field))
-                except Exception:
-                    pass
+                # if field exists, overwrite it
+                if field in h5f[group]:
+                    if hasattr(self, field):
+                        h5f[group+'/'+field][...] = getattr(self, field)
+                else:
+                    #Otherwise, try to create the group
+                    try:
+                        h5f.create_dataset(group+'/'+field, data=getattr(self, field))
+                    except Exception:
+                         pass
 
     def to_geotif(self, out_file, field='z', srs_proj4=None, srs_wkt=None,  srs_epsg=None):
         """
