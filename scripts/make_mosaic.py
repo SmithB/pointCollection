@@ -131,8 +131,10 @@ def main(argv):
     field_dims={}
 
     for count, file in enumerate(file_list):
-        # read ATL14 grid from HDF5
+        # read data grid from HDF5
         temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
+        these_fields=[field for field in args.fields if field in temp.fields]
+        
         # calc weights  Note that these are all the same, so we only have to calculate
         # the first set.  After that we can just copy the first
         if count==0:
@@ -143,8 +145,8 @@ def main(argv):
             
         # get the image coordinates of the input file
         iy,ix = mosaic.image_coordinates(temp)
-        for field in args.fields:
-            field_data=getattr(temp, field)
+        for field in these_fields:
+        field_data=getattr(temp, field)
             field_dims[field]=field_data.ndim
             if len(mosaic.dimensions)==1 or mosaic.dimensions[2]==1 or field_data.ndim==2:
                 getattr(mosaic, field)[iy,ix,0] += field_data*temp.weight
