@@ -125,6 +125,8 @@ class geoIndex(dict):
         Each bin in the resulting geoIndex contains information for reading
         the files indexed by the geo_indices in index_list
         """
+
+        dir_root=strip_double_slashes(dir_root)
         if len(index_list)==0:
             return
         for key in ['dir_root', 'SRS_proj4']:
@@ -146,6 +148,7 @@ class geoIndex(dict):
                 if 'dir_root' in index.attrs and index.attrs['dir_root'] is not None:
                     thisFileName=os.path.join(index.attrs['dir_root'],thisFileName)
                 if dir_root is not None:
+                    thisFileName=strip_double_slashes(thisFileName)
                     thisFileName=thisFileName.replace(dir_root,'')
                 thisFileType=index.attrs['type_%d' % fileNum]
                 if thisFileName not in fileListTo:
@@ -252,10 +255,11 @@ class geoIndex(dict):
         """
         make a geoIndex for file 'filename'
         """
+        dir_root=strip_double_slashes(dir_root)
         self.filename=filename
         if dir_root is not None:
             # eliminate the string in 'dir_root' from the filename
-            filename_out=filename.replace(dir_root,'')
+            filename_out=strip_double_slashes(filename).replace(dir_root,'')
         if file_type in ['ATL06']:
             temp=list()
             this_field_dict={None:('latitude','longitude','h_li','delta_time')}
@@ -700,3 +704,8 @@ def index_list_for_files(filename_list, file_type, delta, SRS_proj4, dir_root=''
     for filename in filename_list:
         index_list.append(geoIndex(SRS_proj4=SRS_proj4, delta=delta).for_file(filename, file_type, dir_root=dir_root, number=0))
     return index_list
+
+def strip_double_slashes(thestr):
+    while '//' in thestr:
+        thestr=thestr.replace('//','/')
+    return thestr
