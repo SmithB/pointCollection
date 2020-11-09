@@ -17,7 +17,7 @@ import scipy.ndimage
 from .data import data
 
 class mosaic(data):
-    def __init__(self, **kwargs):
+    def __init__(self, spacing=[None,None], **kwargs):
         #self.x=None
         #self.y=None
         #self.t=None
@@ -27,14 +27,18 @@ class mosaic(data):
         self.weight=None
         self.extent=[np.inf,-np.inf,np.inf,-np.inf]
         self.dimensions=[None,None,None]
-        self.spacing=[None,None]
+        self.spacing=spacing
         self.fill_value=np.nan
 
     def update_spacing(self, temp):
         """
         update the step size of mosaic
         """
-        self.spacing = (temp.x[1] - temp.x[0], temp.y[1] - temp.y[0])
+        # try automatically getting spacing of tile
+        try:
+            self.spacing = (temp.x[1] - temp.x[0], temp.y[1] - temp.y[0])
+        except:
+            pass
         return self
 
     def update_bounds(self, temp):
@@ -56,10 +60,8 @@ class mosaic(data):
         update the dimensions of the mosaic with new extents
         """
         # get number of bands
-        #if (np.ndim(temp.z) == 3):
         if hasattr(temp,'t') and hasattr(temp.t, 'size') and temp.t.size > 0:
             self.dimensions[2]=temp.t.size
-            #ny,nx,self.dimensions[2] = np.shape(temp.z)
             self.t=temp.t.copy()
         else:
             self.dimensions[2] = 1
