@@ -23,7 +23,7 @@ class crossover_data(pc.data):
         field_dict= {'crossing_track_data':\
                 ['along_track_rss', 'atl06_quality_summary', 'cycle_number',
                  'delta_time', 'h_corr', 'h_corr_sigma', 'h_corr_sigma_systematic',
-                 'latitude', 'longitude', 'ref_pt', 'rgt']}
+                 'latitude', 'longitude', 'ref_pt', 'rgt','tide_ocean','dac']}
         return {self.pair_name+'/'+key:field_dict[key] for key in field_dict}
 
 
