@@ -6,10 +6,12 @@ Created on Thu Sep  6 15:44:31 2018
 """
 
 import numpy as np
-def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, index_only=False):
+def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, index_only=False, index_and_count_only=False, return_count=False):
 
-    if index_only:
-        return_index=True
+    if index_only or index_and_count_only or return_count:
+       return_index=True
+    if index_and_count_only:
+        return_count=True
     temp=np.isfinite(zz)
     x=xx[temp]
     y=yy[temp]
@@ -36,11 +38,15 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, index_onl
         zm=np.zeros_like(ux)+np.NaN
     if return_index:
         ind=np.zeros((ux.size,2), dtype=int)
-    
+    if return_count:
+        N=np.zeros(ux.size, dtype=int)
+        
     ix=np.hstack((ix.ravel(), xyind.size))
     for  count, i0 in enumerate(ix[:-1]):
         # number of elements in bin
         ni=ix[count+1]-i0
+        if return_count:
+            N[count]=ni
         # index of median in the bin
         iM=ni/2.-1
         if (iM-np.floor(iM)==0) and ni>1:
@@ -67,10 +73,18 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, index_onl
         #print(count)
     if index_only:
         return ind
+    if index_and_count_only:
+        return ind, N
     if return_index:
-        return xm, ym, zm, ind
+        if return_count:
+            return xm, ym, zm, ind, N
+        else:
+            return xm, ym, zm, ind 
     else:
-        return xm, ym, zm
+        if return_count:
+            return xm, ym, zm, N
+        else:
+            return xm, ym, zm,
 
 
 def __main__():
