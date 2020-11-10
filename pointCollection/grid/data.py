@@ -39,8 +39,9 @@ class data(object):
         if fields is None:
             fields=self.fields
         temp=pc.grid.data()
-        for field in ['x','y','projection','filename','extent','time'] + fields:
-            setattr(temp, field, getattr(self, field))
+        for field in ['x','y','projection','filename','extent','time', 't'] + fields:
+            if hasattr(self, field):
+                setattr(temp, field, getattr(self, field))
         temp.fields=fields.copy()
         temp.__update_size_and_shape__()
         return temp
