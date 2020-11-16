@@ -36,20 +36,23 @@ def points_to_grid(D_pt, res, grid=None, field='z', background=np.NaN):
     y=np.round(D_pt.y/res)*res
     
     if grid is None:
-        XR=[np.min(x), np.max(x)]
-        YR=[np.min(y), np.max(y)]
-        zg=np.zeros((np.diff(YR)/res, np.diff(XR)/res))+background
-        grid=pc.grid.data().from_dict({'x':np.arange(XR[0], XR[1], res), \
-                                     'y':np.arange(YR[0], YR[1], res), 
-                                     'z':zg}, projection=D_pt.projection)
+        XR=[np.min(x.ravel()), np.max(x.ravel())]
+        YR=[np.min(y.ravel()), np.max(y.ravel())]
+        print(XR)
+        xg=np.arange(XR[0], XR[1], res)
+        yg=np.arange(YR[0], YR[1], res)
+        zg=np.zeros((len(yg), len(xg)))+background
+        grid=pc.grid.data().from_dict({'x':xg, \
+                                     'y':yg, 
+                                     'z':zg})
     else:
         XR=grid.extent[0:2]
         YR=grid.extent[2:4]
         zg=grid.z
-    c=np.int(x-XR[0])/res
-    r=np.int(y-YR[0])/res
-    ii = (c>0) & (c<zg.shape[0])
-    ii &=  (r>0) & (r<zg.shape[1])
-    zg[tuple(np.c_[c[ii].ravel(), r[ii].ravel()].T)]=\
+    c=((x-XR[0])/res).astype(int)
+    r=((y-YR[0])/res).astype(int)
+    ii = (c>0) & (c<zg.shape[1])
+    ii &=  (r>0) & (r<zg.shape[0])
+    zg[tuple(np.c_[r[ii].ravel(), c[ii].ravel()].T)]=\
         getattr(D_pt, field)[ii].ravel()
     return grid
