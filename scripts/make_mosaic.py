@@ -71,10 +71,10 @@ def main(argv):
         nargs='+', default=['z'],
         help='input HDF5 fields')
     parser.add_argument('--pad','-p', type=float,
-        default=1e4,
+        default=0,
         help='pad width in meters for weights')
     parser.add_argument('--feather','-f', type=float,
-        default=2e4,
+        default=0,
         help='feathering width in meters for weights')
     parser.add_argument('--spacing','-S', type=float,
         nargs=2, default=[None,None], metavar=('dx','dy'),
