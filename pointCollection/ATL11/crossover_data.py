@@ -53,11 +53,15 @@ class crossover_data(pc.data):
             self.pair=pair
  
         self.pair_name = f'pt{int(self.pair)}'
-    
+
         if D_at is None:
             D_at=pc.ATL11.data().from_h5(filename, pair=pair)
+            if len(D_at.ref_pt)==0:
+                return None
             index_range=None
         else:
+            if len(D_at.ref_pt)==0:
+                return None
             ref_pt_range = [np.nanmin(D_at.ref_pt), np.nanmax(D_at.ref_pt)]
             temp=pc.data().from_h5(filename, field_dict={self.pair_name+'/crossing_track_data':['ref_pt']})
             ind=np.flatnonzero((temp.ref_pt >= ref_pt_range[0]) & (temp.ref_pt <=ref_pt_range[1]))
@@ -67,7 +71,7 @@ class crossover_data(pc.data):
                 index_range=[np.min(ind), np.max(ind)]
             
         D_xo=pc.data().from_h5(filename, group=self.pair_name+'/crossing_track_data', field_dict=self.__default_XO_field_dict__(), index_range=index_range)
-        D_xo.index(np.isfinite(D_xo.ref_pt) & np.isfinite(D_xo.cycle_number))
+        D_xo.index(np.isfinite(D_xo.ref_pt) & np.isfinite(D_xo.cycle_number) )
         with h5py.File(filename,'r') as h5f:
             rgt=int(h5f[self.pair_name].attrs['ReferenceGroundTrack'])
 
@@ -83,7 +87,9 @@ class crossover_data(pc.data):
 
         row=np.searchsorted( u_pt_xo, D_at.ref_pt.ravel())
         col=D_at.cycle_number.ravel().astype(int)-1
+
         self_ind0=np.ravel_multi_index((row, col, np.zeros_like(row, dtype=int)), theshape)
+               
         for field in D_at.fields:
             getattr(self, field).flat[self_ind0]=getattr(D_at, field).ravel()
 
