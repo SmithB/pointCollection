@@ -437,7 +437,7 @@ class data(object):
             z0[NaN_mask] = 0
 
             if self.y[1]> self.y[0]:
-                self.interpolator[field] = si.RectBivariateSpline(self.y, self.x, z0)
+                self.interpolator[field] = si.RectBivariateSpline(self.y, self.x, z0, kx=1, ky=1)
                 if np.any(NaN_mask.ravel()):
                     self.nan_interpolator[field] = si.RectBivariateSpline(self.y, self.x, NaN_mask.astype(float), kx=1, ky=1)
             else:
@@ -446,7 +446,7 @@ class data(object):
                     self.nan_interpolator[field] = si.RectBivariateSpline(self.y[::-1], self.x, NaN_mask[::-1,:].astype(float), kx=1, ky=1)
 
         if gridded:
-            result=np.zeros((len(y), len(x)))
+            result=np.zeros((len(y), len(x)))+np.NaN
             good_x = np.flatnonzero((x >= np.min(self.x)) & (x <= np.max(self.x)))
             good_y = np.flatnonzero((y >= np.min(self.y)) & (y <= np.max(self.y)))
             if (len(good_y)>0) and (len(good_x)>0):
