@@ -47,7 +47,9 @@ class data(pc.data):
         cols=self.shape[1]
         for field in self.fields:
             temp=getattr(self, field)
-            if temp.size==cols:
+            # The only field that should be tiled by row is 'cycle_number'.
+            # If others come up they can be added to this list
+            if field in ['cycle_number']:
                 if temp.ndim==1:
                         temp.shape=(1,cols)
                 setattr(self, field, np.tile(temp, [rows,1]))
@@ -56,6 +58,7 @@ class data(pc.data):
                         temp.shape=(rows,1)
                 setattr(self, field, np.tile(temp, [1, cols]))
         self.__update_size_and_shape__()
+        
         return self
 
     def __internal_field_calc__(self, field_dict):

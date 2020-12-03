@@ -17,24 +17,28 @@ import scipy.ndimage
 from .data import data
 
 class mosaic(data):
-    def __init__(self, **kwargs):
+    def __init__(self, spacing=[None,None], **kwargs):
         #self.x=None
         #self.y=None
         #self.t=None
         #self.z=None
         super().__init__(**kwargs)
-        self.mask=None
+        self.invalid=None
         self.weight=None
         self.extent=[np.inf,-np.inf,np.inf,-np.inf]
         self.dimensions=[None,None,None]
-        self.spacing=[None,None]
+        self.spacing=spacing
         self.fill_value=np.nan
 
     def update_spacing(self, temp):
         """
         update the step size of mosaic
         """
-        self.spacing = (temp.x[1] - temp.x[0], temp.y[1] - temp.y[0])
+        # try automatically getting spacing of tile
+        try:
+            self.spacing = (temp.x[1] - temp.x[0], temp.y[1] - temp.y[0])
+        except:
+            pass
         return self
 
     def update_bounds(self, temp):
@@ -56,10 +60,8 @@ class mosaic(data):
         update the dimensions of the mosaic with new extents
         """
         # get number of bands
-        #if (np.ndim(temp.z) == 3):
         if hasattr(temp,'t') and hasattr(temp.t, 'size') and temp.t.size > 0:
             self.dimensions[2]=temp.t.size
-            #ny,nx,self.dimensions[2] = np.shape(temp.z)
             self.t=temp.t.copy()
         else:
             self.dimensions[2] = 1
@@ -135,36 +137,3 @@ class mosaic(data):
                 else:
                     getattr(self, field)[:,:] *= self.weight
         return self
-
-    # def to_h5(self, fileOut, fields, replace=True):
-    #     """
-    #     write a mosaic object to an hdf5 file
-    #     """
-    #     # if overwriting the HDF5 file or presently non-existent
-    #     if replace or not os.path.isfile(fileOut):
-    #         if os.path.isfile(fileOut):
-    #             os.remove(fileOut)
-    #         fileID=h5py.File(fileOut,'w')
-    #     else:
-    #         fileID=h5py.File(fileOut,'r+')
-    #     # write dimensions to HDF5
-    #     h5 = {}
-    #     dims = [field for field in fields if field in ('x','y','t')]
-    #     for field in dims:
-    #         h5[field] = fileID.create_dataset(field, data=getattr(self,field),
-    #             compression="gzip")
-    #     # write variables to HDF5
-    #     for field in sorted(set(fields) - set(dims)):
-    #         data = getattr(self,field)
-    #         h5[field] = fileID.create_dataset(field, data=data,
-    #             fillvalue=self.fill_value, compression="gzip")
-    #         # attach dimensions
-    #         h5[field].dims[0].label='y'
-    #         h5[field].dims[0].attach_scale(h5['y'])
-    #         h5[field].dims[1].label='x'
-    #         h5[field].dims[1].attach_scale(h5['x'])
-    #         if (np.ndim(data) == 3) and ('t' in dims):
-    #             h5[field].dims[2].label='t'
-    #             h5[field].dims[2].attach_scale(h5['t'])
-    #     # close the HDF5 file
-    #     fileID.close()

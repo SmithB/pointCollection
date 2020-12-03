@@ -39,8 +39,9 @@ class data(object):
         if fields is None:
             fields=self.fields
         temp=pc.grid.data()
-        for field in ['x','y','projection','filename','extent','time'] + fields:
-            setattr(temp, field, getattr(self, field))
+        for field in ['x','y','projection','filename','extent','time', 't'] + fields:
+            if hasattr(self, field):
+                setattr(temp, field, getattr(self, field))
         temp.fields=fields.copy()
         temp.__update_size_and_shape__()
         return temp
@@ -74,7 +75,7 @@ class data(object):
     def from_dict(self, thedict):
         for field in thedict:
                 setattr(self, field, thedict[field])
-                if field not in self.fields and field not in ['x','y','time']:
+                if field not in self.fields and field not in ['x','y','time', 't']:
                     self.fields.append(field)
         self.__update_extent__()
         self.__update_size_and_shape__()
@@ -91,7 +92,7 @@ class data(object):
         """
         Read a raster from a geotif
         """
-        print(f"bounds={bounds}")
+
         self.filename=file
         if date_format is not None:
             self.get_date(date_format)
@@ -235,10 +236,16 @@ class data(object):
             except Exception:
                 pass
             for field in ['x','y','time', 't'] + fields:
-                try:
-                    h5f.create_dataset(group+'/'+field, data=getattr(self, field))
-                except Exception:
-                    pass
+                # if field exists, overwrite it
+                if field in h5f[group]:
+                    if hasattr(self, field):
+                        h5f[group+'/'+field][...] = getattr(self, field)
+                else:
+                    #Otherwise, try to create the group
+                    try:
+                        h5f.create_dataset(group+'/'+field, data=getattr(self, field))
+                    except Exception:
+                         pass
 
     def to_geotif(self, out_file, field='z', srs_proj4=None, srs_wkt=None,  srs_epsg=None):
         """
@@ -371,6 +378,8 @@ class data(object):
         return self
 
     def copy_subset(self, rc_ind, band_ind=None, fields=None):
+        if fields is None:
+            fields=self.fields
         return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=band_ind)
 
     def crop(self, XR, YR, fields=None):
@@ -428,7 +437,7 @@ class data(object):
             z0[NaN_mask] = 0
 
             if self.y[1]> self.y[0]:
-                self.interpolator[field] = si.RectBivariateSpline(self.y, self.x, z0)
+                self.interpolator[field] = si.RectBivariateSpline(self.y, self.x, z0, kx=1, ky=1)
                 if np.any(NaN_mask.ravel()):
                     self.nan_interpolator[field] = si.RectBivariateSpline(self.y, self.x, NaN_mask.astype(float), kx=1, ky=1)
             else:
@@ -437,7 +446,7 @@ class data(object):
                     self.nan_interpolator[field] = si.RectBivariateSpline(self.y[::-1], self.x, NaN_mask[::-1,:].astype(float), kx=1, ky=1)
 
         if gridded:
-            result=np.zeros((len(y), len(x)))
+            result=np.zeros((len(y), len(x)))+np.NaN
             good_x = np.flatnonzero((x >= np.min(self.x)) & (x <= np.max(self.x)))
             good_y = np.flatnonzero((y >= np.min(self.y)) & (y <= np.max(self.y)))
             if (len(good_y)>0) and (len(good_x)>0):
