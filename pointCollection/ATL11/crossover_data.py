@@ -60,13 +60,16 @@ class crossover_data(pc.data):
                 return None
             index_range=None
         else:
+            # copy D_at to avoid side effects
+            D_at=D_at.copy()
             if len(D_at.ref_pt)==0:
                 return None
             ref_pt_range = [np.nanmin(D_at.ref_pt), np.nanmax(D_at.ref_pt)]
             temp=pc.data().from_h5(filename, field_dict={self.pair_name+'/crossing_track_data':['ref_pt']})
             ind=np.flatnonzero((temp.ref_pt >= ref_pt_range[0]) & (temp.ref_pt <=ref_pt_range[1]))
             if len(ind)==0:
-                index_range=[None, None]
+                return None
+                #index_range=[None, None]
             else:
                 index_range=[np.min(ind), np.max(ind)]
             
