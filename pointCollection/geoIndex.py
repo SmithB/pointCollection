@@ -706,6 +706,8 @@ def index_list_for_files(filename_list, file_type, delta, SRS_proj4, dir_root=''
     return index_list
 
 def strip_double_slashes(thestr):
+    if thestr is None:
+        return thestr
     while '//' in thestr:
         thestr=thestr.replace('//','/')
     return thestr
