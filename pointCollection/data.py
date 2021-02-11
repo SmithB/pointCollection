@@ -301,7 +301,8 @@ class data(object):
             for field in datasets:
                 temp_field=self.__dict__[field]
                 try:
-                    if temp_field.size==0 :
+                    if temp_field.size==0:
+                        dd[field]=temp_field.copy()
                         continue
                     if temp_field.ndim ==1:
                         dd[field]=temp_field[index]
