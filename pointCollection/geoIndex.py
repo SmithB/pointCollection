@@ -300,7 +300,7 @@ class geoIndex(dict):
             else:
                 D=pc.glah12.data().from_h5(filename, lat_range=[60, 90])
             self.from_latlon(D.latitude, D.longitude, filename_out, 'glah12', number=number)
-        if file_type in ['filtered_DEM', 'DEM'] :
+        if file_type in ['filtered_DEM', 'DEM', 'geotif'] :
             D=pc.grid.data().from_geotif(filename, bands=[1], min_res=self.attrs['delta'][0]/10).as_points()
             if D.size > 0:
                 self.from_xy((D.x, D.y), filename=filename_out, file_type=file_type, number=number)
@@ -578,16 +578,16 @@ class geoIndex(dict):
             this_file=self.resolve_path(file_key, dir_root)
             if result['type'] == 'h5':
                 D=[pc.data().from_h5(filename=this_file, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
-            if result['type'] == 'h5_geoindex':
+            elif result['type'] == 'h5_geoindex':
                 D=geoIndex().from_file(this_file).query_xy((result['x'], result['y']), fields=fields, get_data=True, dir_root=dir_root)
-            if result['type'] == 'ATL06':
+            elif result['type'] == 'ATL06':
                 if fields is None:
                     fields={None:(u'latitude',u'longitude',u'h_li',u'delta_time')}
                 D6_file, pair=this_file.split(':pair')
                 D=[pc.ATL06.data(beam_pair=int(pair), fields=field_list, field_dict=field_dict).from_h5(\
                     filename=D6_file, index_range=np.array(temp)) \
                     for temp in zip(result['offset_start'], result['offset_end'])]
-            if result['type'] == 'ATL11':
+            elif result['type'] == 'ATL11':
                 D11_file, pair = this_file.split(':pair')
                 if not os.path.isfile(D11_file):
                     print(D11_file)
@@ -595,14 +595,18 @@ class geoIndex(dict):
                     filename=D11_file, index_range=np.array(temp), \
                     pair=int(pair), field_dict=field_dict) \
                     for temp in zip(result['offset_start'], result['offset_end'])]
-            if result['type'] == 'ATM_Qfit':
-                D=[pc.ATM_Qfit.data().from_h5(this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
-            if result['type'] == 'ATM_waveform':
+            elif result['type'] == 'ATM_Qfit':
+                D=[pc.ATM_Qfit.data().from_h5(this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]            
+            elif result['type'] == 'ATM_waveform':
                 D=[pc.atmWaveform(filename=this_file, index_range=np.array(temp), waveform_format=True) for temp in zip(result['offset_start'], result['offset_end'])]
-            if result['type'] == 'DEM':
-                D=pc.grid.data().from_geotif(filename=this_file, bounds=bounds, band_num=1, date_format='year').as_points(keep_all=True)
+            elif result['type'] == 'geotif':
+                # assume single band
+                D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
                 D.index(D, np.isfinite(D.z))
-            if result['type'] == 'filtered_DEM':
+            elif result['type'] == 'DEM':
+                D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
+                D.index(D, np.isfinite(D.z))
+            elif result['type'] == 'filtered_DEM':
                 D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
                 try:
                     D1=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[2], date_format='year').as_points(keep_all=True)
@@ -611,9 +615,9 @@ class geoIndex(dict):
                 except AttributeError:
                     D.index(np.isfinite(D.z))
                 D.filename=this_file
-            if result['type'] == 'indexed_h5':
+            elif result['type'] == 'indexed_h5':
                 D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
-            if result['type'] == 'indexed_h5_from_matlab':
+            elif result['type'] == 'indexed_h5_from_matlab':
                 D = [ pc.indexedH5.data(filename=this_file).read([result['x']/1000, result['y']/1000],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
             if result['type'] is None:
                 D = [data[np.arange(temp[0], temp[1])] for temp in zip(result['offset_start'], result['offset_end'])]
