@@ -48,7 +48,7 @@ class data(object):
 
     def __repr__(self):
         out=f"{self.__class__} with shape {self.shape},"+"\n"
-        out += f"with fields:"+"\n"
+        out += "with fields:"+"\n"
         out += f"{self.fields}"
         return out
 
@@ -88,16 +88,52 @@ class data(object):
                 self.fields.append(field)
         return self
 
-    def from_geotif(self, file, field='z', bands=None, bounds=None, extent=None, skip=1, min_res=None, date_format=None):
+    def from_geotif(self, file, date_format=None, **kwargs):
         """
         Read a raster from a geotif
         """
-
         self.filename=file
         if date_format is not None:
             self.get_date(date_format)
 
         ds=gdal.Open(file, gdalconst.GA_ReadOnly)
+        self.from_gdal(ds, **kwargs)
+
+    def from_gdal(self, ds, field='z', bands=None, bounds=None, extent=None, skip=1, min_res=None):
+        """
+        make a pointCollection.grid.data from a gdal dataset
+
+        Parameters
+        ----------
+        ds : gdal dataset
+            Can be a dataset from gdal.Open, or a memory dataset
+        field : str, optional
+            Fieldname for the read data. The default is 'z'.
+        bands : list, optional
+            Bands to read. The default is None.
+        bounds : list-like, optional
+            boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified, 
+            read the whole file.  The default is None.
+        extent : list-like, optional
+            Extent of the file to read, [xmin, xmax, ymin, ymax]. 
+            The default is None.
+        skip : Integer, optional
+            Specifies that every skip'th value should be read. The default is 1.
+        min_res : TYPE, optional
+            Attempt to read with a skip value chosen to match min_res. 
+            The default is None.
+
+        Raises
+        ------
+        AttributeError
+            If too many bands are requested, throws an error
+
+        Returns
+        -------
+        TYPE
+            pc.grid.data object containing the map data.
+
+        """
         GT=ds.GetGeoTransform()
         
         if min_res is not None:
@@ -247,9 +283,25 @@ class data(object):
                     except Exception:
                          pass
 
-    def to_geotif(self, out_file, field='z', srs_proj4=None, srs_wkt=None,  srs_epsg=None):
+    def to_geotif(self, out_file, **kwargs):
         """
-        Write a grid object to a geotif.
+        write a grid object to a geotif
+
+        Parameters
+        ----------
+        out_file : str
+            file name to write
+        **kwargs : 
+            keywords to be passed to the to_gdal() method
+        Returns:
+            None
+        """
+        out_ds=self.to_gdal(out_file=out_file, driver='GTiff',**kwargs)
+        return out_ds
+
+    def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None, srs_wkt=None,  srs_epsg=None):
+        """
+        Write a grid object to a gdal memory object
         """
 
         z=getattr(self, field)
@@ -263,7 +315,7 @@ class data(object):
         dx=np.abs(np.diff(self.x[0:2]))[0]
         dy=np.abs(np.diff(self.y[0:2]))[0]
 
-        out_ds=gdal.GetDriverByName('GTiff').Create(out_file, nx, ny, n_bands, gdal.GDT_Float32, options=["compress=LZW"])
+        out_ds=gdal.GetDriverByName(driver).Create(out_file, nx, ny, n_bands, gdal.GDT_Float32, options=["compress=LZW"])
         out_ds.SetGeoTransform((self.x.min()-dx/2, dx, 0, self.y.max()+dy/2, 0., -dy))
         sr=osr.SpatialReference()
         if srs_proj4 is not None:
@@ -272,7 +324,6 @@ class data(object):
             sr.ImportFromWKT(srs_wkt)
         elif srs_epsg is not None:
             sr.ImportFromEPSG(srs_epsg)
-
         else:
             raise ValueError("must specify at least one of srs_proj4, srs_wkt, srs_epsg")
 
@@ -282,8 +333,10 @@ class data(object):
         else:
             for band in range(n_bands):
                 out_ds.GetRasterBand(band+1).WriteArray(z[::-1,:,band])
-        out_ds.FlushCache()
-        out_ds = None
+        if driver=='GTiff':
+            out_ds.FlushCache()
+            out_ds = None
+        return out_ds
 
     def as_points(self, field='z', keep_all=False):
         """
