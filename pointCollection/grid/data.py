@@ -98,6 +98,7 @@ class data(object):
 
         ds=gdal.Open(file, gdalconst.GA_ReadOnly)
         self.from_gdal(ds, **kwargs)
+        return self
 
     def from_gdal(self, ds, field='z', bands=None, bounds=None, extent=None, skip=1, min_res=None):
         """
