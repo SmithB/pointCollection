@@ -316,18 +316,24 @@ class data(object):
         dx=np.abs(np.diff(self.x[0:2]))[0]
         dy=np.abs(np.diff(self.y[0:2]))[0]
 
-        out_ds=gdal.GetDriverByName(driver).Create(out_file, nx, ny, n_bands, gdal.GDT_Float32, options=["compress=LZW"])
+        if driver=='MEM':
+            options=[]
+        else:
+            options=["compress=LZW"]
+        out_ds=gdal.GetDriverByName(driver).Create(out_file, nx, ny, n_bands, gdal.GDT_Float32, options=options)
+
         out_ds.SetGeoTransform((self.x.min()-dx/2, dx, 0, self.y.max()+dy/2, 0., -dy))
+
         sr=osr.SpatialReference()
         if srs_proj4 is not None:
-            sr.ImportFromEPSG(srs_epsg)
+            sr.ImportFromProj4(srs_proj4)
         elif srs_wkt is not None:
             sr.ImportFromWKT(srs_wkt)
         elif srs_epsg is not None:
             sr.ImportFromEPSG(srs_epsg)
         else:
             raise ValueError("must specify at least one of srs_proj4, srs_wkt, srs_epsg")
-
+        
         out_ds.SetProjection(sr.ExportToWkt())
         if n_bands == 1:
             out_ds.GetRasterBand(1).WriteArray(z[::-1,:])
