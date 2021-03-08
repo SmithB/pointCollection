@@ -245,7 +245,10 @@ class data(object):
                     except AttributeError:
                         print("Problem with field %s" % field)
                 #data_list=[getattr(this_D, field).ravel() for this_D in D_list if this_D is not None]
-                setattr(self, field, np.concatenate(data_list, 0))
+                if len(data_list)>0:
+                    setattr(self, field, np.concatenate(data_list, 0))
+                else:
+                    setattr(self, field, np.zeros((0)))
         except TypeError:
             for field in self.fields:
                 setattr(self, field, getattr(D_list, field))
@@ -301,7 +304,8 @@ class data(object):
             for field in datasets:
                 temp_field=self.__dict__[field]
                 try:
-                    if temp_field.size==0 :
+                    if temp_field.size==0:
+                        dd[field]=temp_field.copy()
                         continue
                     if temp_field.ndim ==1:
                         dd[field]=temp_field[index]
