@@ -113,15 +113,15 @@ class data(object):
         bands : list, optional
             Bands to read. The default is None.
         bounds : list-like, optional
-            boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified, 
+            boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified,
             read the whole file.  The default is None.
         extent : list-like, optional
-            Extent of the file to read, [xmin, xmax, ymin, ymax]. 
+            Extent of the file to read, [xmin, xmax, ymin, ymax].
             The default is None.
         skip : Integer, optional
             Specifies that every skip'th value should be read. The default is 1.
         min_res : TYPE, optional
-            Attempt to read with a skip value chosen to match min_res. 
+            Attempt to read with a skip value chosen to match min_res.
             The default is None.
 
         Raises
@@ -136,10 +136,10 @@ class data(object):
 
         """
         GT=ds.GetGeoTransform()
-        
+
         if min_res is not None:
             skip=np.max([1, np.ceil(min_res/np.abs(GT[1]))]).astype(int)
-        
+
         proj=ds.GetProjection()
         if bands is None:
             n_bands=ds.RasterCount
@@ -257,11 +257,13 @@ class data(object):
        self.__update_size_and_shape__()
        return self
 
-    def to_h5(self, out_file, fields=None, group='/'):
-
-        mode='w'
-        if os.path.isfile(out_file):
-            mode='r+'
+    def to_h5(self, out_file, fields=None, group='/', replace=False):
+        """
+        write a grid data object to an hdf5 file
+        """
+        # check whether overwriting existing files
+        # append to existing files as default
+        mode = 'w' if replace else 'a'
 
         if fields is None:
             fields=self.fields
@@ -292,7 +294,7 @@ class data(object):
         ----------
         out_file : str
             file name to write
-        **kwargs : 
+        **kwargs :
             keywords to be passed to the to_gdal() method
         Returns:
             None
@@ -333,7 +335,7 @@ class data(object):
             sr.ImportFromEPSG(srs_epsg)
         else:
             raise ValueError("must specify at least one of srs_proj4, srs_wkt, srs_epsg")
-        
+
         out_ds.SetProjection(sr.ExportToWkt())
         if n_bands == 1:
             out_ds.GetRasterBand(1).WriteArray(z[::-1,:])
@@ -417,7 +419,7 @@ class data(object):
     def index(self, row_ind, col_ind, fields=None, band_ind=None):
         """
         slice a grid by row or column
-        
+
         """
         if fields is None:
             fields=self.fields

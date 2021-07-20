@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 make_mosaic.py
-Written by Tyler Sutterley (11/2020)
+Written by Tyler Sutterley (07/2021)
 
 Create a weighted mosaic from a series of tiles
 
@@ -18,10 +18,12 @@ COMMAND LINE OPTIONS:
     -S X, --spacing X: output grid spacing if creating from uniform tiles
     -O X, --output X: output filename
     -v, --verbose: verbose output of run
+    -R, --replace: overwrite existing output files
     -s, --show: create plot of output mosaic
     -m X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 07/2021: added option replace for overwriting existing files
     Updated 11/2020: added option spacing for setting output grid
     Updated 03/2020: adding argparse bug fix for negative arguments
         made output filename a command line option
@@ -85,6 +87,9 @@ def main(argv):
     parser.add_argument('--verbose','-v',
         default=False, action='store_true',
         help='verbose output of run')
+    parser.add_argument('--replace','-R',
+        default=False, action='store_true',
+        help='overwrite existing output files')
     parser.add_argument('--show','-s',
         action="store_true",
         help='create plot of output mosaic')
@@ -134,7 +139,7 @@ def main(argv):
         # read data grid from HDF5
         temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
         these_fields=[field for field in args.fields if field in temp.fields]
-        
+
         # calc weights  Note that these are all the same, so we only have to calculate
         # the first set.  After that we can just copy the first
         if count==0:
@@ -142,7 +147,7 @@ def main(argv):
             last_weight=temp.weight.copy()
         else:
             temp.weight=last_weight.copy()
-            
+
         # get the image coordinates of the input file
         iy,ix = mosaic.image_coordinates(temp)
         for field in these_fields:
@@ -178,12 +183,12 @@ def main(argv):
             pc.grid.data().from_dict({'x':mosaic.x,'y':mosaic.y,\
                                field:np.squeeze(getattr(mosaic,field)[:,:,0])})\
                 .to_h5(os.path.join(args.directory,args.output), \
-                       group=args.out_group)
+                       group=args.out_group, replace=args.replace)
         else:
             pc.grid.data().from_dict({'x':mosaic.x,'y':mosaic.y, 't': mosaic.t,\
                                field:getattr(mosaic,field)})\
                 .to_h5(os.path.join(args.directory,args.output), \
-                       group=args.out_group)
+                       group=args.out_group, replace=args.replace)
 
     if args.show:
         if len(mosaic.z.shape) > 2:
@@ -192,6 +197,5 @@ def main(argv):
             mosaic.z.show()
         plt.colorbar()
         plt.show()
-
 if __name__=='__main__':
     main(sys.argv)
