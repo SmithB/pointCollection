@@ -106,6 +106,8 @@ def main(argv):
     if args.out_group is None:
         args.out_group=args.in_group
 
+    if args.verbose:
+        print("searching glob string:"+"["+args.glob_string+"]")
     # find list of valid files
     file_list = []
     for file in glob.glob(args.directory +'/'+args.glob_string):
