@@ -68,9 +68,12 @@ def write_xovers(xover_list, out_file):
         xy=np.c_[[item['xyC'] for item in xover_list]]
         h5f.create_dataset('/x', data=xy[:,0])
         h5f.create_dataset('/y', data=xy[:,1])
-        h5f.create_dataset('/slope_x', data=np.array([item['slope_x'] for item in xover_list]))
-        h5f.create_dataset('/slope_y', data=np.array([item['slope_y'] for item in xover_list]))
-        h5f.create_dataset('/grounded', data=np.array([item['grounded'] for item in xover_list]))
+        try:
+            h5f.create_dataset('/slope_x', data=np.array([item['slope_x'] for item in xover_list]))
+            h5f.create_dataset('/slope_y', data=np.array([item['slope_y'] for item in xover_list]))
+            h5f.create_dataset('/grounded', data=np.array([item['grounded'] for item in xover_list]))
+        except Exception as e:
+            pass
     return #xover_list
 
 def read_xovers(xover_dir):
@@ -94,8 +97,10 @@ def make_queue(files, hemisphere, out_dir):
     for file in files:
         if not os.path.isfile(out_dir+'/'+os.path.basename(file)):
             # N.B.  this requires that cross_ATL06_tile is on the unix path.
-            print('cross_ATL06_tile.py %s %d %s' %   (file, hemisphere, out_dir))
-
+            if hemisphere is not None:
+                print('cross_ATL06_tile.py %s %d %s' %   (file, hemisphere, out_dir))
+            else:
+                print('cross_ATL06_tile.py %s %s' %   (file, out_dir)) 
 def calc_slope(xovers, hemisphere=-1):
 
     if hemisphere==-1:
@@ -149,8 +154,8 @@ def main():
     import argparse
     parser=argparse.ArgumentParser(description='Find crossovers in an ATL06 tile')
     parser.add_argument('tile_glob', type=str, help="glob which matches the tiles")
-    parser.add_argument('hemisphere', type=int, help="hemisphere, -1 for Antarctica, 1, for Arctic")
     parser.add_argument('out_dir', type=str, help="output directory")
+    parser.add_argument('--hemisphere', '-H', type=int, help="hemisphere, -1 for Antarctica, 1, for Arctic")
     parser.add_argument('--queue','-q', action="store_true")
     args=parser.parse_args()
     
@@ -169,7 +174,8 @@ def main():
 
     xover_list=ATL06_crossovers(files)
     if len(xover_list) > 0:
-        calc_slope(xover_list, hemisphere=hemisphere)
+        if hemisphere is not None:
+            calc_slope(xover_list, hemisphere=hemisphere)
         write_xovers(xover_list, os.path.join(out_dir, os.path.basename(files[0])))
 
 
