@@ -61,7 +61,8 @@ def main():
     parser.add_argument('--index_file','-i', type=str, help="index file, defaults to GeoIndex.h5 in the dirname of the glob string")
     parser.add_argument('--dir_root','-r', type=str, help="directory root for the index.  Defaults to None (absolute paths)")
     parser.add_argument('--bin_size', '-b', type=int, default=1.e4,  help='index bin size, default=1.e4')
-    parser.add_argument('--hemisphere','-H', type=int, required=True, help='hemisphere, must be 1 or -1, required')
+    parser.add_argument('--hemisphere','-H', type=int, help='hemisphere, must be 1 or -1,')
+    parser.add_argument('--proj4', type=str, help='proj4 to be used for the tiles')
     parser.add_argument('--verbose','-v', action='store_true')
     parser.add_argument('--Relative','-R', action='store_true')
     args=parser.parse_args()
@@ -70,7 +71,8 @@ def main():
         srs_proj4 = '+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs '
     elif args.hemisphere==-1:
         srs_proj4 = '+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs '
-    
+    if args.proj4 is not None:
+        srs_proj4 = args.proj4
     
     index_for_glob(args.glob_string, dir_root=args.dir_root, \
                    index_file=args.index_file, \
