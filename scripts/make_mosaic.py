@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 make_mosaic.py
-Written by Tyler Sutterley (11/2020)
+Written by Tyler Sutterley (07/2021)
 
 Create a weighted mosaic from a series of tiles
 
@@ -10,18 +10,20 @@ COMMAND LINE OPTIONS:
     --help: list the command line options
     -d X, --directory X: directory to run
     -g X, --glob_string X: quoted string to pass to glob to find the files
-    -r X, --range X: valid range of tiles [xmin,xmax,ymin,ymax]
+    -r X, --range X: valid range of tiles to read [xmin,xmax,ymin,ymax]
     -G X, --group X: input HDF5 group
     -F X, --field X: input HDF5 field map
     -p X, --pad X: pad width in meters for weights
     -f X, --feather X: feathering width in meters for weights
     -S X, --spacing X: output grid spacing if creating from uniform tiles
+    -c X, --crop X: crop mosaic to bounds [xmin,xmax,ymin,ymax]
     -O X, --output X: output filename
     -v, --verbose: verbose output of run
     -s, --show: create plot of output mosaic
     -m X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 07/2021: added option for cropping output mosaic
     Updated 11/2020: added option spacing for setting output grid
     Updated 03/2020: adding argparse bug fix for negative arguments
         made output filename a command line option
@@ -57,7 +59,7 @@ def main(argv):
     parser.add_argument('--range','-r', type=float,
         nargs=4, default=[-np.inf,np.inf,-np.inf,np.inf],
         metavar=('xmin','xmax','ymin','ymax'),
-        help='valid range of tiles')
+        help='valid range of tiles to read')
     parser.add_argument('--in_group','-G',
         type=str, default='/',
         help='input HDF5 group')
@@ -79,6 +81,9 @@ def main(argv):
     parser.add_argument('--spacing','-S', type=float,
         nargs=2, default=[None,None], metavar=('dx','dy'),
         help='output grid spacing if creating from uniform tiles')
+    parser.add_argument('--crop','-c', type=float,
+        nargs=4, metavar=('xmin','xmax','ymin','ymax'),
+        help='crop mosaic to bounds')
     parser.add_argument('--output','-O',
         type=str, default='mosaic.h5',
         help='output filename')
@@ -134,7 +139,7 @@ def main(argv):
         # read data grid from HDF5
         temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
         these_fields=[field for field in args.fields if field in temp.fields]
-        
+
         # calc weights  Note that these are all the same, so we only have to calculate
         # the first set.  After that we can just copy the first
         if count==0:
@@ -142,7 +147,7 @@ def main(argv):
             last_weight=temp.weight.copy()
         else:
             temp.weight=last_weight.copy()
-            
+
         # get the image coordinates of the input file
         iy,ix = mosaic.image_coordinates(temp)
         for field in these_fields:
@@ -172,7 +177,14 @@ def main(argv):
     # replace invalid points with fill_value
     for field in mosaic.fields:
         getattr(mosaic, field)[mosaic.invalid] = mosaic.fill_value
+    # crop mosaic to bounds
+    if np.any(args.crop):
+        # x and y range (verify min and max order)
+        XR = np.sort([args.range[0],args.range[1]])
+        YR = np.sort([args.range[2],args.range[3]])
+        mosaic = mosaic.crop(XR, YR, fields=mosaic.fields)
 
+    # output each field
     for field in mosaic.fields:
         if field_dims[field] == 2:
             pc.grid.data().from_dict({'x':mosaic.x,'y':mosaic.y,\
