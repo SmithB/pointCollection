@@ -351,7 +351,7 @@ class data(object):
                 out_ds.GetRasterBand(band+1).SetNoDataValue(fill_value)
             except:
                 pass
-        if driver not in ('MEM'):
+        if driver not in ('MEM',):
             out_ds.FlushCache()
             out_ds = None
         return out_ds
