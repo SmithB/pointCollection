@@ -198,7 +198,7 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, skip=1):
+    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, bands=None, skip=1):
        """
        Read a raster from an hdf5 file
        """
@@ -217,6 +217,8 @@ class data(object):
                t=np.array(h5f[group]['t'])
            elif 'time' in h5f[group]:
                t=np.array(h5f[group]['time'])
+           if t is not None and bands is not None:
+               t=t[bands]
 
            # if no field mapping provided, add everything in the group
            if len(field_mapping.keys())==0:
@@ -245,8 +247,12 @@ class data(object):
                        setattr(self, self_field,\
                                np.array(h5f[f_field_name][rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
                    else:
-                       setattr(self, self_field,\
-                               np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,:]))
+                       if bands is None:
+                           setattr(self, self_field,\
+                                   np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,:]))
+                       else:
+                           setattr(self, self_field,\
+                                   np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,bands]))
                    if self_field not in self.fields:
                         self.fields.append(self_field)
                self.x=x[cols]
@@ -257,11 +263,13 @@ class data(object):
        self.__update_size_and_shape__()
        return self
 
-    def to_h5(self, out_file, fields=None, group='/'):
-
-        mode='w'
-        if os.path.isfile(out_file):
-            mode='r+'
+    def to_h5(self, out_file, fields=None, group='/', replace=False):
+        """
+        write a grid data object to an hdf5 file
+        """
+        # check whether overwriting existing files
+        # append to existing files as default
+        mode = 'w' if replace else 'a'
 
         if fields is None:
             fields=self.fields
