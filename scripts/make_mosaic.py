@@ -189,7 +189,7 @@ def main(argv):
         # x and y range (verify min and max order)
         XR = np.sort([args.range[0],args.range[1]])
         YR = np.sort([args.range[2],args.range[3]])
-        mosaic = mosaic.crop(XR, YR, fields=mosaic.fields)
+        mosaic.crop(XR, YR, fields=mosaic.fields)
 
     # output each field
     for field in mosaic.fields:
