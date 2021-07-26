@@ -308,47 +308,50 @@ class data(object):
         out_ds=self.to_gdal(out_file=out_file, driver='GTiff',**kwargs)
         return out_ds
 
-    def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None, srs_wkt=None,  srs_epsg=None):
+    def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None, srs_wkt=None, srs_epsg=None, dtype=gdal.GDT_Float32, options=["compress=LZW"]):
         """
         Write a grid object to a gdal memory object
         """
 
-        z=getattr(self, field)
-
-        nx=z.shape[1]
-        ny=z.shape[0]
-        if len(z.shape)>2:
-            n_bands=z.shape[2]
-        else:
-            n_bands=1;
+        z=np.atleast_3d(getattr(self, field))
+        ny,nx,nband = z.shape
         dx=np.abs(np.diff(self.x[0:2]))[0]
         dy=np.abs(np.diff(self.y[0:2]))[0]
 
+        # no supported creation options with in memory rasters
         if driver=='MEM':
             options=[]
-        else:
-            options=["compress=LZW"]
-        out_ds=gdal.GetDriverByName(driver).Create(out_file, nx, ny, n_bands, gdal.GDT_Float32, options=options)
 
+        # set up the dataset with creation options
+        out_ds=gdal.GetDriverByName(driver).Create(out_file, nx, ny, nband, dtype, options=options)
+
+        # top left x, w-e pixel resolution, rotation
+        # top left y, rotation, n-s pixel resolution
         out_ds.SetGeoTransform((self.x.min()-dx/2, dx, 0, self.y.max()+dy/2, 0., -dy))
 
+        # set the spatial projection reference information
         sr=osr.SpatialReference()
         if srs_proj4 is not None:
             sr.ImportFromProj4(srs_proj4)
         elif srs_wkt is not None:
-            sr.ImportFromWKT(srs_wkt)
+            sr.ImportFromWkt(srs_wkt)
         elif srs_epsg is not None:
             sr.ImportFromEPSG(srs_epsg)
         else:
             raise ValueError("must specify at least one of srs_proj4, srs_wkt, srs_epsg")
-
+        # export the spatial projection reference information to file
         out_ds.SetProjection(sr.ExportToWkt())
-        if n_bands == 1:
-            out_ds.GetRasterBand(1).WriteArray(z[::-1,:])
-        else:
-            for band in range(n_bands):
-                out_ds.GetRasterBand(band+1).WriteArray(z[::-1,:,band])
-        if driver=='GTiff':
+        # for each output band
+        for band in range(nband):
+            # change orientation to upper left corner
+            out_ds.GetRasterBand(band+1).WriteArray(z[::-1,:,band])
+            # set fill value for band
+            try:
+                fill_value = getattr(self,'fill_value')
+                out_ds.GetRasterBand(band+1).SetNoDataValue(fill_value)
+            except:
+                pass
+        if driver not in ('MEM',):
             out_ds.FlushCache()
             out_ds = None
         return out_ds
