@@ -6,7 +6,6 @@ Created on Fri Sep 21 14:28:30 2018
 """
 import h5py
 import numpy as np
-from osgeo import osr
 from .pt_blockmedian import pt_blockmedian
 import re
 import os

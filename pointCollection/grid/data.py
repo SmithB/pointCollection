@@ -8,9 +8,9 @@ Created on Sat Dec 22 15:35:13 2018
 
 from osgeo import gdal, gdalconst, osr
 import numpy as np
-import matplotlib.pyplot as plt
+
 import h5py
-import scipy.interpolate as si
+from scipy.interpolate import RectBivariateSpline
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
 from . import WV_date
@@ -471,6 +471,7 @@ class data(object):
            print(e)
 
     def show(self, field='z', band=None, ax=None, xy_scale=1, gradient=False, stretch_pct=None, **kwargs):
+        import matplotlib.pyplot as plt
         kwargs['extent']=np.array(self.extent)*xy_scale
         kwargs['origin']='lower'
         if band is None:
@@ -508,13 +509,13 @@ class data(object):
             z0[NaN_mask] = 0
 
             if self.y[1]> self.y[0]:
-                self.interpolator[field] = si.RectBivariateSpline(self.y, self.x, z0, kx=1, ky=1)
+                self.interpolator[field] = RectBivariateSpline(self.y, self.x, z0, kx=1, ky=1)
                 if np.any(NaN_mask.ravel()):
-                    self.nan_interpolator[field] = si.RectBivariateSpline(self.y, self.x, NaN_mask.astype(float), kx=1, ky=1)
+                    self.nan_interpolator[field] = RectBivariateSpline(self.y, self.x, NaN_mask.astype(float), kx=1, ky=1)
             else:
-                self.interpolator[field] = si.RectBivariateSpline(self.y[::-1], self.x, z0[::-1,:], kx=1, ky=1)
+                self.interpolator[field] = RectBivariateSpline(self.y[::-1], self.x, z0[::-1,:], kx=1, ky=1)
                 if np.any(NaN_mask.ravel()):
-                    self.nan_interpolator[field] = si.RectBivariateSpline(self.y[::-1], self.x, NaN_mask[::-1,:].astype(float), kx=1, ky=1)
+                    self.nan_interpolator[field] = RectBivariateSpline(self.y[::-1], self.x, NaN_mask[::-1,:].astype(float), kx=1, ky=1)
 
         if gridded:
             result=np.zeros((len(y), len(x)))+np.NaN
