@@ -14,7 +14,7 @@ from scipy.interpolate import RectBivariateSpline
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
 from . import WV_date
-import os
+#import os
 
 class data(object):
     def __init__(self, fields=None):
@@ -165,12 +165,19 @@ class data(object):
         else:
             rows=np.arange(band.YSize, dtype=int)
             cols=np.arange(band.XSize, dtype=int)
+
         z=list()
+
         for band_num in bands:
             if band_num > ds.RasterCount:
                 raise AttributeError()
             band=ds.GetRasterBand(int(band_num))
-            z.append(band.ReadAsArray(int(cols[0]), int(rows[0]), int(cols[-1]-cols[0]+1), int(rows[-1]-rows[0]+1))[::-1,:])
+            try:
+                z.append(band.ReadAsArray(int(cols[0]), int(rows[0]), int(cols[-1]-cols[0]+1), int(rows[-1]-rows[0]+1))[::-1,:])
+            except IndexError as e:
+                    print(f"pointCollection.grid.data().from_gdal: IndexError for {self.filename}")
+                    print(f"\t len(cols)={len(cols)}, len(rows)={len(rows)}.")
+                    raise e
             if skip > 1:
                 z[-1]=z[-1][::skip, ::skip]
         if len(bands)==1:
