@@ -16,6 +16,7 @@ from osgeo import osr
 #import matplotlib.pyplot as plt
 import pointCollection as pc
 import os
+from warnings import warn
 
 class geoIndex(dict):
     def __init__(self, delta=[1000,1000], SRS_proj4=None, data=None):
@@ -607,14 +608,18 @@ class geoIndex(dict):
                 D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
                 D.index(D, np.isfinite(D.z))
             elif result['type'] == 'filtered_DEM':
-                D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
                 try:
-                    D1=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[2], date_format='year').as_points(keep_all=True)
-                    D.assign({'sigma':D1.z})
-                    D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
-                except AttributeError:
-                    D.index(np.isfinite(D.z))
-                D.filename=this_file
+                    D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
+                    try:
+                        D1=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[2], date_format='year').as_points(keep_all=True)
+                        D.assign({'sigma':D1.z})
+                        D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
+                    except AttributeError:
+                        D.index(np.isfinite(D.z))
+                    D.filename=this_file
+                except IndexError as e:
+                    warn(f"pointCollection.geoIndex: failed to read {this_file}:"+str(e))
+                    continue
             elif result['type'] == 'indexed_h5':
                 D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
             elif result['type'] == 'indexed_h5_from_matlab':
