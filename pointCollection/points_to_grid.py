@@ -48,7 +48,7 @@ def points_to_grid(D_pt, res, grid=None, field='z', background=np.NaN):
     else:
         XR=grid.extent[0:2]
         YR=grid.extent[2:4]
-        zg=grid.z
+        zg=grid.z.copy()
     c=((x-XR[0])/res).astype(int)
     r=((y-YR[0])/res).astype(int)
     ii = (c>0) & (c<zg.shape[1])
