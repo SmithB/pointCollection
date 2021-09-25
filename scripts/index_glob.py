@@ -78,7 +78,7 @@ def main():
                    index_file=args.index_file, \
                    file_type=args.type,\
                    verbose=args.verbose,\
-                   delta=[np.float(args.bin_size), np.float(args.bin_size)], \
+                   delta=[np.float64(args.bin_size), np.float64(args.bin_size)], \
                    SRS_proj4=srs_proj4,\
                    relative=args.Relative)
 
