@@ -1,29 +1,34 @@
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
 
 def ps_scale_for_lat(lat):
     '''
     This function calculates the length scaling factor for a polar stereographic
-       projection (ie. SSM/I grid) which can be used to correct area calculations. 
+       projection (ie. SSM/I grid) which can be used to correct area calculations.
        The scaling factor is defined (Snyder, 1982) as:
-    
+
         k = (mc/m)*(t/tc), where
-            
+
         m = cos(lat)/sqrt(1 - e2*sin(lat)^2)
         t = tan(Pi/4 - lat/2)/((1 - e*sin(lat))/(1 + e*sin(lat)))^(e/2)
         e2 = 0.006693883 is the earth eccentricity (Hughes ellipsoid)
         e = sqrt(e2)
         mc = m at the reference latitude (70 degrees)
         tc = t at the reference latitude (70 degrees)
-            
+
+        For the special case of the pole:
+        kp = 1/2*mc*sqrt((1+e)^(1+e)*(1-e)^(1-e))/tc
+
         The ratio mc/tc is precalculated and stored in the variable mc_rc.
         See https://pubs/usgs.gov/pp/1395/report.pdf
 
         Areas calculated in polar stereographic need to be multiplied by
         k**2
-        
-        ref:Snyder, 1982, Map Projections used by the U.S. Geological Survey 
+
+        ref:Snyder, 1982, Map Projections used by the U.S. Geological Survey
             Page 160
-            https://pubs/usgs.gov/pp/1395/report.pdf  
+            https://pubs/usgs.gov/pp/1395/report.pdf
     '''
 
     if np.nanmean(lat) > 0:
@@ -47,9 +52,9 @@ def ps_scale_for_lat(lat):
     e2=0.006694379990141;  #from WGS84 parameters
     e = np.sqrt(e2);
 
+    # absolute value of latitude in radians
     latr = np.abs(lat*np.pi/180.)
-    if  isinstance(latr, (np.ndarray)):
-        latr[lat==-90]=(-89.9999*np.pi/180.)
+    # sin and cos of latitude
     slat = np.sin(latr)
     clat = np.cos(latr)
 
@@ -57,9 +62,11 @@ def ps_scale_for_lat(lat):
     #print(m)
     t = np.tan(np.pi/4. - latr/2.)/((1.-e*slat) / (1.+e*slat))**(e/2.);
     #print(t)
-    k = t/m *mc_tc
 
-    scale=(1./k);
+    # distance scaling including special case of the pole
+    k = t/m *mc_tc
+    kp = 0.5*mc_tc*np.sqrt(((1.0+e)**(1.0+e))*((1.0-e)**(1.0-e)))
+    scale = np.where(np.isclose(latr,np.pi/2.0),1.0/kp,1.0/k)
     return scale
     #
     # check: at S pole (this comes out right!)
