@@ -175,8 +175,6 @@ class data(object):
             try:
                 z.append(band.ReadAsArray(int(cols[0]), int(rows[0]), int(cols[-1]-cols[0]+1), int(rows[-1]-rows[0]+1))[::-1,:])
             except IndexError as e:
-                    print(f"pointCollection.grid.data().from_gdal: IndexError for {self.filename}")
-                    print(f"\t len(cols)={len(cols)}, len(rows)={len(rows)}.")
                     raise e
             if skip > 1:
                 z[-1]=z[-1][::skip, ::skip]
