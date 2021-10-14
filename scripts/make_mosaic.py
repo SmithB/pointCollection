@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 make_mosaic.py
-Written by Tyler Sutterley (07/2021)
+Written by Tyler Sutterley (10/2021)
 
 Create a weighted mosaic from a series of tiles
 
@@ -15,6 +15,7 @@ COMMAND LINE OPTIONS:
     -F X, --field X: input HDF5 field map
     -p X, --pad X: pad width in meters for weights
     -f X, --feather X: feathering width in meters for weights
+    -w, --weight: use a weighted summation scheme for calculating mosaic
     -S X, --spacing X: output grid spacing if creating from uniform tiles
     -c X, --crop X: crop mosaic to bounds [xmin,xmax,ymin,ymax]
     -O X, --output X: output filename
@@ -24,6 +25,7 @@ COMMAND LINE OPTIONS:
     -m X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 10/2021: added option for using a non-weighted summation
     Updated 07/2021: added option replace for overwriting existing files
         added option for cropping output mosaic
     Updated 11/2020: added option spacing for setting output grid
@@ -80,6 +82,9 @@ def main(argv):
     parser.add_argument('--feather','-f', type=float,
         default=0,
         help='feathering width in meters for weights')
+    parser.add_argument('--weight','-w',
+        action="store_true",
+        help='use a weighted summation scheme for calculating mosaic')
     parser.add_argument('--spacing','-S', type=float,
         nargs=2, default=[None,None], metavar=('dx','dy'),
         help='output grid spacing if creating from uniform tiles')
@@ -126,7 +131,7 @@ def main(argv):
     # get bounds, grid spacing and dimensions of output mosaic
     mosaic=pc.grid.mosaic(spacing=args.spacing)
     for file in file_list.copy():
-        # read ATL14 grid from HDF5
+        # read tile grid from HDF5
         try:
             temp=pc.grid.data().from_h5(file, group=args.in_group, fields=[])
             # update grid spacing of output mosaic
@@ -138,52 +143,71 @@ def main(argv):
         except Exception:
             print(f"failed to read group {args.in_group} "+ file)
             file_list.remove(file)
-    # create output mosaic
+    # create output mosaic, weights, and mask
     mosaic.assign({field:np.zeros(mosaic.dimensions) for field in args.fields})
-    #mosaic.data = np.zeros(mosaic.dimensions)
     mosaic.invalid = np.ones(mosaic.dimensions,dtype=bool)
     mosaic.weight = np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
     field_dims={}
 
-    for count, file in enumerate(file_list):
-        # read data grid from HDF5
-        temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
-        these_fields=[field for field in args.fields if field in temp.fields]
+    # read data grid from a single tile HDF5
+    temp=pc.grid.mosaic().from_h5(file_list[0], group=args.in_group, fields=args.fields)
+    these_fields=[field for field in args.fields if field in temp.fields]
+    field_dims={field:getattr(temp, field).ndim for field in these_fields}
 
-        # calc weights  Note that these are all the same, so we only have to calculate
+    # check if using a weighted summation scheme for calculating mosaic
+    if args.weight:
+        # create the weights for a single file
+        # as the tiles have the same dimensions, we only have to calculate
         # the first set.  After that we can just copy the first
-        if count==0:
-            temp.weights(pad=args.pad, feather=args.feather, apply=False)
-            last_weight=temp.weight.copy()
-        else:
-            temp.weight=last_weight.copy()
-
-        # get the image coordinates of the input file
-        iy,ix = mosaic.image_coordinates(temp)
-        for field in these_fields:
-            field_data=getattr(temp, field)
-            field_dims[field]=field_data.ndim
-            if len(mosaic.dimensions)==1 or mosaic.dimensions[2]==1 or field_data.ndim==2:
-                getattr(mosaic, field)[iy,ix,0] += field_data*temp.weight
-                mosaic.invalid[iy, ix]=False
-            else:
+        temp.weights(pad=args.pad, feather=args.feather, apply=False)
+        # allocate for output weight matrix
+        mosaic.weight=np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
+        tile_weight=temp.weight.copy()
+        # for each file in the list
+        for file in file_list:
+            # read data grid from HDF5
+            temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
+            these_fields=[field for field in args.fields if field in temp.fields]
+            # copy weights for tile
+            temp.weight=tile_weight.copy()
+            # get the image coordinates of the input file
+            iy,ix = mosaic.image_coordinates(temp)
+            for field in these_fields:
+                field_data=np.atleast_3d(getattr(temp, field))
                 try:
                     for band in range(mosaic.dimensions[2]):
                         getattr(mosaic, field)[iy,ix,band] += field_data[:,:,band]*temp.weight
                         mosaic.invalid[iy,ix,band] = False
                 except IndexError:
                     print(f"problem with field {field} in file {file}")
-        # add weights to total weight matrix
-        mosaic.weight[iy,ix] += temp.weight[:,:]
+            # add weights to total weight matrix
+            mosaic.weight[iy,ix] += temp.weight[:,:]
+        # find valid weights
+        iy,ix = np.nonzero(mosaic.weight == 0)
+        mosaic.invalid[iy,ix,:] = True
+        # normalize fields by weights
+        iy,ix = np.nonzero(mosaic.weight > 0)
+        for band in range(mosaic.dimensions[2]):
+            for field in mosaic.fields:
+                getattr(mosaic, field)[iy,ix,band] /= mosaic.weight[iy,ix]
+    else:
+        # use a simple summation scheme for calculating mosaic
+        # for each file in the list
+        for file in file_list:
+            # read data grid from HDF5
+            temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
+            these_fields=[field for field in args.fields if field in temp.fields]
+            # get the image coordinates of the input file
+            iy,ix = mosaic.image_coordinates(temp)
+            for field in these_fields:
+                field_data=np.atleast_3d(getattr(temp, field))
+                try:
+                    for band in range(mosaic.dimensions[2]):
+                        getattr(mosaic, field)[iy,ix,band] = field_data[:,:,band]
+                        mosaic.invalid[iy,ix,band] = False
+                except IndexError:
+                    print(f"problem with field {field} in file {file}")
 
-    # find valid weights
-    iy,ix = np.nonzero(mosaic.weight == 0)
-    mosaic.invalid[iy,ix,:] = True
-    # normalize weights
-    iy,ix = np.nonzero(mosaic.weight > 0)
-    for band in range(mosaic.dimensions[2]):
-        for field in mosaic.fields:
-            getattr(mosaic, field)[iy,ix,band] /= mosaic.weight[iy,ix]
     # replace invalid points with fill_value
     for field in mosaic.fields:
         getattr(mosaic, field)[mosaic.invalid] = mosaic.fill_value
@@ -215,5 +239,6 @@ def main(argv):
             mosaic.z.show()
         plt.colorbar()
         plt.show()
+
 if __name__=='__main__':
     main(sys.argv)
