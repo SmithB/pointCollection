@@ -184,7 +184,7 @@ def main(argv):
         # find valid weights
         iy,ix = np.nonzero(mosaic.weight == 0)
         mosaic.invalid[iy,ix,:] = True
-        # normalize weights
+        # normalize fields by weights
         iy,ix = np.nonzero(mosaic.weight > 0)
         for band in range(mosaic.dimensions[2]):
             for field in mosaic.fields:
@@ -202,7 +202,7 @@ def main(argv):
                 field_data=np.atleast_3d(getattr(temp, field))
                 try:
                     for band in range(mosaic.dimensions[2]):
-                        getattr(mosaic, field)[iy,ix,band] += field_data[:,:,band]
+                        getattr(mosaic, field)[iy,ix,band] = field_data[:,:,band]
                         mosaic.invalid[iy,ix,band] = False
                 except IndexError:
                     print(f"problem with field {field} in file {file}")
