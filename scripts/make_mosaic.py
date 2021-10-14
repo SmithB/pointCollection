@@ -126,7 +126,7 @@ def main(argv):
     # get bounds, grid spacing and dimensions of output mosaic
     mosaic=pc.grid.mosaic(spacing=args.spacing)
     for file in file_list.copy():
-        # read ATL14 grid from HDF5
+        # read tile grid from HDF5
         try:
             temp=pc.grid.data().from_h5(file, group=args.in_group, fields=[])
             # update grid spacing of output mosaic
@@ -142,39 +142,49 @@ def main(argv):
     mosaic.assign({field:np.zeros(mosaic.dimensions) for field in args.fields})
     #mosaic.data = np.zeros(mosaic.dimensions)
     mosaic.invalid = np.ones(mosaic.dimensions,dtype=np.bool)
-    mosaic.weight = np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
-    field_dims={}
 
-    for count, file in enumerate(file_list):
-        # read data grid from HDF5
-        temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
-        these_fields=[field for field in args.fields if field in temp.fields]
+    # read data grid from a single tile HDF5
+    temp=pc.grid.mosaic().from_h5(file_list[0], group=args.in_group, fields=args.fields)
+    these_fields=[field for field in args.fields if field in temp.fields]
+    field_dims={field:getattr(temp, field).ndim for field in these_fields}
+    # create the weights for a single file
+    # as the tiles have the same dimensions, we only have to calculate
+    # the first set.  After that we can just copy the first
+    temp.weights(pad=args.pad, feather=args.feather, apply=False)
 
-        # calc weights  Note that these are all the same, so we only have to calculate
-        # the first set.  After that we can just copy the first
-        if count==0:
-            temp.weights(pad=args.pad, feather=args.feather, apply=False)
-            last_weight=temp.weight.copy()
-        else:
-            temp.weight=last_weight.copy()
-
-        # get the image coordinates of the input file
-        iy,ix = mosaic.image_coordinates(temp)
-        for field in these_fields:
-            field_data=getattr(temp, field)
-            field_dims[field]=field_data.ndim
-            if len(mosaic.dimensions)==1 or mosaic.dimensions[2]==1 or field_data.ndim==2:
-                getattr(mosaic, field)[iy,ix,0] += field_data*temp.weight
-                mosaic.invalid[iy, ix]=False
-            else:
+    # check if weight matrix exists
+    weight_file = 'w0p{0:0.0f}f{1:0.0f}.h5'.format(args.pad,args.feather)
+    if os.access(os.path.join(args.directory,weight_file),os.F_OK):
+        # read input weight matrix
+        mosaic.weight=pc.grid.data().from_h5(
+            os.path.join(args.directory,weight_file),
+            group=args.out_group, fields=['weight']).data
+    else:
+        # allocate for output weight matrix
+        mosaic.weight=np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
+        tile_weight=temp.weight.copy()
+        for count, file in enumerate(file_list):
+            # read data grid from HDF5
+            temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
+            these_fields=[field for field in args.fields if field in temp.fields]
+            # copy weights for tile
+            temp.weight=tile_weight.copy()
+            # get the image coordinates of the input file
+            iy,ix = mosaic.image_coordinates(temp)
+            for field in these_fields:
+                field_data=np.atleast_3d(getattr(temp, field))
                 try:
                     for band in range(mosaic.dimensions[2]):
                         getattr(mosaic, field)[iy,ix,band] += field_data[:,:,band]*temp.weight
                         mosaic.invalid[iy,ix,band] = False
                 except IndexError:
                     print(f"problem with field {field} in file {file}")
-        # add weights to total weight matrix
-        mosaic.weight[iy,ix] += temp.weight[:,:]
+            # add weights to total weight matrix
+            mosaic.weight[iy,ix] += temp.weight[:,:]
+            # save weights to file
+            pc.grid.data().from_dict({'x':mosaic.x,'y':mosaic.y,
+                'weight':mosaic.weight}).to_h5(os.path.join(args.directory,weight_file), \
+                group=args.out_group, replace=args.replace)
 
     # find valid weights
     iy,ix = np.nonzero(mosaic.weight == 0)
