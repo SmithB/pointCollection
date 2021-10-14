@@ -141,7 +141,7 @@ def main(argv):
     # create output mosaic
     mosaic.assign({field:np.zeros(mosaic.dimensions) for field in args.fields})
     #mosaic.data = np.zeros(mosaic.dimensions)
-    mosaic.invalid = np.ones(mosaic.dimensions,dtype=np.bool)
+    mosaic.invalid = np.ones(mosaic.dimensions,dtype=bool)
     mosaic.weight = np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
     field_dims={}
 
@@ -190,8 +190,8 @@ def main(argv):
     # crop mosaic to bounds
     if np.any(args.crop):
         # x and y range (verify min and max order)
-        XR = np.sort([args.range[0],args.range[1]])
-        YR = np.sort([args.range[2],args.range[3]])
+        XR = np.sort([args.crop[0],args.crop[1]])
+        YR = np.sort([args.crop[2],args.crop[3]])
         mosaic.crop(XR, YR, fields=mosaic.fields)
 
     # output each field
@@ -206,7 +206,8 @@ def main(argv):
                                field:getattr(mosaic,field)})\
                 .to_h5(os.path.join(args.directory,args.output), \
                        group=args.out_group, replace=args.replace)
-
+        # only want the 'replace' argument on the first field
+        args.replace=False
     if args.show:
         if len(mosaic.z.shape) > 2:
             plt.imshow(mosaic.z[:,:,-1]-mosaic.z[:,:,0], extent=mosaic.extent)
