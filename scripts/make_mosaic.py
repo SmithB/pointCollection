@@ -57,7 +57,7 @@ def main(argv):
     parser.add_argument('--directory','-d',
         type=os.path.expanduser, default=os.getcwd(),
         help='directory to run')
-    parser.add_argument('--glob_string','-g', type=str,
+    parser.add_argument('--glob_string','-g', type=str, nargs='+',
         default='/*/*.h5',
         help='quoted string to pass to glob to find the files')
     parser.add_argument('--range','-r', type=float,
@@ -119,8 +119,15 @@ def main(argv):
     if args.verbose:
         print("searching glob string:"+"["+args.glob_string+"]")
     # find list of valid files
+    
+    if isinstance(args.glob_string, str):
+        initial_file_list = glob.glob(args.directory +'/'+args.glob_string)
+    else:
+        initial_file_list = []
+        for glob_string in args.glob_string:
+            initial_file_list += glob.glob(args.directory +'/'+glob_string)
     file_list = []
-    for file in glob.glob(args.directory +'/'+args.glob_string):
+    for file in initial_file_list:
         try:
             xc,yc=[int(item)*1.e3 for item in re.compile(r'E(.*)_N(.*).h5').search(file).groups()]
         except Exception:
@@ -174,12 +181,13 @@ def main(argv):
             iy,ix = mosaic.image_coordinates(temp)
             for field in these_fields:
                 field_data=np.atleast_3d(getattr(temp, field))
+                #NOTE: THERE'S A PROBLEM HERE
                 try:
                     for band in range(mosaic.dimensions[2]):
                         getattr(mosaic, field)[iy,ix,band] += field_data[:,:,band]*temp.weight
                         mosaic.invalid[iy,ix,band] = False
                 except IndexError:
-                    print(f"problem with field {field} in file {file}")
+                    print(f"problem with field {field} in group {args.in_group} in file {file}")
             # add weights to total weight matrix
             mosaic.weight[iy,ix] += temp.weight[:,:]
         # find valid weights
