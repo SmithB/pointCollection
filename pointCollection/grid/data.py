@@ -482,8 +482,8 @@ class data(object):
         Return a subset of a grid by x and y range
         """
 
-        col_ind = np.where((self.x >= XR[0]) & (self.x <= XR[1]))[0]
-        row_ind = np.where((self.y >= YR[0]) & (self.y <= YR[1]))[0]
+        col_ind = np.flatnonzero((self.x >= XR[0]) & (self.x <= XR[1]))
+        row_ind = np.flatnonzero((self.y >= YR[0]) & (self.y <= YR[1]))
         try:
            self.index(row_ind, col_ind, fields)
            return self
