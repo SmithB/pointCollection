@@ -391,8 +391,25 @@ class data(object):
     def coords(self):
         if 'time' in self.fields:
             return (self.y, self.x, self.time)
+        elif 't' in self.fields:
+            return (self.y, self.x, self.t)
         else:
             return self.y, self.x
+
+    def bounds(self, pad=0):
+        """
+        Parameters
+        ----------
+        pad : float, int, optional
+            amount by which to pad the returned bounds. The default is 0.
+
+        Returns
+        -------
+        XR, YR: minimum and maximum of x and y
+
+        """
+        return np.array([np.nanmin(self.x)-pad, np.nanmax(self.x)+pad]), \
+                np.array([np.nanmin(self.y)-pad, np.nanmax(self.y)+pad])
 
     def ravel_fields(self):
         """
