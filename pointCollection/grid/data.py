@@ -268,7 +268,7 @@ class data(object):
        self.__update_size_and_shape__()
        return self
 
-    def to_h5(self, out_file, fields=None, group='/', replace=False):
+    def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False):
         """
         write a grid data object to an hdf5 file
         """
@@ -291,9 +291,12 @@ class data(object):
                     if hasattr(self, field):
                         h5f[group+'/'+field][...] = getattr(self, field)
                 else:
-                    #Otherwise, try to create the group
+                    #Otherwise, try to create the dataset
                     try:
-                        h5f.create_dataset(group+'/'+field, data=getattr(self, field))
+                        if nocompression or field in ['x','y','time']:
+                            h5f.create_dataset(group+'/'+field, data=getattr(self, field))
+                        else:
+                            h5f.create_dataset(group+'/'+field, data=getattr(self, field), chunks=True, compression="gzip")
                     except Exception:
                          pass
 
@@ -417,7 +420,23 @@ class data(object):
             getattr(self, field)[getattr(self, field) > z1[1]] = z1[1]
         setattr(self, field, getattr(self, field).astype(dtype))
         return self
+    
+    def calc_gradient(self, field='z'):
+        """
+        calculate the gradient of a field
 
+        Parameters
+        ----------
+        field : TYPE, optional
+            DESCRIPTION. The default is 'z'.
+
+        Returns
+        -------
+        None.
+        """
+        gy, gx=np.gradient(getattr(self, field), self.y, self.x)
+        self.assign({field+'_x':gx, field+'_y':gy})
+        
     def toRGB(self, cmap, field='z', caxis=None, alpha=None):
         """
         Convert a field to RGB
