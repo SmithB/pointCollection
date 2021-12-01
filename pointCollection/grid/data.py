@@ -17,7 +17,7 @@ from . import WV_date
 #import os
 
 class data(object):
-    def __init__(self, fields=None):
+    def __init__(self, fields=None, t_axis=2):
         self.x=None
         self.y=None
         self.projection=None
@@ -28,6 +28,8 @@ class data(object):
         self.time=None
         self.size=None
         self.shape=None
+        self.t_axis=t_axis
+        
         if fields is None:
             self.fields=list()
         else:
@@ -203,11 +205,13 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, bands=None, skip=1):
+    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, bands=None, skip=1, t_axis=None):
        """
        Read a raster from an hdf5 file
        """
-
+       if t_axis is not None:
+            self.t_axis=t_axis
+    
        if field_mapping is None:
             field_mapping={}
        self.filename=h5_file
@@ -253,11 +257,23 @@ class data(object):
                                np.array(h5f[f_field_name][rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
                    else:
                        if bands is None:
-                           setattr(self, self_field,\
-                                   np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,:]))
+                            if len(f_field.shape) > 2:
+                                if self.t_axis==2:
+                                    setattr(self, self_field,\
+                                           np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,:]))
+                                elif self.t_axis==0:
+                                    setattr(self, self_field,\
+                                           np.array(f_field[:,rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
+                            else:
+                                setattr(self, self_field,\
+                                       np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
                        else:
-                           setattr(self, self_field,\
+                            if self.t_axis==2:
+                               setattr(self, self_field,\
                                    np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,bands]))
+                            elif self.t_axis==0:
+                                setattr(self, self_field,\
+                                   np.array(f_field[bands, rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
                    if self_field not in self.fields:
                         self.fields.append(self_field)
                self.x=x[cols]
@@ -463,11 +479,18 @@ class data(object):
             if len(getattr(self, field).shape) == 2:
                 setattr(self, field, getattr(self, field)[row_ind,:][:, col_ind])
             else:
-                if band_ind is None:
-                    setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,:])
-                else:
-                    setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,band_ind])
-                    self.t=self.t[band_ind]
+                if self.t_axis==2:
+                    if band_ind is None:
+                        setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,:])
+                    else:
+                        setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,band_ind])
+                        self.t=self.t[band_ind]
+                elif self.t_axis==0:
+                    if band_ind is None:
+                        setattr(self, field, getattr(self, field)[:, row_ind,:][:, :, col_ind])
+                    else:
+                        setattr(self, field, getattr(self, field)[:, row_ind, :][band_ind, :, col_ind])
+                        self.t=self.t[band_ind]
         self.__update_extent__()
         self.__update_size_and_shape__()
         return self
@@ -475,8 +498,9 @@ class data(object):
     def copy_subset(self, rc_ind, band_ind=None, fields=None):
         if fields is None:
             fields=self.fields
+       
         return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=band_ind)
-
+            
     def crop(self, XR, YR, fields=None):
         """
         Return a subset of a grid by x and y range
@@ -522,7 +546,7 @@ class data(object):
 
     def interp(self, x, y, gridded=False, band=0, field='z'):
         """
-        interpolate a grid to a set of x and y points
+        interpolate a 2-D grid to a set of x and y points
         """
         if field not in self.interpolator:
             if len(getattr(self, field).shape) > 2:
