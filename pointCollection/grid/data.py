@@ -8,16 +8,16 @@ Created on Sat Dec 22 15:35:13 2018
 
 from osgeo import gdal, gdalconst, osr
 import numpy as np
-import matplotlib.pyplot as plt
+
 import h5py
-import scipy.interpolate as si
+from scipy.interpolate import RectBivariateSpline
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
 from . import WV_date
-import os
+#import os
 
 class data(object):
-    def __init__(self, fields=None):
+    def __init__(self, fields=None, t_axis=2):
         self.x=None
         self.y=None
         self.projection=None
@@ -28,6 +28,8 @@ class data(object):
         self.time=None
         self.size=None
         self.shape=None
+        self.t_axis=t_axis
+        
         if fields is None:
             self.fields=list()
         else:
@@ -113,15 +115,15 @@ class data(object):
         bands : list, optional
             Bands to read. The default is None.
         bounds : list-like, optional
-            boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified, 
+            boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified,
             read the whole file.  The default is None.
         extent : list-like, optional
-            Extent of the file to read, [xmin, xmax, ymin, ymax]. 
+            Extent of the file to read, [xmin, xmax, ymin, ymax].
             The default is None.
         skip : Integer, optional
             Specifies that every skip'th value should be read. The default is 1.
         min_res : TYPE, optional
-            Attempt to read with a skip value chosen to match min_res. 
+            Attempt to read with a skip value chosen to match min_res.
             The default is None.
 
         Raises
@@ -136,10 +138,10 @@ class data(object):
 
         """
         GT=ds.GetGeoTransform()
-        
+
         if min_res is not None:
             skip=np.max([1, np.ceil(min_res/np.abs(GT[1]))]).astype(int)
-        
+
         proj=ds.GetProjection()
         if bands is None:
             n_bands=ds.RasterCount
@@ -165,12 +167,17 @@ class data(object):
         else:
             rows=np.arange(band.YSize, dtype=int)
             cols=np.arange(band.XSize, dtype=int)
+
         z=list()
+
         for band_num in bands:
             if band_num > ds.RasterCount:
                 raise AttributeError()
             band=ds.GetRasterBand(int(band_num))
-            z.append(band.ReadAsArray(int(cols[0]), int(rows[0]), int(cols[-1]-cols[0]+1), int(rows[-1]-rows[0]+1))[::-1,:])
+            try:
+                z.append(band.ReadAsArray(int(cols[0]), int(rows[0]), int(cols[-1]-cols[0]+1), int(rows[-1]-rows[0]+1))[::-1,:])
+            except IndexError as e:
+                    raise e
             if skip > 1:
                 z[-1]=z[-1][::skip, ::skip]
         if len(bands)==1:
@@ -198,11 +205,13 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, skip=1):
+    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, bands=None, skip=1, t_axis=None):
        """
        Read a raster from an hdf5 file
        """
-
+       if t_axis is not None:
+            self.t_axis=t_axis
+    
        if field_mapping is None:
             field_mapping={}
        self.filename=h5_file
@@ -217,6 +226,8 @@ class data(object):
                t=np.array(h5f[group]['t'])
            elif 'time' in h5f[group]:
                t=np.array(h5f[group]['time'])
+           if t is not None and bands is not None:
+               t=t[bands]
 
            # if no field mapping provided, add everything in the group
            if len(field_mapping.keys())==0:
@@ -245,8 +256,24 @@ class data(object):
                        setattr(self, self_field,\
                                np.array(h5f[f_field_name][rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
                    else:
-                       setattr(self, self_field,\
-                               np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,:]))
+                       if bands is None:
+                            if len(f_field.shape) > 2:
+                                if self.t_axis==2:
+                                    setattr(self, self_field,\
+                                           np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,:]))
+                                elif self.t_axis==0:
+                                    setattr(self, self_field,\
+                                           np.array(f_field[:,rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
+                            else:
+                                setattr(self, self_field,\
+                                       np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
+                       else:
+                            if self.t_axis==2:
+                               setattr(self, self_field,\
+                                   np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,bands]))
+                            elif self.t_axis==0:
+                                setattr(self, self_field,\
+                                   np.array(f_field[bands, rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
                    if self_field not in self.fields:
                         self.fields.append(self_field)
                self.x=x[cols]
@@ -257,11 +284,13 @@ class data(object):
        self.__update_size_and_shape__()
        return self
 
-    def to_h5(self, out_file, fields=None, group='/'):
-
-        mode='w'
-        if os.path.isfile(out_file):
-            mode='r+'
+    def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False):
+        """
+        write a grid data object to an hdf5 file
+        """
+        # check whether overwriting existing files
+        # append to existing files as default
+        mode = 'w' if replace else 'a'
 
         if fields is None:
             fields=self.fields
@@ -278,9 +307,12 @@ class data(object):
                     if hasattr(self, field):
                         h5f[group+'/'+field][...] = getattr(self, field)
                 else:
-                    #Otherwise, try to create the group
+                    #Otherwise, try to create the dataset
                     try:
-                        h5f.create_dataset(group+'/'+field, data=getattr(self, field))
+                        if nocompression or field in ['x','y','time']:
+                            h5f.create_dataset(group+'/'+field, data=getattr(self, field))
+                        else:
+                            h5f.create_dataset(group+'/'+field, data=getattr(self, field), chunks=True, compression="gzip")
                     except Exception:
                          pass
 
@@ -292,7 +324,7 @@ class data(object):
         ----------
         out_file : str
             file name to write
-        **kwargs : 
+        **kwargs :
             keywords to be passed to the to_gdal() method
         Returns:
             None
@@ -300,47 +332,50 @@ class data(object):
         out_ds=self.to_gdal(out_file=out_file, driver='GTiff',**kwargs)
         return out_ds
 
-    def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None, srs_wkt=None,  srs_epsg=None):
+    def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None, srs_wkt=None, srs_epsg=None, dtype=gdal.GDT_Float32, options=["compress=LZW"]):
         """
         Write a grid object to a gdal memory object
         """
 
-        z=getattr(self, field)
-
-        nx=z.shape[1]
-        ny=z.shape[0]
-        if len(z.shape)>2:
-            n_bands=z.shape[2]
-        else:
-            n_bands=1;
+        z=np.atleast_3d(getattr(self, field))
+        ny,nx,nband = z.shape
         dx=np.abs(np.diff(self.x[0:2]))[0]
         dy=np.abs(np.diff(self.y[0:2]))[0]
 
+        # no supported creation options with in memory rasters
         if driver=='MEM':
             options=[]
-        else:
-            options=["compress=LZW"]
-        out_ds=gdal.GetDriverByName(driver).Create(out_file, nx, ny, n_bands, gdal.GDT_Float32, options=options)
 
+        # set up the dataset with creation options
+        out_ds=gdal.GetDriverByName(driver).Create(out_file, nx, ny, nband, dtype, options=options)
+
+        # top left x, w-e pixel resolution, rotation
+        # top left y, rotation, n-s pixel resolution
         out_ds.SetGeoTransform((self.x.min()-dx/2, dx, 0, self.y.max()+dy/2, 0., -dy))
 
+        # set the spatial projection reference information
         sr=osr.SpatialReference()
         if srs_proj4 is not None:
             sr.ImportFromProj4(srs_proj4)
         elif srs_wkt is not None:
-            sr.ImportFromWKT(srs_wkt)
+            sr.ImportFromWkt(srs_wkt)
         elif srs_epsg is not None:
             sr.ImportFromEPSG(srs_epsg)
         else:
             raise ValueError("must specify at least one of srs_proj4, srs_wkt, srs_epsg")
-        
+        # export the spatial projection reference information to file
         out_ds.SetProjection(sr.ExportToWkt())
-        if n_bands == 1:
-            out_ds.GetRasterBand(1).WriteArray(z[::-1,:])
-        else:
-            for band in range(n_bands):
-                out_ds.GetRasterBand(band+1).WriteArray(z[::-1,:,band])
-        if driver=='GTiff':
+        # for each output band
+        for band in range(nband):
+            # change orientation to upper left corner
+            out_ds.GetRasterBand(band+1).WriteArray(z[::-1,:,band])
+            # set fill value for band
+            try:
+                fill_value = getattr(self,'fill_value')
+                out_ds.GetRasterBand(band+1).SetNoDataValue(fill_value)
+            except:
+                pass
+        if driver not in ('MEM',):
             out_ds.FlushCache()
             out_ds = None
         return out_ds
@@ -401,7 +436,23 @@ class data(object):
             getattr(self, field)[getattr(self, field) > z1[1]] = z1[1]
         setattr(self, field, getattr(self, field).astype(dtype))
         return self
+    
+    def calc_gradient(self, field='z'):
+        """
+        calculate the gradient of a field
 
+        Parameters
+        ----------
+        field : TYPE, optional
+            DESCRIPTION. The default is 'z'.
+
+        Returns
+        -------
+        None.
+        """
+        gy, gx=np.gradient(getattr(self, field), self.y, self.x)
+        self.assign({field+'_x':gx, field+'_y':gy})
+        
     def toRGB(self, cmap, field='z', caxis=None, alpha=None):
         """
         Convert a field to RGB
@@ -417,7 +468,7 @@ class data(object):
     def index(self, row_ind, col_ind, fields=None, band_ind=None):
         """
         slice a grid by row or column
-        
+
         """
         if fields is None:
             fields=self.fields
@@ -428,11 +479,18 @@ class data(object):
             if len(getattr(self, field).shape) == 2:
                 setattr(self, field, getattr(self, field)[row_ind,:][:, col_ind])
             else:
-                if band_ind is None:
-                    setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,:])
-                else:
-                    setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,band_ind])
-                    self.t=self.t[band_ind]
+                if self.t_axis==2:
+                    if band_ind is None:
+                        setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,:])
+                    else:
+                        setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,band_ind])
+                        self.t=self.t[band_ind]
+                elif self.t_axis==0:
+                    if band_ind is None:
+                        setattr(self, field, getattr(self, field)[:, row_ind,:][:, :, col_ind])
+                    else:
+                        setattr(self, field, getattr(self, field)[:, row_ind, :][band_ind, :, col_ind])
+                        self.t=self.t[band_ind]
         self.__update_extent__()
         self.__update_size_and_shape__()
         return self
@@ -440,15 +498,16 @@ class data(object):
     def copy_subset(self, rc_ind, band_ind=None, fields=None):
         if fields is None:
             fields=self.fields
+       
         return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=band_ind)
-
+            
     def crop(self, XR, YR, fields=None):
         """
         Return a subset of a grid by x and y range
         """
 
-        col_ind = np.where((self.x >= XR[0]) & (self.x <= XR[1]))[0]
-        row_ind = np.where((self.y >= YR[0]) & (self.y <= YR[1]))[0]
+        col_ind = np.flatnonzero((self.x >= XR[0]) & (self.x <= XR[1]))
+        row_ind = np.flatnonzero((self.y >= YR[0]) & (self.y <= YR[1]))
         try:
            self.index(row_ind, col_ind, fields)
            return self
@@ -460,6 +519,7 @@ class data(object):
            print(e)
 
     def show(self, field='z', band=None, ax=None, xy_scale=1, gradient=False, stretch_pct=None, **kwargs):
+        import matplotlib.pyplot as plt
         kwargs['extent']=np.array(self.extent)*xy_scale
         kwargs['origin']='lower'
         if band is None:
@@ -486,7 +546,7 @@ class data(object):
 
     def interp(self, x, y, gridded=False, band=0, field='z'):
         """
-        interpolate a grid to a set of x and y points
+        interpolate a 2-D grid to a set of x and y points
         """
         if field not in self.interpolator:
             if len(getattr(self, field).shape) > 2:
@@ -497,13 +557,13 @@ class data(object):
             z0[NaN_mask] = 0
 
             if self.y[1]> self.y[0]:
-                self.interpolator[field] = si.RectBivariateSpline(self.y, self.x, z0, kx=1, ky=1)
+                self.interpolator[field] = RectBivariateSpline(self.y, self.x, z0, kx=1, ky=1)
                 if np.any(NaN_mask.ravel()):
-                    self.nan_interpolator[field] = si.RectBivariateSpline(self.y, self.x, NaN_mask.astype(float), kx=1, ky=1)
+                    self.nan_interpolator[field] = RectBivariateSpline(self.y, self.x, NaN_mask.astype(float), kx=1, ky=1)
             else:
-                self.interpolator[field] = si.RectBivariateSpline(self.y[::-1], self.x, z0[::-1,:], kx=1, ky=1)
+                self.interpolator[field] = RectBivariateSpline(self.y[::-1], self.x, z0[::-1,:], kx=1, ky=1)
                 if np.any(NaN_mask.ravel()):
-                    self.nan_interpolator[field] = si.RectBivariateSpline(self.y[::-1], self.x, NaN_mask[::-1,:].astype(float), kx=1, ky=1)
+                    self.nan_interpolator[field] = RectBivariateSpline(self.y[::-1], self.x, NaN_mask[::-1,:].astype(float), kx=1, ky=1)
 
         if gridded:
             result=np.zeros((len(y), len(x)))+np.NaN

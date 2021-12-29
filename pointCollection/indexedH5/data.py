@@ -19,9 +19,10 @@ class data(pc.data):
     def to_file(self, D, out_file, time_field='time', append=True, ind_fields=['x','y','time']):
         y_bin_function=np.round(D.y/self.bin_W[0])
         x_bin_function=np.round(D.x/self.bin_W[1])
-        x_scale=np.nanmax(x_bin_function)-np.nanmin(x_bin_function)
+        # 6/23/21: added +1 to the scales (so that max(x_bin_fn)-min(x_bin_fn)<x_scale)
+        x_scale=np.nanmax(x_bin_function)-np.nanmin(x_bin_function)+1
         t=getattr(D, time_field)
-        t_scale=np.nanmax(t)-np.nanmin(t)
+        t_scale=np.nanmax(t)-np.nanmin(t)+1
 
         xy_bin_function=(y_bin_function-np.nanmin(y_bin_function))*x_scale+(x_bin_function-np.nanmin(x_bin_function))
         xyt_bin_function= xy_bin_function + (t-np.nanmin(t))/t_scale

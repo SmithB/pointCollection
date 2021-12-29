@@ -4,4 +4,4 @@ pyproj
 matplotlib
 netCDF4
 h5py
-gdal
+#gdal
