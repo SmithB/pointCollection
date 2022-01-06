@@ -489,7 +489,7 @@ class data(object):
                     if band_ind is None:
                         setattr(self, field, getattr(self, field)[:, row_ind,:][:, :, col_ind])
                     else:
-                        setattr(self, field, getattr(self, field)[:, row_ind, :][band_ind, :, col_ind])
+                        setattr(self, field, getattr(self, field)[band_ind,:,:][:, row_ind, :][:, :, col_ind])
                         self.t=self.t[band_ind]
         self.__update_extent__()
         self.__update_size_and_shape__()
