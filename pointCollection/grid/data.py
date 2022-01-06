@@ -380,20 +380,51 @@ class data(object):
             out_ds = None
         return out_ds
 
-    def as_points(self, field='z', keep_all=False):
+    def as_points(self, fields=None, keep_all=False):
         """
         Return a pointCollection.data object containing the points in the grid
         """
-        x,y=np.meshgrid(self.x, self.y)
+        if fields is None:
+            fields=self.fields
+
+
+        if len(self.shape) == 2:
+            x,y=np.meshgrid(self.x, self.y)
+        else:
+            if self.t_axis==0:
+                if self.time is not None:
+                    t, y, x = np.meshgrid(self.time, self.y, self.x, indexing='ij')
+                else:
+                    t, y, x = np.meshgrid(self.t, self.y, self.x, indexing='ij')
+            elif self.t_axis==2:
+                if self.time is not None:
+                    y, x, t = np.meshgrid(self.y, self.x, self.time, indexing='ij')
+                else:
+                    y, x, t = np.meshgrid(self.y, self.x, self.t, indexing='ij')
+
         if keep_all:
             result =  pc.data(filename=self.filename).\
-                from_dict({'x':x.ravel(),'y':y.ravel(),'z':getattr(self, field).ravel()})
+                from_dict({'x':x.ravel(),'y':y.ravel()})
+            for field in fields:
+                result.assign({field:getattr(self, field).ravel()})
         else:
-            good=np.isfinite(getattr(self, field)).ravel()
+            good=np.isfinite(getattr(self, fields[0])).ravel()
             result = pc.data(filename=self.filename).\
-                from_dict({'x':x.ravel()[good],'y':y.ravel()[good],'z':getattr(self, field).ravel()[good]})
-        if self.time is not None:
-            result.assign({'time':self.time+np.zeros_like(getattr(result, field))})
+                from_dict({'x':x.ravel()[good],'y':y.ravel()[good]})
+            for field in fields:
+                result.assign({field:getattr(self, field).ravel()[good]})
+        if len(self.shape)==2:
+            if self.time is not None:
+                result.assign({'time':self.time+np.zeros_like(getattr(result, field))})
+        else:
+            if self.time is not None:
+                time_var='time'
+            else:
+                time_var='t'
+            if keep_all:
+                result.assign({time_var:t.ravel()})
+            else:
+                    result.assign({time_var:t.ravel()[good]})
         return result
 
     def add_alpha_band(self, alpha=None, field='z', nodata_vals=None):
