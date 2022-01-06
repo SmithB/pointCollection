@@ -228,7 +228,7 @@ class geoIndex(dict):
         """
         write the current geoindex to h5 file 'filename'
         """
-        indexF = h5py.File(os.path.expanduser(filename),'a')
+        indexF = h5py.File(os.path.expanduser(filename),'a', libver='latest')
         if 'index' in indexF:
             del indexF['index']
         indexGrp=indexF.create_group('index')
