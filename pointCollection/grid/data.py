@@ -29,7 +29,7 @@ class data(object):
         self.size=None
         self.shape=None
         self.t_axis=t_axis
-        
+
         if fields is None:
             self.fields=list()
         else:
@@ -211,7 +211,7 @@ class data(object):
        """
        if t_axis is not None:
             self.t_axis=t_axis
-    
+
        if field_mapping is None:
             field_mapping={}
        self.filename=h5_file
@@ -436,7 +436,7 @@ class data(object):
             getattr(self, field)[getattr(self, field) > z1[1]] = z1[1]
         setattr(self, field, getattr(self, field).astype(dtype))
         return self
-    
+
     def calc_gradient(self, field='z'):
         """
         calculate the gradient of a field
@@ -452,7 +452,7 @@ class data(object):
         """
         gy, gx=np.gradient(getattr(self, field), self.y, self.x)
         self.assign({field+'_x':gx, field+'_y':gy})
-        
+
     def toRGB(self, cmap, field='z', caxis=None, alpha=None):
         """
         Convert a field to RGB
@@ -483,7 +483,7 @@ class data(object):
                     if band_ind is None:
                         setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,:])
                     else:
-                        setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,band_ind])
+                        setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,:][:, :, band_ind])
                         self.t=self.t[band_ind]
                 elif self.t_axis==0:
                     if band_ind is None:
@@ -498,18 +498,27 @@ class data(object):
     def copy_subset(self, rc_ind, band_ind=None, fields=None):
         if fields is None:
             fields=self.fields
-       
+
         return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=band_ind)
-            
-    def crop(self, XR, YR, fields=None):
+
+    def crop(self, XR, YR, TR=None, fields=None):
         """
         Return a subset of a grid by x and y range
         """
 
         col_ind = np.flatnonzero((self.x >= XR[0]) & (self.x <= XR[1]))
         row_ind = np.flatnonzero((self.y >= YR[0]) & (self.y <= YR[1]))
+
+        time_ind = None
+        if TR is not None:
+            if self.time is not None:
+                time_ind = np.flatnonzero((self.time >= TR[0]) & (self.time <= TR[1]))
+            elif self.t is not None:
+                time_ind = np.flatnonzero((self.t >= TR[0]) & (self.t <= TR[1]))
+            else:
+                raise IndexError('neither t nor time defined')
         try:
-           self.index(row_ind, col_ind, fields)
+           self.index(row_ind, col_ind, fields=fields, band_ind=time_ind)
            return self
         except Exception as e:
            print("grid: self extent is: ", self.extent)
