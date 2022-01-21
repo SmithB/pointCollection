@@ -21,12 +21,12 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, index_onl
             return np.zeros([0]), np.zeros([0]), np.zeros([0]), np.zeros([0])
         else:
             return np.zeros([0]), np.zeros([0]), np.zeros([0])
-    yscale=np.ceil((np.nanmax(y)-np.nanmin(y))/delta*1.1)
+    yscale=np.maximum(1.1, np.ceil((np.nanmax(y)-np.nanmin(y))/delta*1.1))
     zscale=(np.nanmax(z)-np.nanmin(z))*1.1
     xr=np.floor((x-xy0[0])/delta)
     yr=np.floor((y-xy0[1])/delta)
     xyind=xr*yscale+(yr-np.min(yr))
-    sorted_ind=np.argsort(xyind+(z-np.nanmin(z))/zscale)
+    sorted_ind=np.argsort(xyind + (z-np.nanmin(z))/zscale)
     xs=x[sorted_ind]
     ys=y[sorted_ind]
     zs=z[sorted_ind]
