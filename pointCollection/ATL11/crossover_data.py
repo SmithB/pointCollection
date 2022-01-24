@@ -27,7 +27,7 @@ class crossover_data(pc.data):
         return {self.pair_name+'/'+key:field_dict[key] for key in field_dict}
 
 
-    def from_h5(self, filename, pair=None, D_at=None):
+    def from_h5(self, filename, pair=None, D_at=None, crossover_fields=None):
         '''
         Read crossover data from a file.  
 
@@ -72,8 +72,11 @@ class crossover_data(pc.data):
                 #index_range=[None, None]
             else:
                 index_range=[np.min(ind), np.max(ind)]
-            
-        D_xo=pc.data().from_h5(filename, group=self.pair_name+'/crossing_track_data', field_dict=self.__default_XO_field_dict__(), index_range=index_range)
+        if crossover_fields is None:
+            field_dict = self.__default_XO_field_dict__()
+        else:
+            field_dict = {self.pair_name+'/crossing_track_data':crossover_fields}
+        D_xo=pc.data().from_h5(filename, field_dict=field_dict, index_range=index_range)
         D_xo.index(np.isfinite(D_xo.ref_pt) & np.isfinite(D_xo.cycle_number) )
         with h5py.File(filename,'r') as h5f:
             rgt=int(h5f[self.pair_name].attrs['ReferenceGroundTrack'])
