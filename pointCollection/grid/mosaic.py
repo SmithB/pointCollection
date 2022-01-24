@@ -97,7 +97,7 @@ class mosaic(data):
         nx=sh[1]
 
         # allocate for weights matrix
-        self.weight = np.ones((ny,nx), dtype=np.float)
+        self.weight = np.ones((ny,nx), dtype=float)
         gridx,gridy = np.meshgrid(self.x,self.y)
         # pad the weight matrix
         if pad:
@@ -109,7 +109,7 @@ class mosaic(data):
         # feathering the weight matrix
         if feather:
             # use a gaussian filter to create smoothed weighting function
-            temp = np.ones((ny,nx), dtype=np.float)
+            temp = np.ones((ny,nx), dtype=float)
             indy,indx = np.nonzero((gridx < (self.x[0] + pad + feather/2)) |
                 (gridx > (self.x[-1] - pad - feather/2)) |
                 (gridy < (self.y[0] + pad + feather/2)) |

@@ -344,8 +344,8 @@ class geoIndex(dict):
                     m=bin_re.match(key)
                     if m is None:
                         continue
-                    xy[0].append(np.float(m.group(1)))
-                    xy[1].append(np.float(m.group(2)))
+                    xy[0].append(float(m.group(1)))
+                    xy[1].append(float(m.group(2)))
                 xy[0]=np.array(xy[0])
                 xy[1]=np.array(xy[1])
             self.from_xy(xy, filename=filename_out, file_type=file_type, number=number, first_last=first_last, fake_offset_val=fake_offset)

@@ -47,9 +47,9 @@ class data(pc.data):
         # extract mission and other parameters from filename
         match_object = rx.match(os.path.basename(filename))
         # convert year, month and day to float variables
-        year = np.float(match_object.group(2))
-        month = np.float(match_object.group(5))
-        day = np.float(match_object.group(6))
+        year = float(match_object.group(2))
+        month = float(match_object.group(5))
+        day = float(match_object.group(6))
         # early ATM date strings omitted century and millenia (e.g. 93 for 1993)
         if match_object.group(4):
             year = (year + 1900.0) if (year >= 90) else (year + 2000.0)
@@ -137,9 +137,9 @@ class data(pc.data):
         for n,d in zip(variable_table[w],dtype_table[w]):
             ATM_L1b_input[n] = np.zeros((n_records), dtype=np.dtype(d))
         # extract hour, minute and second from time_hhmmss
-        hour = np.zeros((n_records),dtype=np.float)
-        minute = np.zeros((n_records),dtype=np.float)
-        second = np.zeros((n_records),dtype=np.float)
+        hour = np.zeros((n_records),dtype=float)
+        minute = np.zeros((n_records),dtype=float)
+        second = np.zeros((n_records),dtype=float)
         # for each record in the ATM Level-1b file
         for r in range(n_records):
             # set binary to point if using input subsetter from index_range
@@ -152,9 +152,9 @@ class data(pc.data):
                 ATM_L1b_input[n][r] = v.astype(d)/s
             # unpack GPS time
             time_hhmmss = '{0:010.3f}'.format(ATM_L1b_input['time_hhmmss'][r])
-            hour[r] = np.float(time_hhmmss[:2])
-            minute[r] = np.float(time_hhmmss[2:4])
-            second[r] = np.float(time_hhmmss[4:])
+            hour[r] = float(time_hhmmss[:2])
+            minute[r] = float(time_hhmmss[2:4])
+            second[r] = float(time_hhmmss[4:])
         # close the input file
         fid.close()
 
