@@ -297,7 +297,7 @@ class data(object):
             by_row=True
         if datasets is None:
             datasets=self.fields.copy()
-        if (not isinstance(index, (slice, int, np.integer, float, np.float))) and ((len(index) == 0) or ( (index.dtype == 'bool') and np.all(index==0))):
+        if (not isinstance(index, (slice, int, np.integer, float, np.float64))) and ((len(index) == 0) or ( (index.dtype == 'bool') and np.all(index==0))):
             dd={key:np.zeros([1,0]) for key in datasets}
         else:
             for field in datasets:
