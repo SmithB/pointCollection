@@ -200,8 +200,9 @@ def main(argv):
                         field_data=getattr(temp, field)
                         getattr(mosaic, field)[iy,ix] += field_data*temp.weight
                         mosaic.invalid[iy,ix,0] = False
-                except IndexError:
+                except (IndexError, ValueError) as e:
                     print(f"problem with field {field} in group {args.in_group} in file {file}")
+                    raise(e)
             # add weights to total weight matrix
             mosaic.weight[iy,ix] += temp.weight[:,:]
         # find valid weights
@@ -237,7 +238,7 @@ def main(argv):
                         getattr(mosaic, field)[iy,ix] = field_data
                         mosaic.invalid[iy, ix] = False
                 except IndexError:
-                    print(f"problem with field {field} in group {group} file {file}")
+                    print(f"problem with field {field} in group {args.in_group} file {file}")
 
     # replace invalid points with fill_value
     for field in mosaic.fields:
