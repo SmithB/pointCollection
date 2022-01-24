@@ -6,14 +6,12 @@ Routines for creating a weighted mosaic from a series of tiles
 Written by Tyler Sutterley (03/2020)
 
 UPDATE HISTORY:
+    updated 03/2021: change scheme for calculating weights, raised cosine as default
     Updated 03/2020: check number of dimensions of z if only a single band
     Written 03/2020
 """
 
-import os
-import h5py
 import numpy as np
-import scipy.ndimage
 from .data import data
 
 class mosaic(data):
@@ -82,7 +80,50 @@ class mosaic(data):
         ix = np.array((temp.x[None,:]-self.extent[0])/self.spacing[0],dtype=np.int)
         return (iy,ix)
 
-    def weights(self, pad=0, feather=0, apply=False):
+    def raised_cosine_weights(self, pad, feather):
+
+        weights=[]
+        for dim, xy in zip([0, 1], [self.x, self.y]):
+            xy0 = np.mean(xy)
+            W = xy[-1]-xy[0]
+            dist = np.abs(xy-xy0)
+            wt = np.zeros_like(dist)
+            i_feather = (dist >= W/2 - pad - feather) & ( dist <= W/2 -pad )
+            wt_feather = 0.5 + 0.5 * np.cos( -np.pi*(dist[i_feather] - (W/2 - pad - feather))/feather)
+            wt[ i_feather ] = wt_feather
+            wt[ dist <= W/2 - pad - feather ] = 1
+            wt[ dist >= W/2 - pad] = 0
+            weights += [wt]
+        self.weight *= weights[0][:,None].dot(weights[1][None,:])
+
+    def gaussian_weights(self, pad, feather):
+        # use a gaussian filter to create smoothed weighting function
+        weights=[]
+        for dim, xy in zip([0, 1], [self.x, self.y]):
+            xy0 = np.mean(xy)
+            W = xy[-1]-xy[0]
+            dist = np.abs(xy-xy0)
+            wt = np.zeros_like(dist) 
+            i_feather = (dist >= W/2 - pad - feather) & ( dist <= W/2 -pad )
+            wt_feather = np.exp(-((xy[i_feather]-xy0)/(feather/2.))**2)
+            wt[ i_feather ] = wt_feather
+            wt[ dist <= W/2 - pad - feather ] = 1
+            wt[ dist >= W/2 - pad] = 0
+            weights += [wt]
+        self.weight *= weights[0][:,None].dot(weights[1][None,:])
+
+    def pad_edges(self, pad):
+        weights=[]
+        for dim, xy in zip([0, 1], [self.x, self.y]):
+            xy0 = np.mean(xy)
+            W = xy[-1]-xy[0]
+            dist = np.abs(xy-xy0)
+            wt=np.ones_like(dist)
+            wt[ dist >= W/2 - pad] = 0
+            weights += [wt]
+        self.weight *= weights[0][:,None].dot(weights[1][None,:])
+
+    def weights(self, pad=0, feather=0, apply=False, mode='raised cosine'):
         """
         Create a weight matrix for a given grid
         Apply the weights if specified
@@ -90,44 +131,20 @@ class mosaic(data):
         # find dimensions of matrix
         sh = getattr(self, self.fields[0]).shape
         if len(sh)==3:
-            nband=sh[2]
+            ny, nx, nband = sh
         else:
-            nband=1
-        ny=sh[0]
-        nx=sh[1]
-
+            nband =1
+            ny, nx = sh
         # allocate for weights matrix
         self.weight = np.ones((ny,nx), dtype=float)
-        gridx,gridy = np.meshgrid(self.x,self.y)
-        # pad the weight matrix
-        if pad:
-            indy,indx = np.nonzero((gridx < (self.x[0] + pad)) |
-                (gridx > (self.x[-1] - pad)) |
-                (gridy < (self.y[0] + pad)) |
-                (gridy > (self.y[-1] - pad)))
-            self.weight[indy,indx] = 0.0
         # feathering the weight matrix
         if feather:
-            # use a gaussian filter to create smoothed weighting function
-            temp = np.ones((ny,nx), dtype=float)
-            indy,indx = np.nonzero((gridx < (self.x[0] + pad + feather/2)) |
-                (gridx > (self.x[-1] - pad - feather/2)) |
-                (gridy < (self.y[0] + pad + feather/2)) |
-                (gridy > (self.y[-1] - pad - feather/2)))
-            temp[indy,indx] = 0.0
-            sigma = 0.25*feather/(self.x[1]-self.x[0])
-            gauss = scipy.ndimage.gaussian_filter(temp, sigma,
-                mode='constant', cval=0)
-            # only use points within feather
-            indy,indx = np.nonzero((gridx >= (self.x[0] + pad)) &
-                (gridx <= (self.x[-1] - pad)) &
-                (gridy >= (self.y[0] + pad)) &
-                (gridy <= (self.y[-1] - pad)) &
-                ((gridx < (self.x[0] + pad + feather)) |
-                (gridx > (self.x[-1] - pad - feather)) |
-                (gridy < (self.y[0] + pad + feather)) |
-                (gridy > (self.y[-1] - pad - feather))))
-            self.weight[indy,indx] = gauss[indy,indx]
+            if mode == 'raised cosine':
+                self.raised_cosine_weights(pad, feather)
+            elif mode == 'gaussian':
+                self.gaussian_weights(pad, feather)
+        if pad:
+            self.pad_edges(pad)
         # if applying the weights to the original z data
         if apply:
             for field in self.fields:
