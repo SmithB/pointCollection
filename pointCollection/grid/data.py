@@ -506,6 +506,8 @@ class data(object):
 
         self.x=self.x[col_ind]
         self.y=self.y[row_ind]
+        if band_ind is not None:
+            self.t=self.t[band_ind]
         for field in fields:
             if len(getattr(self, field).shape) == 2:
                 setattr(self, field, getattr(self, field)[row_ind,:][:, col_ind])
@@ -515,13 +517,11 @@ class data(object):
                         setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,:])
                     else:
                         setattr(self, field, getattr(self, field)[row_ind,:, :][:, col_ind,:][:, :, band_ind])
-                        self.t=self.t[band_ind]
                 elif self.t_axis==0:
                     if band_ind is None:
                         setattr(self, field, getattr(self, field)[:, row_ind,:][:, :, col_ind])
                     else:
                         setattr(self, field, getattr(self, field)[band_ind,:,:][:, row_ind, :][:, :, col_ind])
-                        self.t=self.t[band_ind]
         self.__update_extent__()
         self.__update_size_and_shape__()
         return self
