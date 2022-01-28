@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 make_mosaic.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (01/2022)
 
 Create a weighted mosaic from a series of tiles
 
@@ -10,6 +10,7 @@ COMMAND LINE OPTIONS:
     --help: list the command line options
     -d X, --directory X: directory to run
     -g X, --glob_string X: quoted string to pass to glob to find the files
+    --proj4: projection string for the tiles and output mosaic
     -r X, --range X: valid range of tiles to read [xmin,xmax,ymin,ymax]
     -G X, --group X: input HDF5 group
     -F X, --field X: input HDF5 field map
@@ -25,6 +26,7 @@ COMMAND LINE OPTIONS:
     -m X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 01/2021: added option for setting projection attributes
     Updated 10/2021: added option for using a non-weighted summation
     Updated 07/2021: added option replace for overwriting existing files
         added option for cropping output mosaic
@@ -60,6 +62,8 @@ def main(argv):
     parser.add_argument('--glob_string','-g', type=str, nargs='+',
         default='/*/*.h5',
         help='quoted string to pass to glob to find the files')
+    parser.add_argument('--proj4', type=str, default=None,
+        help='projection string for the tiles and output mosaic')
     parser.add_argument('--range','-r', type=float,
         nargs=4, default=[-np.inf,np.inf,-np.inf,np.inf],
         metavar=('xmin','xmax','ymin','ymax'),
@@ -119,14 +123,14 @@ def main(argv):
     if args.verbose:
         print("searching glob string:"+"["+str(args.glob_string)+"]")
     # find list of valid files
-    
+
     if isinstance(args.glob_string, str):
         initial_file_list = glob.glob(args.directory +'/'+args.glob_string)
     else:
         initial_file_list = []
         for glob_string in args.glob_string:
             initial_file_list += glob.glob(args.directory +'/'+glob_string)
-    
+
     if xmin is None:
         file_list=initial_file_list
     else:
@@ -138,10 +142,10 @@ def main(argv):
                 continue
             if ((xc >= xmin) and (xc <= xmax) & (yc >= ymin) and (yc <= ymax)):
                 file_list.append(file)
-            
+
     if args.verbose:
         print(f"found {len(file_list)} files")
- 
+
     #get bounds, grid spacing and dimensions of output mosaic
     mosaic=pc.grid.mosaic(spacing=args.spacing)
     for file in file_list.copy():
@@ -158,7 +162,7 @@ def main(argv):
     mosaic.update_dimensions(temp)
 
     # create output mosaic, weights, and mask
-    # read data grid from the first tile HDF5, use it to set the field dimensions 
+    # read data grid from the first tile HDF5, use it to set the field dimensions
     temp=pc.grid.mosaic().from_h5(file_list[0], group=args.in_group, fields=args.fields)
     if args.fields is None:
         args.fields=temp.fields
@@ -259,12 +263,14 @@ def main(argv):
             pc.grid.data().from_dict({'x':mosaic.x,'y':mosaic.y,\
                                       field:getattr(mosaic,field)})\
                 .to_h5(os.path.join(args.directory,args.output), \
-                       group=args.out_group, replace=args.replace)
+                       group=args.out_group, replace=args.replace, \
+                       srs_proj4=args.proj4)
         else:
             pc.grid.data().from_dict({'x':mosaic.x,'y':mosaic.y, 't': mosaic.t,\
                                field:getattr(mosaic,field)})\
                 .to_h5(os.path.join(args.directory,args.output), \
-                       group=args.out_group, replace=args.replace)
+                       group=args.out_group, replace=args.replace, \
+                       srs_proj4=args.proj4)
         # only want the 'replace' argument on the first field
         args.replace=False
     if args.show:

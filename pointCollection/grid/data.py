@@ -9,6 +9,7 @@ Created on Sat Dec 22 15:35:13 2018
 from osgeo import gdal, gdalconst, osr
 import numpy as np
 
+import re
 import h5py
 from scipy.interpolate import RectBivariateSpline
 from scipy.stats import scoreatpercentile
@@ -284,10 +285,13 @@ class data(object):
        self.__update_size_and_shape__()
        return self
 
-    def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False):
+    def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False, **kwargs):
         """
         write a grid data object to an hdf5 file
         """
+        kwargs.setdefault('srs_proj4', None)
+        kwargs.setdefault('srs_wkt', None)
+        kwargs.setdefault('srs_epsg', None)
         # check whether overwriting existing files
         # append to existing files as default
         mode = 'w' if replace else 'a'
@@ -296,6 +300,9 @@ class data(object):
             fields=self.fields
         if group[0] != '/':
             group='/'+group
+
+        # get crs attributes
+        self.crs_attributes(**kwargs)
         with h5py.File(out_file,mode) as h5f:
             try:
                 h5f.create_group(group)
@@ -315,6 +322,15 @@ class data(object):
                             h5f.create_dataset(group+'/'+field, data=getattr(self, field), chunks=True, compression="gzip")
                     except Exception:
                          pass
+            # add crs attributes if applicable
+            if self.crs:
+                # add grid mapping attribute to each grid field
+                for field in fields:
+                    h5f[group+'/'+field].attrs['grid_mapping'] = 'crs'
+                # add grid mapping variable with projection attributes
+                h5crs = h5f.create_dataset('crs', (), dtype=np.byte)
+                for att_name,att_val in self.crs.items():
+                    h5crs.attrs[att_name] = att_val
 
     def to_geotif(self, out_file, **kwargs):
         """
@@ -636,3 +652,49 @@ class data(object):
         Return the x and y bounds of a grid
         """
         return [[np.min(self.x)-pad, np.max(self.x)+pad], [np.min(self.y)-pad, np.max(self.y)+pad]]
+
+    def crs_attributes(self, srs_proj4=None, srs_wkt=None, srs_epsg=None, **kwargs):
+        """
+        Return a dictionary of attributes for a projection
+        """
+        # output projection attributes dictionary
+        self.crs = {}
+        # set the spatial projection reference information
+        sr = osr.SpatialReference()
+        if srs_proj4 is not None:
+            sr.ImportFromProj4(srs_proj4)
+        elif srs_wkt is not None:
+            sr.ImportFromWkt(srs_wkt)
+        elif srs_epsg is not None:
+            sr.ImportFromEPSG(srs_epsg)
+        else:
+            return
+        # convert proj4 string to dictionary
+        proj4_dict = {p[0]:p[1] for p in re.findall(r'\+(.*?)\=([^ ]+)',sr.ExportToProj4())}
+        # get projection attributes
+        self.crs['spatial_epsg'] = int(sr.GetAttrValue('AUTHORITY',1))
+        self.crs['crs_wkt'] = sr.ExportToWkt()
+        self.crs['spatial_ref'] = sr.ExportToWkt()
+        self.crs['proj4_params'] = sr.ExportToProj4()
+        # get datum attributes
+        self.crs['semi_major_axis'] = sr.GetSemiMajor()
+        self.crs['semi_minor_axis'] = sr.GetSemiMinor()
+        self.crs['inverse_flattening'] = sr.GetInvFlattening()
+        self.crs['reference_ellipsoid_name'] = sr.GetAttrValue('DATUM',0)
+        self.crs['geographic_crs_name'] = sr.GetAttrValue('GEOGCS',0)
+        # get projection attributes
+        self.crs['projected_crs_name'] = sr.GetName()
+        self.crs['grid_mapping_name'] = sr.GetAttrValue('PROJECTION',0).lower()
+        self.crs['standard_name'] = sr.GetAttrValue('PROJECTION',0)
+        self.crs['prime_meridian_name'] = sr.GetAttrValue('PRIMEM',0)
+        self.crs['longitude_of_prime_meridian'] = float(sr.GetAttrValue('PRIMEM',1))
+        try:
+            self.crs['latitude_of_projection_origin'] = float(proj4_dict['lat_0'])
+        except Exception as e:
+            pass
+        self.crs['standard_parallel'] = float(sr.GetProjParm(osr.SRS_PP_LATITUDE_OF_ORIGIN,1))
+        self.crs['straight_vertical_longitude_from_pole'] = float(sr.GetProjParm(osr.SRS_PP_CENTRAL_MERIDIAN,1))
+        self.crs['false_northing'] = float(sr.GetProjParm(osr.SRS_PP_FALSE_NORTHING,1))
+        self.crs['false_easting'] = float(sr.GetProjParm(osr.SRS_PP_FALSE_EASTING,1))
+        self.crs['scale_factor'] = float(sr.GetProjParm(osr.SRS_PP_SCALE_FACTOR,1))
+        return self
