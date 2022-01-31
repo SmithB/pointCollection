@@ -11,6 +11,7 @@ import numpy as np
 
 import re
 import h5py
+import netCDF4
 from scipy.interpolate import RectBivariateSpline
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
@@ -265,7 +266,7 @@ class data(object):
                                 elif self.t_axis==0:
                                     setattr(self, self_field,\
                                            np.array(f_field[:,rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
-                            else:
+                            elif len(f_field.shape) == 2:
                                 setattr(self, self_field,\
                                        np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
                        else:
@@ -285,6 +286,85 @@ class data(object):
        self.__update_size_and_shape__()
        return self
 
+    def from_nc(self, nc_file, field_mapping=None, group='', fields=None, bounds=None, bands=None, skip=1, t_axis=None):
+        """
+        Read a raster from an netCDF4 file
+        """
+        if t_axis is not None:
+            self.t_axis=t_axis
+
+        if field_mapping is None:
+            field_mapping={}
+        self.filename=nc_file
+        dims=['x','y','t','time']
+        t=None
+        with netCDF4.Dataset(nc_file,'r') as fileID:
+            # check if reading from root group or sub-group
+            ncf=fileID.groups[group] if group else fileID
+            x=ncf.variables['x'][:].copy()
+            y=ncf.variables['y'][:].copy()
+            if 't' in ncf.variables.keys():
+                t=ncf.variables['y'][:].copy()
+            elif 'time' in ncf.variables.keys():
+                t=ncf.variables['time'][:].copy()
+            if t is not None and bands is not None:
+                t=t[bands]
+
+            # if no field mapping provided, add everything in the group
+            if len(field_mapping.keys())==0:
+                for key in ncf.variables.keys():
+                    if key in dims:
+                        continue
+                    if fields is not None and key not in fields:
+                        continue
+                    if key not in field_mapping:
+                        var = ncf.variables[key]
+                        if hasattr(var,'shape') and var.shape:
+                            field_mapping.update({key:key})
+            # reduce raster to bounds
+            if bounds is not None:
+                xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
+                cols = slice(xind[0],xind[-1],1)
+                yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
+                rows = slice(yind[0],yind[-1],1)
+            else:
+                # indices to read (all)
+                rows = slice(None,None,1)
+                cols = slice(None,None,1)
+            # check that raster can be sliced
+            if len(x[cols]) > 0 and len(y[rows]) > 0:
+                for self_field in field_mapping:
+                    f_field_name=field_mapping[self_field]
+                    if f_field_name not in ncf.variables:
+                        continue
+                    f_field=ncf.variables[f_field_name]
+
+                    if len(f_field.shape) == 2:
+                        setattr(self, self_field, f_field[rows,cols])
+                    else:
+                        if len(f_field.shape) == 2:
+                            setattr(self, self_field, f_field[rows,cols])
+                        elif bands is None and len(f_field.shape) > 2:
+                            if self.t_axis==2:
+                                setattr(self, self_field, f_field[rows,cols,:])
+                            elif self.t_axis==0:
+                                setattr(self, self_field, f_field[:,rows,cols])
+                        else:
+                            if self.t_axis==2:
+                                setattr(self, self_field, f_field[rows,cols,bands])
+                            elif self.t_axis==0:
+                                setattr(self, self_field, f_field[bands,rows,cols])
+                    if self_field not in self.fields:
+                        self.fields.append(self_field)
+                # reduce x and y to bounds
+                self.x=x[cols]
+                self.y=y[rows]
+                if t is not None:
+                    self.t=t
+        self.__update_extent__()
+        self.__update_size_and_shape__()
+        return self
+
     def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False, **kwargs):
         """
         write a grid data object to an hdf5 file
@@ -292,6 +372,7 @@ class data(object):
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
         kwargs.setdefault('srs_epsg', None)
+        kwargs.setdefault('grid_mapping_name', 'crs')
         # check whether overwriting existing files
         # append to existing files as default
         mode = 'w' if replace else 'a'
@@ -326,11 +407,86 @@ class data(object):
             if self.crs:
                 # add grid mapping attribute to each grid field
                 for field in fields:
-                    h5f[group+'/'+field].attrs['grid_mapping'] = 'crs'
+                    h5f[group+'/'+field].attrs['grid_mapping'] = kwargs['grid_mapping_name']
                 # add grid mapping variable with projection attributes
-                h5crs = h5f.create_dataset('crs', (), dtype=np.byte)
+                h5crs = h5f.create_dataset(kwargs['grid_mapping_name'], (), dtype=np.byte)
                 for att_name,att_val in self.crs.items():
                     h5crs.attrs[att_name] = att_val
+
+    def to_nc(self, out_file, fields=None, group='', replace=False, nocompression=False, **kwargs):
+        """
+        write a grid data object to a netCDF4 file
+        """
+        kwargs.setdefault('srs_proj4', None)
+        kwargs.setdefault('srs_wkt', None)
+        kwargs.setdefault('srs_epsg', None)
+        kwargs.setdefault('grid_mapping_name', 'crs')
+        # check whether overwriting existing files
+        # append to existing files as default
+        mode = 'w' if replace else 'a'
+
+        if fields is None:
+            fields=self.fields
+        # try getting the time variable name
+        try:
+            t_name = [field for field in ('t','time') if hasattr(self, field)
+                and np.any(getattr(self,field))].pop()
+        except Exception as e:
+            t_name = None
+
+        # get crs attributes
+        self.crs_attributes(**kwargs)
+        with netCDF4.Dataset(out_file,mode) as fileID:
+            # check if writing to root group or sub-group
+            try:
+                fileID.createGroup(group)
+            except Exception:
+                pass
+            ncf=fileID.groups[group] if group else fileID
+            # for each dimension variable
+            for field in ['x','y','time','t']:
+                # if field exists, overwrite it
+                if field in ncf.variables.keys() and hasattr(self, field):
+                    var = getattr(self, field)
+                    if var is not None:
+                        ncf.variables[field][:] = var
+                elif hasattr(self, field):
+                    var = getattr(self, field)
+                    if var is not None:
+                        ncf.createDimension(field, len(np.atleast_1d(var)))
+                        ncv = ncf.createVariable(field, var.dtype, (field,))
+                        ncf.variables[field][:] = var
+            for field in fields:
+                if (self.t_axis == 2) and t_name is not None:
+                    nc_dim=('y','x',t_name,)
+                elif (self.t_axis == 0) and t_name is not None:
+                    nc_dim=(t_name,'y','x',)
+                else:
+                    nc_dim=('y','x',)
+                # if field exists, overwrite it
+                if field in ncf.variables.keys() and hasattr(self, field):
+                    var = getattr(self, field)
+                    if var is not None:
+                        ncf.variables[field][...] = var
+                elif hasattr(self, field):
+                    #Otherwise, try to create the dataset
+                    var = getattr(self, field)
+                    try:
+                        ncf.createVariable(field, var.dtype, nc_dim,
+                            zlib=np.logical_not(nocompression))
+                    except Exception as e:
+                        pass
+                    else:
+                        ncf.variables[field][...] = var
+            # add crs attributes if applicable
+            if self.crs:
+                # add grid mapping attribute to each grid field
+                for field in fields:
+                    ncf[field].setncattr('grid_mapping', kwargs['grid_mapping_name'])
+                # add grid mapping variable with projection attributes
+                nccrs = ncf.createVariable(kwargs['grid_mapping_name'],np.byte,())
+                for att_name,att_val in self.crs.items():
+                    nccrs.setncattr(att_name, att_val)
 
     def to_geotif(self, out_file, **kwargs):
         """
@@ -580,8 +736,10 @@ class data(object):
         kwargs['origin']='lower'
         if band is None:
             zz=getattr(self, field)
-        else:
+        elif (band is not None) and (self.t_axis==2):
             zz=getattr(self, field)[:,:,band]
+        elif (band is not None) and (self.t_axis==0):
+            zz=getattr(self, field)[band,:,:]
 
         if gradient:
             zz=np.gradient(zz.squeeze(), self.x[1]-self.x[0], self.y[1]-self.y[0])[0]
