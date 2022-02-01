@@ -8,11 +8,11 @@ Created on Wed Jan  8 14:02:01 2020
 
 import numpy as np
 import pointCollection as pc
-from .bin_rows import bin_rows
+
 
 def apply_bin_fn(D_pt, res, fn=None, fields=['z'], xy0=[0, 0]):
 
-    pt_dict=bin_rows(np.c_[np.round((D_pt.x-xy0[0])/res)*res+xy0[0], np.round((D_pt.y-xy0[1])/res)*res+xy0[1]])
+    pt_dict=pc.bin_rows(np.c_[np.round((D_pt.x-xy0[0])/res)*res+xy0[0], np.round((D_pt.y-xy0[1])/res)*res+xy0[1]])
     keys=list(pt_dict.keys())
     xy=np.array(keys)
     result=pc.data(filename=D_pt.filename)\

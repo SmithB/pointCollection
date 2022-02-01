@@ -5,7 +5,7 @@ Created on Tue Apr 23 15:42:22 2019
 @author: ben
 """
 import numpy as np
-from pointCollection.unique_by_rows import unique_by_rows
+import pointCollection as pc
 #import matplotlib.pyplot as plt
 
 def dilate_bins(bins, delta):
@@ -118,7 +118,7 @@ def cross_tracks(T, delta_coarse=10, delta=1, DOPLOT=False):
     
     # find the bins that are in both elements of T
     B_fun=[np.round(np.c_[Ti.x, Ti.y]/delta_coarse)*delta_coarse for Ti in T]
-    B=[unique_by_rows(Bsub, return_dict=True)[1] for Bsub in B_fun]
+    B=[pc.unique_by_rows(Bsub, return_dict=True)[1] for Bsub in B_fun]
     bin_keys=B[0].keys() & B[1].keys()
     if len(bin_keys)==0:
         return None, None, None

@@ -980,7 +980,11 @@ class data(object):
     def copy_subset(self, rc_ind, band_ind=None, fields=None):
         if fields is None:
             fields=self.fields
-
+        if len(rc_ind) > 2:
+            if self.t_axis==2:
+                return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=rc_ind[2])
+            else:
+                return self.copy(fields=fields).index(rc_ind[1], rc_ind[2], band_ind=rc_ind[0])
         return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=band_ind)
 
     def crop(self, XR, YR, TR=None, fields=None):

@@ -6,9 +6,7 @@ Created on Fri Sep 21 14:28:30 2018
 """
 import h5py
 import numpy as np
-from .pt_blockmedian import pt_blockmedian
-import re
-import os
+import pointCollection as pc
 import pyproj
 
 class data(object):
@@ -273,7 +271,7 @@ class data(object):
         """
         if self.size<2:
             return self
-        ind=pt_blockmedian(self.x, self.y, np.float64(getattr(self, field)), scale, return_index=True)[3]
+        ind = pc.pt_blockmedian(self.x, self.y, np.float64(getattr(self, field)), scale, return_index=True)[3]
         try:
             for field in self.fields:
                 temp_field=getattr(self, field)
