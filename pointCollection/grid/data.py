@@ -92,6 +92,86 @@ class data(object):
                 self.fields.append(field)
         return self
 
+    def from_list(self, D_list, t_axis=None, sort=False):
+        """
+        build a grid object from a list of other grid objects
+        """
+        if t_axis is None:
+            t_axis = self.t_axis
+        # get name of each field
+        # get total number of time slices
+        # get merged extent and spacing
+        if len(self.fields)==0:
+            fields=set()
+            # number of time slices
+            nt = 0
+            # calculate merged extent
+            xmin,xmax,ymin,ymax = [np.inf,-np.inf,np.inf,-np.inf]
+            spacing = [None]*2
+            for D in D_list:
+                if hasattr(D,'fields'):
+                    fields=fields.union(D.fields)
+                # get length of time dimension
+                # nt += D.shape[D.t_axis]
+                nt += 1
+                # get spacing
+                spacing[0] = D.x[1] - D.x[0]
+                spacing[1] = D.y[1] - D.y[0]
+                # get new extents of merged grid
+                if (D.extent[0] < xmin):
+                    xmin = np.copy(D.extent[0])
+                if (D.extent[1] > xmax):
+                    xmax = np.copy(D.extent[1])
+                if (D.extent[2] < ymin):
+                    ymin = np.copy(D.extent[2])
+                if (D.extent[3] > ymax):
+                    ymax = np.copy(D.extent[3])
+            # convert unique fields to list
+            self.fields=list(fields)
+        # get list of times
+        if sort:
+            list_sort = np.argsort([d.time for d in D_list],axis=None)
+        else:
+            list_sort = np.arange(nt)
+        # calculate x and y dimensions with new extents
+        nx = np.int((xmax - xmin)/spacing[0]) + 1
+        ny = np.int((ymax - ymin)/spacing[1]) + 1
+        # calculate x and y arrays
+        self.x = np.linspace(xmin,xmax,nx)
+        self.y = np.linspace(ymin,ymax,ny)
+        # try to extract times
+        try:
+            self.time = np.concatenate([D_list[i].time for i in list_sort],axis=0)
+        except:
+            pass
+        # for each field
+        for field in self.fields:
+            if (t_axis == 0):
+                data_field = np.zeros((nt,ny,nx))
+            elif (t_axis == 2):
+                data_field = np.zeros((ny,nx,nt))
+            # for each object
+            for i in list_sort:
+                try:
+                    this_D = D_list[i]
+                    this_field = getattr(this_D,field)
+                    # calculate grid coordinates for merging fields
+                    iy = np.array((this_D.y[:,None]-xmin)/spacing[1],dtype=int)
+                    ix = np.array((this_D.x[None,:]-ymin)/spacing[0],dtype=int)
+                    # merge fields
+                    if (t_axis == 0) and (this_field.ndim == 2):
+                        data_field[i,iy,ix] = this_field[:]
+                    elif (t_axis == 2) and (this_field.ndim == 2):
+                        data_field[iy,ix,i] = this_field[:]
+                except AttributeError:
+                    print(f"Problem with field {field}")
+            # get the attribute for field
+            setattr(self, field, data_field)
+        # update the size and extent of the merged grid
+        self.__update_extent__()
+        self.__update_size_and_shape__()
+        return self
+
     def from_geotif(self, file, date_format=None, **kwargs):
         """
         Read a raster from a geotif
@@ -208,83 +288,100 @@ class data(object):
         return self
 
     def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, bands=None, skip=1, t_axis=None):
-       """
-       Read a raster from an hdf5 file
-       """
-       if t_axis is not None:
+        """
+        Read a raster from an hdf5 file
+        """
+        if t_axis is not None:
             self.t_axis=t_axis
 
-       if field_mapping is None:
+        if field_mapping is None:
             field_mapping={}
-       self.filename=h5_file
-       dims=['x','y','t','time']
-       if group[0] != '/':
+        self.filename=h5_file
+        dims=['x','y','t','time']
+        if group[0] != '/':
             group='/'+group
-       t=None
-       with h5py.File(h5_file,'r') as h5f:
-           x=np.array(h5f[group+'/x'])
-           y=np.array(h5f[group+'/y'])
-           if 't' in h5f[group]:
-               t=np.array(h5f[group]['t'])
-           elif 'time' in h5f[group]:
-               t=np.array(h5f[group]['time'])
-           if t is not None and bands is not None:
-               t=t[bands]
+        t=None
+        with h5py.File(h5_file,'r') as h5f:
+            x=np.array(h5f[group+'/x'])
+            y=np.array(h5f[group+'/y'])
+            if 't' in h5f[group]:
+                t=np.array(h5f[group]['t'])
+            elif 'time' in h5f[group]:
+                t=np.array(h5f[group]['time'])
+            if t is not None and bands is not None:
+                t=t[bands]
+            # get orientation of y-axis
+            yorient = np.sign(y[1] - y[0])
 
-           # if no field mapping provided, add everything in the group
-           if len(field_mapping.keys())==0:
-               for key in h5f[group].keys():
-                   if key in dims:
-                       continue
-                   if fields is not None and key not in fields:
-                       continue
-                   if key not in field_mapping:
-                       if hasattr(h5f[group][key],'shape'):
-                           field_mapping.update({key:key})
-           if bounds is not None:
-               cols = np.where(( x>=bounds[0][0] ) & ( x<= bounds[0][1] ))[0]
-               rows = np.where(( y>=bounds[1][0] ) & ( y<= bounds[1][1] ))[0]
-           else:
-               rows=np.arange(y.size, dtype=int)
-               cols=np.arange(x.size, dtype=int)
-           if len(rows) > 0 and len(cols) > 0:
-               for self_field in field_mapping:
-                   f_field_name=group+'/'+field_mapping[self_field]
-                   if f_field_name not in h5f:
-                       continue
-                   f_field=h5f[f_field_name]
+            # if no field mapping provided, add everything in the group
+            if len(field_mapping.keys())==0:
+                for key in h5f[group].keys():
+                    if key in dims:
+                        continue
+                    if fields is not None and key not in fields:
+                        continue
+                    if key not in field_mapping:
+                        if hasattr(h5f[group][key],'shape'):
+                            field_mapping.update({key:key})
+            # reduce raster to bounds and orient to lower
+            if (bounds is not None) and (yorient > 0):
+                # indices to read
+                xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
+                cols = slice(xind[0],xind[-1],1)
+                yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
+                rows = slice(yind[0],yind[-1],1)
+            elif (bounds is not None) and (yorient < 0):
+                # indices to read with reversed y
+                xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
+                cols = slice(xind[0],xind[-1],1)
+                yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
+                rows = slice(yind[-1],yind[0],-1)
+            elif (yorient < 0):
+                # indices to read (all) with reversed y
+                rows = slice(None,None,-1)
+                cols = slice(None,None,1)
+            else:
+                # indices to read (all)
+                rows = slice(None,None,1)
+                cols = slice(None,None,1)
+            # check that raster can be sliced
+            if len(x[cols]) > 0 and len(y[rows]) > 0:
+                for self_field in field_mapping:
+                    f_field_name=group+'/'+field_mapping[self_field]
+                    if f_field_name not in h5f:
+                        continue
+                    f_field=h5f[f_field_name]
 
-                   if len(h5f[f_field_name].shape) == 2:
-                       setattr(self, self_field,\
-                               np.array(h5f[f_field_name][rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
-                   else:
-                       if bands is None:
+                    if len(h5f[f_field_name].shape) == 2:
+                        z = np.array(f_field[rows, cols])
+                    else:
+                        if bands is None:
                             if len(f_field.shape) > 2:
                                 if self.t_axis==2:
-                                    setattr(self, self_field,\
-                                           np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,:]))
+                                    z = np.array(f_field[rows,cols,:])
                                 elif self.t_axis==0:
-                                    setattr(self, self_field,\
-                                           np.array(f_field[:,rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
+                                    z =  np.array(f_field[:,rows,cols])
                             elif len(f_field.shape) == 2:
-                                setattr(self, self_field,\
-                                       np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
-                       else:
+                                z = np.array(f_field[rows,cols])
+                        else:
                             if self.t_axis==2:
-                               setattr(self, self_field,\
-                                   np.array(f_field[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1,bands]))
+                                z = np.array(f_field[rows,cols,bands])
                             elif self.t_axis==0:
-                                setattr(self, self_field,\
-                                   np.array(f_field[bands, rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]))
-                   if self_field not in self.fields:
+                                z = np.array(f_field[bands,rows,cols])
+                    # replace invalid values with nan
+                    if hasattr(f_field, 'fillvalue'):
+                        z[z == f_field.fillvalue] = np.nan
+                    # set output field
+                    setattr(self, self_field, z)
+                    if self_field not in self.fields:
                         self.fields.append(self_field)
-               self.x=x[cols]
-               self.y=y[rows]
-               if t is not None:
-                   self.t=t
-       self.__update_extent__()
-       self.__update_size_and_shape__()
-       return self
+                self.x=x[cols]
+                self.y=y[rows]
+                if t is not None:
+                    self.t=t
+        self.__update_extent__()
+        self.__update_size_and_shape__()
+        return self
 
     def from_nc(self, nc_file, field_mapping=None, group='', fields=None, bounds=None, bands=None, skip=1, t_axis=None):
         """
@@ -299,6 +396,8 @@ class data(object):
         dims=['x','y','t','time']
         t=None
         with netCDF4.Dataset(nc_file,'r') as fileID:
+            # set automasking
+            fileID.set_auto_mask(False)
             # check if reading from root group or sub-group
             ncf=fileID.groups[group] if group else fileID
             x=ncf.variables['x'][:].copy()
@@ -309,6 +408,8 @@ class data(object):
                 t=ncf.variables['time'][:].copy()
             if t is not None and bands is not None:
                 t=t[bands]
+            # get orientation of y-axis
+            yorient = np.sign(y[1] - y[0])
 
             # if no field mapping provided, add everything in the group
             if len(field_mapping.keys())==0:
@@ -321,12 +422,23 @@ class data(object):
                         var = ncf.variables[key]
                         if hasattr(var,'shape') and var.shape:
                             field_mapping.update({key:key})
-            # reduce raster to bounds
-            if bounds is not None:
+            # reduce raster to bounds and orient to lower
+            if (bounds is not None) and (yorient > 0):
+                # indices to read
                 xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
                 cols = slice(xind[0],xind[-1],1)
                 yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
                 rows = slice(yind[0],yind[-1],1)
+            elif (bounds is not None) and (yorient < 0):
+                # indices to read with reversed y
+                xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
+                cols = slice(xind[0],xind[-1],1)
+                yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
+                rows = slice(yind[-1],yind[0],-1)
+            elif (yorient < 0):
+                # indices to read (all) with reversed y
+                rows = slice(None,None,-1)
+                cols = slice(None,None,1)
             else:
                 # indices to read (all)
                 rows = slice(None,None,1)
@@ -340,20 +452,26 @@ class data(object):
                     f_field=ncf.variables[f_field_name]
 
                     if len(f_field.shape) == 2:
-                        setattr(self, self_field, f_field[rows,cols])
+                        z = np.array(f_field[rows,cols])
                     else:
                         if len(f_field.shape) == 2:
-                            setattr(self, self_field, f_field[rows,cols])
+                            z = np.array(f_field[rows,cols])
                         elif bands is None and len(f_field.shape) > 2:
                             if self.t_axis==2:
-                                setattr(self, self_field, f_field[rows,cols,:])
+                                z = np.array(f_field[rows,cols,:])
                             elif self.t_axis==0:
-                                setattr(self, self_field, f_field[:,rows,cols])
+                                z = np.array(f_field[:,rows,cols])
                         else:
                             if self.t_axis==2:
-                                setattr(self, self_field, f_field[rows,cols,bands])
+                                z = np.array(f_field[rows,cols,bands])
                             elif self.t_axis==0:
-                                setattr(self, self_field, f_field[bands,rows,cols])
+                                z = np.array(f_field[bands,rows,cols])
+                    # replace invalid values with nan
+                    if hasattr(f_field, '_FillValue'):
+                        fill_value = f_field.getncattr('_FillValue')
+                        z[z == fill_value] = np.nan
+                    # set output field
+                    setattr(self, self_field, z)
                     if self_field not in self.fields:
                         self.fields.append(self_field)
                 # reduce x and y to bounds
@@ -763,8 +881,10 @@ class data(object):
         interpolate a 2-D grid to a set of x and y points
         """
         if field not in self.interpolator:
-            if len(getattr(self, field).shape) > 2:
+            if (len(getattr(self, field).shape) > 2) and (self.t_axis==2):
                 z0 = getattr(self, field)[:,:,band]
+            elif (len(getattr(self, field).shape) > 2) and (self.t_axis==0):
+                z0 = getattr(self, field)[band,:,:]
             else:
                 z0 = getattr(self, field).copy()
             NaN_mask =  np.isfinite(z0)==0
