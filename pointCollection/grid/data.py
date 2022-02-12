@@ -112,8 +112,12 @@ class data(object):
                 if hasattr(D,'fields'):
                     fields=fields.union(D.fields)
                 # get length of time dimension
-                # nt += D.shape[D.t_axis]
-                nt += 1
+                try:
+                    ntime = D.shape[D.t_axis]
+                except:
+                    nt += 1
+                else:
+                    nt += ntime
                 # get spacing
                 spacing[0] = D.x[1] - D.x[0]
                 spacing[1] = D.y[1] - D.y[0]
@@ -128,11 +132,6 @@ class data(object):
                     ymax = np.copy(D.extent[3])
             # convert unique fields to list
             self.fields=list(fields)
-        # get list of times
-        if sort:
-            list_sort = np.argsort([d.time for d in D_list],axis=None)
-        else:
-            list_sort = np.arange(nt)
         # calculate x and y dimensions with new extents
         nx = np.int((xmax - xmin)/spacing[0]) + 1
         ny = np.int((ymax - ymin)/spacing[1]) + 1
@@ -140,31 +139,63 @@ class data(object):
         self.x = np.linspace(xmin,xmax,nx)
         self.y = np.linspace(ymin,ymax,ny)
         # try to extract times
-        try:
-            self.time = np.concatenate([D_list[i].time for i in list_sort],axis=0)
-        except:
-            pass
+        self.time = np.zeros((nt))
+        i = 0
+        for D in D_list:
+            try:
+                ntime = D.shape[D.t_axis]
+                self.time[i:i+ntime] = D_list[i].time
+            except:
+                ntime = 1
+            i += ntime
+        # if sorting by time
+        if sort:
+            isort = np.argsort(self.time)
+            self.time = self.time[isort]
         # for each field
         for field in self.fields:
             if (t_axis == 0):
                 data_field = np.zeros((nt,ny,nx))
             elif (t_axis == 2):
                 data_field = np.zeros((ny,nx,nt))
+            # counter for filling variables
+            i = 0
             # for each object
-            for i in list_sort:
+            for D in D_list:
                 try:
-                    this_D = D_list[i]
-                    this_field = getattr(this_D,field)
                     # calculate grid coordinates for merging fields
-                    iy = np.array((this_D.y[:,None]-xmin)/spacing[1],dtype=int)
-                    ix = np.array((this_D.x[None,:]-ymin)/spacing[0],dtype=int)
+                    iy = np.array((D.y[:,None]-xmin)/spacing[1],dtype=int)
+                    ix = np.array((D.x[None,:]-ymin)/spacing[0],dtype=int)
+                    # number of time steps in field
+                    try:
+                        ntime = D.shape[D.t_axis]
+                    except:
+                        ntime = 1
+                    # create temporary field with merged x/y dimensions
+                    if (D.t_axis == 0):
+                        temp = np.zeros((ntime,ny,nx))
+                        temp[:,iy,ix] = getattr(D,field)
+                    elif (D.t_axis == 2) or (len(D.shape) == 2):
+                        temp = np.zeros((ny,nx,ntime))
+                        temp[iy,ix,:] = np.atleast_3d(getattr(D,field))
                     # merge fields
-                    if (t_axis == 0) and (this_field.ndim == 2):
-                        data_field[i,iy,ix] = this_field[:]
-                    elif (t_axis == 2) and (this_field.ndim == 2):
-                        data_field[iy,ix,i] = this_field[:]
+                    if (t_axis == 0) and (D.t_axis == 0):
+                        data_field[i:i+ntime,:,:] = temp[:]
+                    elif (t_axis == 2) and (D.t_axis == 2):
+                        data_field[:,:,i:i+ntime] = temp[:]
+                    elif (t_axis == 0) and (D.t_axis == 2):
+                        data_field[i:i+ntime,:,:] = np.transpose(temp[:],axes=(2,1,0))
+                    elif (t_axis == 2) and (D.t_axis == 0):
+                        data_field[:,:,i:i+ntime] = np.transpose(temp[:],axes=(1,2,0))
+                    # add to counter
+                    i += ntime
                 except AttributeError:
                     print(f"Problem with field {field}")
+            # sort data in field
+            if sort and (t_axis == 0):
+                data_field = data_field[isort,:,:]
+            elif sort and (t_axis == 2):
+                data_field = data_field[:,:,isort]
             # get the attribute for field
             setattr(self, field, data_field)
         # update the size and extent of the merged grid
@@ -352,7 +383,7 @@ class data(object):
                         continue
                     f_field=h5f[f_field_name]
 
-                    if len(h5f[f_field_name].shape) == 2:
+                    if len(f_field.shape) == 2:
                         z = np.array(f_field[rows, cols])
                     else:
                         if bands is None:
