@@ -19,7 +19,7 @@ from . import WV_date
 #import os
 
 class data(object):
-    def __init__(self, fields=None, t_axis=2):
+    def __init__(self, fields=None, fill_value=np.nan, t_axis=2):
         self.x=None
         self.y=None
         self.projection=None
@@ -27,6 +27,7 @@ class data(object):
         self.extent=None
         self.interpolator={}
         self.nan_interpolator={}
+        self.fill_value=fill_value
         self.time=None
         self.size=None
         self.shape=None
@@ -184,7 +185,7 @@ class data(object):
                     elif (t_axis == 2) and (D.t_axis == 2):
                         data_field[:,:,i:i+ntime] = temp[:]
                     elif (t_axis == 0) and (D.t_axis == 2):
-                        data_field[i:i+ntime,:,:] = np.transpose(temp[:],axes=(2,1,0))
+                        data_field[i:i+ntime,:,:] = np.transpose(temp[:],axes=(2,0,1))
                     elif (t_axis == 2) and (D.t_axis == 0):
                         data_field[:,:,i:i+ntime] = np.transpose(temp[:],axes=(1,2,0))
                     # add to counter
@@ -215,7 +216,7 @@ class data(object):
         self.from_gdal(ds, **kwargs)
         return self
 
-    def from_gdal(self, ds, field='z', bands=None, bounds=None, extent=None, skip=1, min_res=None):
+    def from_gdal(self, ds, field='z', bands=None, bounds=None, extent=None, skip=1, fill_value=np.nan, min_res=None):
         """
         make a pointCollection.grid.data from a gdal dataset
 
@@ -254,6 +255,9 @@ class data(object):
 
         if min_res is not None:
             skip=np.max([1, np.ceil(min_res/np.abs(GT[1]))]).astype(int)
+
+        if fill_value is not None:
+            self.fill_value = fill_value
 
         proj=ds.GetProjection()
         if bands is None:
@@ -305,7 +309,7 @@ class data(object):
         if nodataValue is not None and np.isfinite(nodataValue):
             bad = z==np.array(nodataValue).astype(z.dtype)
             z = np.float64(z)
-            z[bad] = np.NaN
+            z[bad] = self.fill_value
         else:
             z = np.float64(z)
         x=x[cols]
@@ -318,12 +322,14 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, bands=None, skip=1, t_axis=None):
+    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, bands=None, skip=1, fill_value=None, t_axis=None):
         """
         Read a raster from an hdf5 file
         """
         if t_axis is not None:
             self.t_axis=t_axis
+        if fill_value is not None:
+            self.fill_value = fill_value
 
         if field_mapping is None:
             field_mapping={}
@@ -332,6 +338,7 @@ class data(object):
         if group[0] != '/':
             group='/'+group
         t=None
+        grid_mapping_name=None
         with h5py.File(h5_file,'r') as h5f:
             x=np.array(h5f[group+'/x'])
             y=np.array(h5f[group+'/y'])
@@ -401,7 +408,12 @@ class data(object):
                                 z = np.array(f_field[bands,rows,cols])
                     # replace invalid values with nan
                     if hasattr(f_field, 'fillvalue'):
-                        z[z == f_field.fillvalue] = np.nan
+                        z[z == f_field.fillvalue] = self.fill_value
+                    # try to find grid mapping name from variable
+                    try:
+                        grid_mapping_name = f_field.attrs['grid_mapping']
+                    except (KeyError,AttributeError):
+                        pass
                     # set output field
                     setattr(self, self_field, z)
                     if self_field not in self.fields:
@@ -410,22 +422,31 @@ class data(object):
                 self.y=y[rows]
                 if t is not None:
                     self.t=t
+            # retrieve grid mapping and add to projection
+            if grid_mapping_name is not None:
+                self.projection = {}
+                for att_name,att_val in h5f[grid_mapping_name].attrs.items():
+                    self.projection[att_name] = att_val
         self.__update_extent__()
         self.__update_size_and_shape__()
         return self
 
-    def from_nc(self, nc_file, field_mapping=None, group='', fields=None, bounds=None, bands=None, skip=1, t_axis=None):
+    def from_nc(self, nc_file, field_mapping=None, group='', fields=None, bounds=None, bands=None, skip=1, fill_value=np.nan, t_axis=None):
         """
         Read a raster from an netCDF4 file
         """
         if t_axis is not None:
             self.t_axis=t_axis
 
+        if fill_value is not None:
+            self.fill_value = fill_value
+
         if field_mapping is None:
             field_mapping={}
         self.filename=nc_file
         dims=['x','y','t','time']
         t=None
+        grid_mapping_name = None
         with netCDF4.Dataset(nc_file,'r') as fileID:
             # set automasking
             fileID.set_auto_mask(False)
@@ -500,7 +521,10 @@ class data(object):
                     # replace invalid values with nan
                     if hasattr(f_field, '_FillValue'):
                         fill_value = f_field.getncattr('_FillValue')
-                        z[z == fill_value] = np.nan
+                        z[z == fill_value] = self.fill_value
+                    # find grid mapping name from variable
+                    if hasattr(f_field, 'grid_mapping'):
+                        grid_mapping_name = f_field.getncattr('grid_mapping')
                     # set output field
                     setattr(self, self_field, z)
                     if self_field not in self.fields:
@@ -510,11 +534,16 @@ class data(object):
                 self.y=y[rows]
                 if t is not None:
                     self.t=t
+            # retrieve grid mapping and add to projection
+            if grid_mapping_name is not None:
+                self.projection = {}
+                for att_name in fileID[grid_mapping_name].ncattrs():
+                    self.projection[att_name] = fileID.variables[grid_mapping_name].getncattr(att_name)
         self.__update_extent__()
         self.__update_size_and_shape__()
         return self
 
-    def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False, **kwargs):
+    def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False, attributes={}, fill_value=None, **kwargs):
         """
         write a grid data object to an hdf5 file
         """
@@ -531,13 +560,33 @@ class data(object):
         if group[0] != '/':
             group='/'+group
 
+        # update fill values in fields
+        if fill_value is not None:
+            self.replace_invalid(fields=fields, fill_value=fill_value)
+
         # get crs attributes
         self.crs_attributes(**kwargs)
         with h5py.File(out_file,mode) as h5f:
+            # try adding file level attributes
+            try:
+                for att_name,att_val in attributes['ROOT'].items():
+                    h5f.attrs[att_name] = att_val
+            except Exception:
+                pass
+
+            # try creating the output group
             try:
                 h5f.create_group(group)
             except Exception:
                 pass
+
+            # try adding group attributes
+            try:
+                for att_name,att_val in attributes[group].items():
+                    h5f[group].attrs[att_name] = att_val
+            except Exception:
+                pass
+
             for field in ['x','y','time', 't'] + fields:
                 # if field exists, overwrite it
                 if field in h5f[group]:
@@ -549,9 +598,17 @@ class data(object):
                         if nocompression or field in ['x','y','time']:
                             h5f.create_dataset(group+'/'+field, data=getattr(self, field))
                         else:
-                            h5f.create_dataset(group+'/'+field, data=getattr(self, field), chunks=True, compression="gzip")
+
+                            h5f.create_dataset(group+'/'+field, data=getattr(self, field),
+                                chunks=True, compression="gzip", fillvalue=self.fill_value)
                     except Exception:
                          pass
+                # try adding field attributes
+                try:
+                    for att_name,att_val in attributes[field].items():
+                        h5f[group+'/'+field].attrs[att_name] = att_val
+                except Exception:
+                    pass
             # add crs attributes if applicable
             if self.crs:
                 # add grid mapping attribute to each grid field
@@ -562,7 +619,7 @@ class data(object):
                 for att_name,att_val in self.crs.items():
                     h5crs.attrs[att_name] = att_val
 
-    def to_nc(self, out_file, fields=None, group='', replace=False, nocompression=False, **kwargs):
+    def to_nc(self, out_file, fields=None, group='', replace=False, nocompression=False, attributes={}, fill_value=None, **kwargs):
         """
         write a grid data object to a netCDF4 file
         """
@@ -583,15 +640,33 @@ class data(object):
         except Exception as e:
             t_name = None
 
+        # update fill values in fields
+        if fill_value is not None:
+            self.replace_invalid(fields=fields, fill_value=fill_value)
+
         # get crs attributes
         self.crs_attributes(**kwargs)
         with netCDF4.Dataset(out_file,mode) as fileID:
+            # try adding file level attributes
+            try:
+                for att_name,att_val in attributes['ROOT'].items():
+                    fileID.setncattr(att_name, att_val)
+            except Exception:
+                pass
             # check if writing to root group or sub-group
             try:
                 fileID.createGroup(group)
             except Exception:
                 pass
             ncf=fileID.groups[group] if group else fileID
+            # try adding group level attributes
+            if group:
+                try:
+                    for att_name,att_val in attributes[group].items():
+                        ncf.setncattr(att_name, att_val)
+                except Exception:
+                    pass
+
             # for each dimension variable
             for field in ['x','y','time','t']:
                 # if field exists, overwrite it
@@ -622,11 +697,18 @@ class data(object):
                     var = getattr(self, field)
                     try:
                         ncf.createVariable(field, var.dtype, nc_dim,
-                            zlib=np.logical_not(nocompression))
+                            zlib=np.logical_not(nocompression),
+                            fill_value=self.fill_value)
                     except Exception as e:
                         pass
                     else:
                         ncf.variables[field][...] = var
+                # try adding the field attributes
+                try:
+                    for att_name,att_val in attributes[field].items():
+                        ncf[field].setncattr(att_name, att_val)
+                except Exception:
+                    pass
             # add crs attributes if applicable
             if self.crs:
                 # add grid mapping attribute to each grid field
@@ -918,7 +1000,8 @@ class data(object):
                 z0 = getattr(self, field)[band,:,:]
             else:
                 z0 = getattr(self, field).copy()
-            NaN_mask =  np.isfinite(z0)==0
+            # find where invalid
+            NaN_mask =  (np.isfinite(z0)==0) | (z0 == self.fill_value)
             z0[NaN_mask] = 0
 
             if self.y[1]> self.y[0]:
@@ -942,9 +1025,9 @@ class data(object):
                 if field in self.nan_interpolator:
                     to_NaN=np.ones_like(result, dtype=bool)
                     to_NaN[good_y, good_x] = self.nan_interpolator[field](y[good_y], x[good_x])
-                    result[to_NaN] = np.NaN
+                    result[to_NaN] = self.fill_value
         else:
-            result = np.zeros_like(x)+np.NaN
+            result = np.zeros_like(x) + self.fill_value
             good = (x >= np.min(self.x)) & (x <= np.max(self.x)) & \
                    (y >= np.min(self.y)) & (y <= np.max(self.y))
 
@@ -953,7 +1036,7 @@ class data(object):
                 to_NaN = good
                 # nan_interpolator returns nonzero for NaN points in self.z
                 to_NaN[good] = self.nan_interpolator[field].ev(y[good], x[good]) != 0
-                result[to_NaN] = np.NaN
+                result[to_NaN] = self.fill_value
         return result
 
     def bounds(self, pad=0):
@@ -961,6 +1044,22 @@ class data(object):
         Return the x and y bounds of a grid
         """
         return [[np.min(self.x)-pad, np.max(self.x)+pad], [np.min(self.y)-pad, np.max(self.y)+pad]]
+
+    def replace_invalid(self, fields=None, fill_value=np.nan):
+        """
+        Replace invalid values within a field with a new fill_value
+        """
+        if fields is None:
+            fields=self.fields
+        # for each field
+        for field in fields:
+            the_field = getattr(self, field)
+            indices = np.nonzero(np.isnan(the_field) | (the_field == self.fill_value))
+            the_field[indices] = fill_value
+            setattr(self, field, the_field)
+        # update class fill value
+        self.fill_value = fill_value
+        return self
 
     def crs_attributes(self, srs_proj4=None, srs_wkt=None, srs_epsg=None, **kwargs):
         """
@@ -981,7 +1080,10 @@ class data(object):
         # convert proj4 string to dictionary
         proj4_dict = {p[0]:p[1] for p in re.findall(r'\+(.*?)\=([^ ]+)',sr.ExportToProj4())}
         # get projection attributes
-        self.crs['spatial_epsg'] = int(sr.GetAttrValue('AUTHORITY',1))
+        try:
+            self.crs['spatial_epsg'] = int(sr.GetAttrValue('AUTHORITY',1))
+        except Exception as e:
+            pass
         self.crs['crs_wkt'] = sr.ExportToWkt()
         self.crs['spatial_ref'] = sr.ExportToWkt()
         self.crs['proj4_params'] = sr.ExportToProj4()
