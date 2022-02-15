@@ -422,11 +422,14 @@ class data(object):
                 self.y=y[rows]
                 if t is not None:
                     self.t=t
-            # retrieve grid mapping and add to projection
+            # try to retrieve grid mapping and add to projection
             if grid_mapping_name is not None:
                 self.projection = {}
-                for att_name,att_val in h5f[grid_mapping_name].attrs.items():
-                    self.projection[att_name] = att_val
+                try:
+                    for att_name,att_val in h5f[group+'/'+grid_mapping_name].attrs.items():
+                        self.projection[att_name] = att_val
+                except:
+                    pass
         self.__update_extent__()
         self.__update_size_and_shape__()
         return self
@@ -534,11 +537,14 @@ class data(object):
                 self.y=y[rows]
                 if t is not None:
                     self.t=t
-            # retrieve grid mapping and add to projection
+            # try to retrieve grid mapping and add to projection
             if grid_mapping_name is not None:
                 self.projection = {}
-                for att_name in fileID[grid_mapping_name].ncattrs():
-                    self.projection[att_name] = fileID.variables[grid_mapping_name].getncattr(att_name)
+                try:
+                    for att_name in ncf[grid_mapping_name].ncattrs():
+                        self.projection[att_name] = ncf.variables[grid_mapping_name].getncattr(att_name)
+                except:
+                    pass
         self.__update_extent__()
         self.__update_size_and_shape__()
         return self
