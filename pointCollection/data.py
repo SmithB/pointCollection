@@ -112,7 +112,8 @@ class data(object):
                     if not isinstance(group, (list, tuple)):
                         group=[group]
                     for this_group in group:
-                        field_dict={this_group: [key for key in h5_f[this_group].keys()]}
+                        field_dict={this_group: [key for key in h5_f[this_group].keys() \
+                                                 if isinstance(h5_f[this_group][key], h5py.Dataset)]}
                 else:
                     field_dict=self.field_dict
             # make a slice out of whatever was provided in index_range
