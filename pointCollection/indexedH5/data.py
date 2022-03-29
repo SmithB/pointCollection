@@ -134,6 +134,7 @@ class data(pc.data):
                     assert(getattr(out_data, field).shape==out_data.shape)
                 except AssertionError as e:
                     print(f"Indexed H5: problem with field {field}: expected shape {out_data.shape}, found shape {getattr(out_data, field).shape}" )
+                    print(f"\tfilename={self.filename}")
                     raise(e)
         return out_data
 
