@@ -99,14 +99,16 @@ def cross_by_zoom(T, inds, delta, DOPLOT=False):
                 xy_ep[ii]=xy[ii][ep[ii]]    
         if use_time:
             xyC, ep, l0 = cross_by_time(t, xy, ep, l0)
-        if ep==ep_last and (Lsearch==delta):
-            return None, None, None
+        #if ep==ep_last and (Lsearch==delta):
+        #    return None, None, None
         xyC, l0 = x_point(xy[0][[ep[0][0], ep[0][1]]], xy[1][[ep[1][0], ep[1][1]]] )
         if DOPLOT:
             import matplotlib.pyplot as plt
             plt.plot(xyC.real, xyC.imag,'ko')
         if xyC is None:
             return None, None, None
+        if ep==ep_last and (Lsearch==delta):
+            break
         Lsearch=np.maximum(Lsearch/2, delta)
     return [xyC.real, xyC.imag], [inds[0][ep[0]], inds[1][ep[1]]], l0
         
