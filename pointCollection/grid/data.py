@@ -10,6 +10,10 @@ from osgeo import gdal, gdalconst, osr
 import numpy as np
 
 import re
+import io
+import bz2
+import gzip
+import uuid
 import h5py
 import netCDF4
 from scipy.interpolate import RectBivariateSpline
@@ -322,7 +326,28 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None, bounds=None, bands=None, skip=1, fill_value=None, t_axis=None):
+    def h5_open(self, h5_file, mode='r', compression=None):
+        """
+        Open an HDF5 file with or without external compression
+        """
+        if (compression is None):
+            return h5py.File(h5_file,mode=mode)
+        elif (compression == 'bzip'):
+            # read bytes from bzipcompressed file
+            with bz2.BZ2File(h5_file) as fd:
+                fid = io.BytesIO(fd.read())
+                fid.seek(0)
+                return h5py.File(fid, 'r')
+        elif (compression == 'gzip'):
+            # read gzip compressed file and extract into in-memory file object
+            with gzip.open(h5_file,'r') as fd:
+                fid = io.BytesIO(fd.read())
+                fid.seek(0)
+                return h5py.File(fid, 'r')
+
+    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None,
+        xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
+        t_axis=None, compression=None):
         """
         Read a raster from an hdf5 file
         """
@@ -334,14 +359,14 @@ class data(object):
         if field_mapping is None:
             field_mapping={}
         self.filename=h5_file
-        dims=['x','y','t','time']
+        dims=[xname,yname,'t','time']
         if group[0] != '/':
             group='/'+group
         t=None
         grid_mapping_name=None
-        with h5py.File(h5_file,'r') as h5f:
-            x=np.array(h5f[group+'/x'])
-            y=np.array(h5f[group+'/y'])
+        with self.h5_open(h5_file, mode='r', compression=compression) as h5f:
+            x=np.array(h5f[group+'/'+xname])
+            y=np.array(h5f[group+'/'+yname])
             if 't' in h5f[group]:
                 t=np.array(h5f[group]['t'])
             elif 'time' in h5f[group]:
@@ -434,9 +459,26 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def from_nc(self, nc_file, field_mapping=None, group='', fields=None, bounds=None, bands=None, skip=1, fill_value=np.nan, t_axis=None):
+    def nc_open(self, nc_file, mode='r', compression=None):
         """
-        Read a raster from an netCDF4 file
+        Open a netCDF4 file with or without external compression
+        """
+        if (compression is None):
+            return netCDF4.Dataset(nc_file, mode=mode)
+        elif (compression == 'bzip'):
+            # read bytes from bzipcompressed file
+            with bz2.BZ2File(nc_file) as fd:
+                return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
+        elif (compression == 'gzip'):
+            # read bytes from gzip compressed file
+            with gzip.open(nc_file) as fd:
+                return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
+
+    def from_nc(self, nc_file, field_mapping=None, group='', fields=None,
+        xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=np.nan,
+        t_axis=None, compression=None):
+        """
+        Read a raster from a netCDF4 file
         """
         if t_axis is not None:
             self.t_axis=t_axis
@@ -447,18 +489,18 @@ class data(object):
         if field_mapping is None:
             field_mapping={}
         self.filename=nc_file
-        dims=['x','y','t','time']
+        dims=[xname,yname,'t','time']
         t=None
         grid_mapping_name = None
-        with netCDF4.Dataset(nc_file,'r') as fileID:
+        with self.nc_open(nc_file,mode='r',compression=compression) as fileID:
             # set automasking
             fileID.set_auto_mask(False)
             # check if reading from root group or sub-group
             ncf=fileID.groups[group] if group else fileID
-            x=ncf.variables['x'][:].copy()
-            y=ncf.variables['y'][:].copy()
+            x=ncf.variables[xname][:].copy()
+            y=ncf.variables[yname][:].copy()
             if 't' in ncf.variables.keys():
-                t=ncf.variables['y'][:].copy()
+                t=ncf.variables['t'][:].copy()
             elif 'time' in ncf.variables.keys():
                 t=ncf.variables['time'][:].copy()
             if t is not None and bands is not None:
