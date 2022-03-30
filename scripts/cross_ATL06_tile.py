@@ -1,3 +1,4 @@
+#! /usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Wed May  1 10:40:57 2019
@@ -24,7 +25,8 @@ def ATL06_crossovers(files, different_cycles=False):
         D += pc.reconstruct_ATL06_tracks(\
             pc.indexedH5.data(filename=file).read(None, fields=fields ))
     for Di in D:
-        along_track_dh_filter(Di, threshold=2,  to_nan=True)
+        # set the along-track dh filter to calculate the differences, but not to edit the data
+        along_track_dh_filter(Di, threshold=None,  to_nan=False)
         Di.assign({'time':Di.delta_time})
         Di.index(np.isfinite(Di.h_li))
     xover_list=list()
@@ -40,7 +42,7 @@ def ATL06_crossovers(files, different_cycles=False):
                 try:
                     xover_list.append({'xyC':xyC, 'data_0':D[ii][inds[0]], 'data_1':D[jj][inds[1]], 'L0':L[0], 'L1':L[1]})
                 except Exception as e:
-                    print("HERE")
+                    print("# ATL06_crossovers: caught exception:" + str(e.__class__) + ' '+str(e))
     return xover_list
 
 
@@ -73,7 +75,7 @@ def write_xovers(xover_list, out_file):
             h5f.create_dataset('/slope_y', data=np.array([item['slope_y'] for item in xover_list]))
             h5f.create_dataset('/grounded', data=np.array([item['grounded'] for item in xover_list]))
         except Exception as e:
-            pass
+            print("# write_xovers: caught exception:" + str(e.__class__) + ' '+str(e))
     return #xover_list
 
 def read_xovers(xover_dir):
@@ -89,25 +91,29 @@ def read_xovers(xover_dir):
             X.append(pc.data(fields=['x','y']).from_file(tile,field_dict={None:['x','y']}))
     return D, X
 
-def make_queue(files, hemisphere, out_dir):
+def make_queue(files, args):
 
-    if not os.path.isdir(out_dir):
-        os.mkdir(out_dir)
+    if not os.path.isdir(args.out_dir):
+        os.mkdir(args.out_dir)
     
     for file in files:
-        if not os.path.isfile(out_dir+'/'+os.path.basename(file)):
-            # N.B.  this requires that cross_ATL06_tile is on the unix path.
-            if hemisphere is not None:
-                print('cross_ATL06_tile.py %s %d %s' %   (file, hemisphere, out_dir))
-            else:
-                print('cross_ATL06_tile.py %s %s' %   (file, out_dir)) 
-def calc_slope(xovers, hemisphere=-1):
+        if os.path.isfile(args.out_dir+'/'+os.path.basename(file)):
+            continue
+        # N.B.  this requires that cross_ATL06_tile is on the unix path.
+        this_str = 'cross_ATL06_tile.py %s %s ' %   (file, args.out_dir)
+        if args.hemisphere is not None:
+            this_str += f" -H {args.hemisphere}"
+        if args.different_cycles:
+            this_str += " --different_cycles "
+        if args.mask_file is not None:
+            this_str += f" --mask_file {args.mask_file}"
+    print(this_str)
+
+def calc_slope(xovers, mask_file, hemisphere=-1):
 
     if hemisphere==-1:
-        mask_file='/Volumes/ice1/ben/Quantarctica/Quantarctica2/Scientific/Glaciology/ALBMAP/ALBMAP_Mask.tif'
         dx=1.e4
     else:
-        mask_file='/Volumes/ice2/ben/ATL14_test/GimpIceMask_100m_edited.tif'
         dx=200
 
     xy=np.c_[[item['xyC'] for item in xovers]]
@@ -155,11 +161,12 @@ def main():
     parser=argparse.ArgumentParser(description='Find crossovers in an ATL06 tile')
     parser.add_argument('tile_glob', type=str, help="glob which matches the tiles")
     parser.add_argument('out_dir', type=str, help="output directory")
+    parser.add_argument('--mask_file', '-m', help="mask file identifying grounded points")
     parser.add_argument('--hemisphere', '-H', type=int, help="hemisphere, -1 for Antarctica, 1, for Arctic")
+    parser.add_argument('--different_cycles_only','-d', action='store_true', help="Calculate crossovers only for tracks from different cycles")
     parser.add_argument('--queue','-q', action="store_true")
     args=parser.parse_args()
     
-    hemisphere=args.hemisphere
     out_dir=args.out_dir
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
@@ -169,13 +176,13 @@ def main():
         files += glob.glob(temp)
 
     if args.queue:
-        make_queue(files, hemisphere, out_dir)
+        make_queue(files, args)
         return
 
-    xover_list=ATL06_crossovers(files)
+    xover_list=ATL06_crossovers(files, different_cycles=args.different_cycles_only)
     if len(xover_list) > 0:
-        if hemisphere is not None:
-            calc_slope(xover_list, hemisphere=hemisphere)
+        if args.hemisphere is not None:
+            calc_slope(xover_list, args.mask_file, hemisphere=args.hemisphere)
         write_xovers(xover_list, os.path.join(out_dir, os.path.basename(files[0])))
 
 
