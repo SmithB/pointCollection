@@ -95,7 +95,7 @@ def make_queue(files, args):
 
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)
-    
+
     for file in files:
         if os.path.isfile(args.out_dir+'/'+os.path.basename(file)):
             continue
@@ -103,8 +103,8 @@ def make_queue(files, args):
         this_str = 'cross_ATL06_tile.py %s %s ' %   (file, args.out_dir)
         if args.hemisphere is not None:
             this_str += f" -H {args.hemisphere}"
-        if args.different_cycles:
-            this_str += " --different_cycles "
+        if args.different_cycles_only:
+            this_str += " --different_cycles_only "
         if args.mask_file is not None:
             this_str += f" --mask_file {args.mask_file}"
     print(this_str)
