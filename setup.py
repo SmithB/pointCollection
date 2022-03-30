@@ -23,19 +23,19 @@ def check_output(cmd):
     return subprocess.check_output(cmd).decode('utf')
 
 # check if GDAL is installed
-#gdal_output = [None] * 4
-#try:
-#    for i, flag in enumerate(("--cflags", "--libs", "--datadir", "--version")):
-#        gdal_output[i] = check_output(['gdal-config', flag]).strip()
-#except:
-#    log.warning('Failed to get options via gdal-config')
-#else:
-#    log.info("GDAL version from via gdal-config: {0}".format(gdal_output[3]))
-## if setting GDAL version from via gdal-config
-#if gdal_output[3]:
-#    # add version information to gdal in install_requires
-#    gdal_index = install_requires.index('gdal')
-#    install_requires[gdal_index] = 'gdal=={0}'.format(gdal_output[3])
+gdal_output = [None] * 4
+try:
+    for i, flag in enumerate(("--cflags", "--libs", "--datadir", "--version")):
+        gdal_output[i] = check_output(['gdal-config', flag]).strip()
+except:
+    log.warning('Failed to get options via gdal-config')
+else:
+    log.info("GDAL version from via gdal-config: {0}".format(gdal_output[3]))
+# if setting GDAL version from via gdal-config
+if gdal_output[3]:
+    # add version information to gdal in install_requires
+    gdal_index = install_requires.index('gdal')
+    install_requires[gdal_index] = 'gdal=={0}'.format(gdal_output[3])
 
 setup(
     name='pointCollection',
