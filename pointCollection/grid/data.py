@@ -347,7 +347,7 @@ class data(object):
 
     def from_h5(self, h5_file, field_mapping=None, group='/', fields=None,
         xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
-        t_axis=None, compression=None):
+        t_axis=None, compression=None, swap_xy=False):
         """
         Read a raster from an hdf5 file
         """
@@ -365,8 +365,8 @@ class data(object):
         t=None
         grid_mapping_name=None
         with self.h5_open(h5_file, mode='r', compression=compression) as h5f:
-            x=np.array(h5f[group+'/'+xname])
-            y=np.array(h5f[group+'/'+yname])
+            x=np.array(h5f[group+'/'+xname]).ravel()
+            y=np.array(h5f[group+'/'+yname]).ravel()
             if 't' in h5f[group]:
                 t=np.array(h5f[group]['t'])
             elif 'time' in h5f[group]:
@@ -387,26 +387,45 @@ class data(object):
                         if hasattr(h5f[group][key],'shape'):
                             field_mapping.update({key:key})
             # reduce raster to bounds and orient to lower
-            if (bounds is not None) and (yorient > 0):
+            if bounds is not None:
                 # indices to read
                 xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-                cols = slice(xind[0],xind[-1],1)
+                cols = slice(xind[0],xind[-1], skip)
                 yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-                rows = slice(yind[0],yind[-1],1)
-            elif (bounds is not None) and (yorient < 0):
-                # indices to read with reversed y
-                xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-                cols = slice(xind[0],xind[-1],1)
-                yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-                rows = slice(yind[-1],yind[0],-1)
-            elif (yorient < 0):
-                # indices to read (all) with reversed y
-                rows = slice(None,None,-1)
-                cols = slice(None,None,1)
+                rows = slice(yind[0],yind[-1], skip)
             else:
                 # indices to read (all)
-                rows = slice(None,None,1)
-                cols = slice(None,None,1)
+                rows = slice(None,None, skip)
+                cols = slice(None,None, skip)
+
+            # old version!    
+            #if (bounds is not None) and (yorient > 0):
+            #    # indices to read
+            #    xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
+            #    cols = slice(xind[0],xind[-1],1)
+            #    yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
+            #    rows = slice(yind[0],yind[-1],1)
+            #elif (bounds is not None) and (yorient < 0):
+            #   # indices to read with reversed y
+            #    xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
+            #    cols = slice(xind[0],xind[-1],1)
+            #    yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
+            #    rows = slice(yind[-1],yind[0],-1)
+            #elif (yorient < 0):
+            #    # indices to read (all) with reversed y
+            #    rows = slice(None,None,-1)
+            #    cols = slice(None,None,1)
+            #else:
+            #    # indices to read (all)
+            #    rows = slice(None,None,1)
+            #    cols = slice(None,None,1)
+
+            if swap_xy:
+                i1=rows
+                i0=cols
+            else:
+                i0=rows
+                i1=cols
             # check that raster can be sliced
             if len(x[cols]) > 0 and len(y[rows]) > 0:
                 for self_field in field_mapping:
@@ -421,16 +440,16 @@ class data(object):
                         if bands is None:
                             if len(f_field.shape) > 2:
                                 if self.t_axis==2:
-                                    z = np.array(f_field[rows,cols,:])
+                                    z = np.array(f_field[i0,i1,:])
                                 elif self.t_axis==0:
-                                    z =  np.array(f_field[:,rows,cols])
+                                    z =  np.array(f_field[:,i0,i1])
                             elif len(f_field.shape) == 2:
-                                z = np.array(f_field[rows,cols])
+                                z = np.array(f_field[i0,i1])
                         else:
                             if self.t_axis==2:
-                                z = np.array(f_field[rows,cols,bands])
+                                z = np.array(f_field[i0,i1,bands])
                             elif self.t_axis==0:
-                                z = np.array(f_field[bands,rows,cols])
+                                z = np.array(f_field[bands,i0,i1])
                     # replace invalid values with nan
                     if hasattr(f_field, 'fillvalue'):
                         z[z == f_field.fillvalue] = self.fill_value
@@ -439,12 +458,33 @@ class data(object):
                         grid_mapping_name = f_field.attrs['grid_mapping']
                     except (KeyError,AttributeError):
                         pass
+                    if swap_xy:
+                        if len(z.shape) > 2:
+                            if self.t_axis==0:
+                                z=np.transpose(z, [0, 2, 1])
+                            else:
+                                z=np.transpose(z, [1, 0, 2])
+                        else:
+                            z=np.transpose(z, [1, 0])
+                    # orient to lower:
+                    if yorient == -1:
+                        if len(z.shape) >2:
+                            if self.t_axis ==0:
+                                z=z[:,::-1,:]
+                            else:
+                                z=z[::-1,:,:]
+                        else:
+                            z=z[::-1,:]
                     # set output field
                     setattr(self, self_field, z)
                     if self_field not in self.fields:
                         self.fields.append(self_field)
+
                 self.x=x[cols]
                 self.y=y[rows]
+                if yorient==-1:
+                    y=y[::-1]
+                    
                 if t is not None:
                     self.t=t
             # try to retrieve grid mapping and add to projection
