@@ -606,7 +606,11 @@ class data(object):
                     # replace invalid values with nan
                     if hasattr(f_field, '_FillValue'):
                         fill_value = f_field.getncattr('_FillValue')
-                        z[z == fill_value] = self.fill_value
+                        try:
+                            z[z == fill_value] = self.fill_value
+                        except ValueError as e:
+                            z=z.astype(float)
+                            z[z == fill_value] = self.fill_value
                     # find grid mapping name from variable
                     if hasattr(f_field, 'grid_mapping'):
                         grid_mapping_name = f_field.getncattr('grid_mapping')
