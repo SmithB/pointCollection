@@ -452,7 +452,12 @@ class data(object):
                                 z = np.array(f_field[bands,i0,i1])
                     # replace invalid values with nan
                     if hasattr(f_field, 'fillvalue'):
-                        z[z == f_field.fillvalue] = self.fill_value
+                        try:
+                            z[z == f_field.fillvalue] = self.fill_value
+                        except ValueError:
+                            # try setting the data type to the data type of the fill value
+                            z=z.astype(self.fill_value.__class__)
+                            z[z == f_field.fillvalue] = self.fill_value
                     # try to find grid mapping name from variable
                     try:
                         grid_mapping_name = f_field.attrs['grid_mapping']
