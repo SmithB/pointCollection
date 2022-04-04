@@ -292,7 +292,7 @@ class data(object):
         return a copy of a subset of the object
         """
         dd=dict()
-        if self.columns is not None and self.columns >=1 and by_row is not None:
+        if self.columns is not None and self.columns >=1 and by_row is not None or isinstance(index, slice):
             by_row=True
         if datasets is None:
             datasets=self.fields.copy()
