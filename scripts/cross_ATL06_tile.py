@@ -16,7 +16,7 @@ import glob
 #import re
 #import sys
 
-def ATL06_crossovers(files, different_cycles=False):
+def ATL06_crossovers(files, different_cycles=False, delta_time_max=np.inf):
     D=[]
     with h5py.File(files[0],'r') as h5f:
         fields=list(h5f[list(h5f.keys())[0]].keys())
@@ -33,6 +33,8 @@ def ATL06_crossovers(files, different_cycles=False):
     #plt.clf()
     for ii in np.arange(len(D)):
         for jj in np.arange(len(D)):
+            if np.abs(D[ii].delta_time[0] - D[jj].delta_time[0]) > delta_time_max:
+                continue
             if (D[ii].size <2) or (D[jj].size < 2) or (ii>=jj) or (D[ii].rgt[0]==D[jj].rgt[0]):
                 continue
             if different_cycles and D[ii].cycle[0]==D[jj].cycle[0]:
@@ -164,6 +166,7 @@ def main():
     parser.add_argument('--mask_file', '-m', help="mask file identifying grounded points")
     parser.add_argument('--hemisphere', '-H', type=int, help="hemisphere, -1 for Antarctica, 1, for Arctic")
     parser.add_argument('--different_cycles_only','-d', action='store_true', help="Calculate crossovers only for tracks from different cycles")
+    parser.add_argument('--delta_time_max','-dtm', type=float, help="Maximum delta time between crossover measurements", default=np.inf)
     parser.add_argument('--queue','-q', action="store_true")
     args=parser.parse_args()
     
@@ -179,7 +182,7 @@ def main():
         make_queue(files, args)
         return
 
-    xover_list=ATL06_crossovers(files, different_cycles=args.different_cycles_only)
+    xover_list=ATL06_crossovers(files, different_cycles=args.different_cycles_only, delta_time_max=args.delta_time_max)
     if len(xover_list) > 0:
         if args.hemisphere is not None:
             calc_slope(xover_list, args.mask_file, hemisphere=args.hemisphere)
