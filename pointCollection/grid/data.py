@@ -15,6 +15,7 @@ import bz2
 import gzip
 import uuid
 import h5py
+import pyproj
 import netCDF4
 from scipy.interpolate import RectBivariateSpline
 from scipy.stats import scoreatpercentile
@@ -398,7 +399,7 @@ class data(object):
                 rows = slice(None,None, skip)
                 cols = slice(None,None, skip)
 
-            # old version!    
+            # old version!
             #if (bounds is not None) and (yorient > 0):
             #    # indices to read
             #    xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
@@ -489,7 +490,7 @@ class data(object):
                 self.y=y[rows]
                 if yorient==-1:
                     y=y[::-1]
-                    
+
                 if t is not None:
                     self.t=t
             # try to retrieve grid mapping and add to projection
@@ -826,8 +827,10 @@ class data(object):
             file name to write
         **kwargs :
             keywords to be passed to the to_gdal() method
-        Returns:
-            None
+
+        Returns
+        -------
+        None
         """
         out_ds=self.to_gdal(out_file=out_file, driver='GTiff',**kwargs)
         return out_ds
@@ -835,6 +838,25 @@ class data(object):
     def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None, srs_wkt=None, srs_epsg=None, dtype=gdal.GDT_Float32, options=["compress=LZW"]):
         """
         Write a grid object to a gdal memory object
+
+        Parameters
+        ----------
+        driver: str, default 'MEM'
+            GDAL driver for output raster
+        out_file: str, default ''
+            Output filename
+        field: str, default 'z'
+            Output field to write to raster
+        srs_proj4: str or NoneType, default None
+            PROJ4 projection string
+        srs_wkt: str or NoneType, default None
+            Well-Known Text (WKT) projection string
+        srs_epsg: int or NoneType, default None
+            EPSG projection code
+        dtype: obj, default gdal.GDT_Float32
+            GDAL data type for output raster
+        options: list, default ["compress=LZW"]
+            GDAL creation options for output raster
         """
 
         z=np.atleast_3d(getattr(self, field))
@@ -926,6 +948,45 @@ class data(object):
             else:
                     result.assign({time_var:t.ravel()[good]})
         return result
+
+    def get_latlon(self, srs_proj4=None, srs_wkt=None, srs_epsg=None):
+        """
+        Get the latitude and longitude of grid cells
+
+        Parameters
+        ----------
+        srs_proj4: str or NoneType, default None
+            PROJ4 projection string
+        srs_wkt: str or NoneType, default None
+            Well-Known Text (WKT) projection string
+        srs_epsg: int or NoneType, default None
+            EPSG projection code
+
+        Returns
+        -------
+        longitude: float
+            longitude coordinates of grid cells
+        latitude: float
+            latitude coordinates of grid cells
+        """
+        # set the spatial projection reference information
+        if srs_proj4 is not None:
+            source = pyproj.CRS.from_proj4(srs_proj4)
+        elif srs_wkt is not None:
+            source = pyproj.CRS.from_wkt(srs_wkt)
+        elif srs_epsg is not None:
+            source = pyproj.CRS.from_epsg(srs_epsg)
+        else:
+            source = pyproj.CRS.from_string(self.projection)
+        # target spatial reference (WGS84 latitude and longitude)
+        target = pyproj.CRS.from_epsg(4326)
+        # create transformation
+        transformer = pyproj.Transformer.from_crs(source, target, always_xy=True)
+        # create meshgrid of points in original projection
+        x,y = np.meshgrid(self.x, self.y)
+        # convert coordinates to latitude and longitude
+        self.longitude,self.latitude = transformer.transform(x,y)
+        return self
 
     def add_alpha_band(self, alpha=None, field='z', nodata_vals=None):
 
@@ -1165,6 +1226,15 @@ class data(object):
     def crs_attributes(self, srs_proj4=None, srs_wkt=None, srs_epsg=None, **kwargs):
         """
         Return a dictionary of attributes for a projection
+
+        Parameters
+        ----------
+        srs_proj4: str or NoneType, default None
+            PROJ4 projection string
+        srs_wkt: str or NoneType, default None
+            Well-Known Text (WKT) projection string
+        srs_epsg: int or NoneType, default None
+            EPSG projection code
         """
         # output projection attributes dictionary
         self.crs = {}

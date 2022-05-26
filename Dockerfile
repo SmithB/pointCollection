@@ -19,7 +19,7 @@ WORKDIR /tmp
 ENV JOBS 2
 
 ENV CFLAGS="-fPIC"
-ENV ZLIB_VERSION=1.2.11
+ENV ZLIB_VERSION=1.2.12
 RUN wget -q http://zlib.net/zlib-${ZLIB_VERSION}.tar.gz && \
     tar -xzf zlib-${ZLIB_VERSION}.tar.gz && \
     cd zlib-${ZLIB_VERSION} && \
@@ -190,8 +190,8 @@ ENV LDFLAGS="-L/usr/local/lib"
 ENV HDF5_CFLAGS="--enable-hl --enable-shared"
 ENV HDF5_INCLUDE="/usr/local/include"
 ENV HDF5_LIBS="/usr/local/lib"
-ENV GDAL_VERSION=3.3.0
-RUN wget -q https://download.osgeo.org/gdal/CURRENT/gdal-${GDAL_VERSION}.tar.gz && \
+ENV GDAL_VERSION=3.4.1
+RUN wget -q https://download.osgeo.org/gdal/${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz && \
     tar -xzf gdal-${GDAL_VERSION}.tar.gz && \
     cd gdal-${GDAL_VERSION} && \
     ./configure --quiet \
