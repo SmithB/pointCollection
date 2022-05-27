@@ -15,6 +15,7 @@ import bz2
 import gzip
 import uuid
 import h5py
+import pyproj
 import netCDF4
 from scipy.interpolate import RectBivariateSpline
 from scipy.stats import scoreatpercentile
@@ -82,6 +83,14 @@ class data(object):
                 pass
 
     def from_dict(self, thedict):
+        """
+        build a grid object from a python dictionary
+
+        Parameters
+        ----------
+        thedict: dict
+            Dictionary of spatial grid variables
+        """
         for field in thedict:
                 setattr(self, field, thedict[field])
                 if field not in self.fields and field not in ['x','y','time', 't']:
@@ -100,6 +109,15 @@ class data(object):
     def from_list(self, D_list, t_axis=None, sort=False):
         """
         build a grid object from a list of other grid objects
+
+        Parameters
+        ----------
+        D_list: list
+            List of pointCollection grid objects
+        t_axis: int or NoneType, default None
+            Time axis for output concatenated pointCollection grid object
+        sort: bool, default False
+            Sort the output pointCollection grid object by time
         """
         if t_axis is None:
             t_axis = self.t_axis
@@ -149,9 +167,13 @@ class data(object):
         for D in D_list:
             try:
                 ntime = D.shape[D.t_axis]
-                self.time[i:i+ntime] = D_list[i].time
             except:
                 ntime = 1
+            # try each of the possible time attributes
+            if getattr(D,'time'):
+                self.time[i:i+ntime] = D.time
+            elif getattr(D,'t'):
+                self.time[i:i+ntime] = D.t
             i += ntime
         # if sorting by time
         if sort:
@@ -210,7 +232,17 @@ class data(object):
 
     def from_geotif(self, file, date_format=None, **kwargs):
         """
-        Read a raster from a geotif
+        Read a raster from a geotiff file
+
+        Parameters
+        ----------
+        file: str
+            geotif file
+        date_format, str or NoneType, default None
+            Date format for geotiff file
+
+            - ``'year'``: WorldView year from filename
+            - ``'matlab'``: WorldView matlab date from filename
         """
         self.filename=file
         if date_format is not None:
@@ -253,7 +285,6 @@ class data(object):
         -------
         TYPE
             pc.grid.data object containing the map data.
-
         """
         GT=ds.GetGeoTransform()
 
@@ -329,11 +360,24 @@ class data(object):
     def h5_open(self, h5_file, mode='r', compression=None):
         """
         Open an HDF5 file with or without external compression
+
+        Parameters
+        ----------
+        h5_file: str
+            HDF5 file
+        mode: str, default 'r'
+            Mode of opening the HDF5 file
+        compression: str or NoneType, default None
+            Compression format for the HDF5 file
+
+            - ``None``: file is not externally compressed
+            - ``'bzip'``
+            - ``'gzip'``
         """
         if (compression is None):
             return h5py.File(h5_file,mode=mode)
         elif (compression == 'bzip'):
-            # read bytes from bzipcompressed file
+            # read bytes from bzip compressed file
             with bz2.BZ2File(h5_file) as fd:
                 fid = io.BytesIO(fd.read())
                 fid.seek(0)
@@ -349,7 +393,46 @@ class data(object):
         xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
         t_axis=None, compression=None, swap_xy=False):
         """
-        Read a raster from an hdf5 file
+        Read a raster from an HDF5 file
+
+        Parameters
+        ----------
+        h5_file: str
+            HDF5 file
+        field_mapping: dict or NoneType, default None
+            Field mapping for input and output variables
+        group : str, default '/'
+            HDF5 group to read variables
+        fields: list or NoneType, default None
+            Fields to read from the HDF5 file
+        xname: str, default 'x'
+            x-coordinate variable to read from the HDF5 file
+        yname: str, default 'y'
+            y-coordinate variable to read from the HDF5 file
+        bounds: list or NoneType, default None
+            boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified,
+            read the whole file.
+        bands: list or NoneType, default None
+            Bands to read. If not specified, reads all contained bands.
+        skip: int, default 1
+            Specifies that every skip'th value should be read.
+        fill_value: float or NoneType, default None
+            Value for invalid data points. If not specified, is the class default
+        t_axis: int or NoneType, default None
+            Time axis for output pointCollection grid object
+        compression: str or NoneType, default None
+            Compression format for the HDF5 file
+
+            - ``None``: file is not externally compressed
+            - ``'bzip'``
+            - ``'gzip'``
+        swap_xy: bool, default False
+            Swap the orientation of x and y variables in the grid
+
+        Returns
+        -------
+        self
+            pc.grid.data object containing the map data.
         """
         if t_axis is not None:
             self.t_axis=t_axis
@@ -398,7 +481,7 @@ class data(object):
                 rows = slice(None,None, skip)
                 cols = slice(None,None, skip)
 
-            # old version!    
+            # old version!
             #if (bounds is not None) and (yorient > 0):
             #    # indices to read
             #    xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
@@ -489,7 +572,7 @@ class data(object):
                 self.y=y[rows]
                 if yorient==-1:
                     y=y[::-1]
-                    
+
                 if t is not None:
                     self.t=t
             # try to retrieve grid mapping and add to projection
@@ -507,6 +590,19 @@ class data(object):
     def nc_open(self, nc_file, mode='r', compression=None):
         """
         Open a netCDF4 file with or without external compression
+
+        Parameters
+        ----------
+        nc_file: str
+            netCDF4 file
+        mode: str, default 'r'
+            Mode of opening the netCDF4 file
+        compression, str or NoneType, default None
+            Compression format for the netCDF4 file
+
+            - ``None``: file is not externally compressed
+            - ``'bzip'``
+            - ``'gzip'``
         """
         if (compression is None):
             return netCDF4.Dataset(nc_file, mode=mode)
@@ -520,10 +616,47 @@ class data(object):
                 return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
 
     def from_nc(self, nc_file, field_mapping=None, group='', fields=None,
-        xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=np.nan,
+        xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
         t_axis=None, compression=None):
         """
         Read a raster from a netCDF4 file
+
+        Parameters
+        ----------
+        nc_file: str
+            netCDF4 file
+        field_mapping: dict or NoneType, default None
+            Field mapping for input and output variables
+        group : str, default '/'
+            netCDF4 group to read variables
+        fields: list or NoneType, default None
+            Fields to read from the netCDF4 file
+        xname: str, default 'x'
+            x-coordinate variable to read from the netCDF4 file
+        yname: str, default 'y'
+            y-coordinate variable to read from the netCDF4 file
+        bounds: list or NoneType, default None
+            boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified,
+            read the whole file.
+        bands: list or NoneType, default None
+            Bands to read. If not specified, reads all contained bands.
+        skip: int, default 1
+            Specifies that every skip'th value should be read.
+        fill_value: float or NoneType, default None
+            Value for invalid data points. If not specified, is the class default
+        t_axis: int or NoneType, default None
+            Time axis for output pointCollection grid object
+        compression: str or NoneType, default None
+            Compression format for the netCDF4 file
+
+            - ``None``: file is not externally compressed
+            - ``'bzip'``
+            - ``'gzip'``
+
+        Returns
+        -------
+        self
+            pc.grid.data object containing the map data.
         """
         if t_axis is not None:
             self.t_axis=t_axis
@@ -826,8 +959,10 @@ class data(object):
             file name to write
         **kwargs :
             keywords to be passed to the to_gdal() method
-        Returns:
-            None
+
+        Returns
+        -------
+        None
         """
         out_ds=self.to_gdal(out_file=out_file, driver='GTiff',**kwargs)
         return out_ds
@@ -835,6 +970,25 @@ class data(object):
     def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None, srs_wkt=None, srs_epsg=None, dtype=gdal.GDT_Float32, options=["compress=LZW"]):
         """
         Write a grid object to a gdal memory object
+
+        Parameters
+        ----------
+        driver: str, default 'MEM'
+            GDAL driver for output raster
+        out_file: str, default ''
+            Output filename
+        field: str, default 'z'
+            Output field to write to raster
+        srs_proj4: str or NoneType, default None
+            PROJ4 projection string
+        srs_wkt: str or NoneType, default None
+            Well-Known Text (WKT) projection string
+        srs_epsg: int or NoneType, default None
+            EPSG projection code
+        dtype: obj, default gdal.GDT_Float32
+            GDAL data type for output raster
+        options: list, default ["compress=LZW"]
+            GDAL creation options for output raster
         """
 
         z=np.atleast_3d(getattr(self, field))
@@ -927,6 +1081,45 @@ class data(object):
                     result.assign({time_var:t.ravel()[good]})
         return result
 
+    def get_latlon(self, srs_proj4=None, srs_wkt=None, srs_epsg=None):
+        """
+        Get the latitude and longitude of grid cells
+
+        Parameters
+        ----------
+        srs_proj4: str or NoneType, default None
+            PROJ4 projection string
+        srs_wkt: str or NoneType, default None
+            Well-Known Text (WKT) projection string
+        srs_epsg: int or NoneType, default None
+            EPSG projection code
+
+        Returns
+        -------
+        longitude: float
+            longitude coordinates of grid cells
+        latitude: float
+            latitude coordinates of grid cells
+        """
+        # set the spatial projection reference information
+        if srs_proj4 is not None:
+            source = pyproj.CRS.from_proj4(srs_proj4)
+        elif srs_wkt is not None:
+            source = pyproj.CRS.from_wkt(srs_wkt)
+        elif srs_epsg is not None:
+            source = pyproj.CRS.from_epsg(srs_epsg)
+        else:
+            source = pyproj.CRS.from_string(self.projection)
+        # target spatial reference (WGS84 latitude and longitude)
+        target = pyproj.CRS.from_epsg(4326)
+        # create transformation
+        transformer = pyproj.Transformer.from_crs(source, target, always_xy=True)
+        # create meshgrid of points in original projection
+        x,y = np.meshgrid(self.x, self.y)
+        # convert coordinates to latitude and longitude
+        self.longitude,self.latitude = transformer.transform(x,y)
+        return self
+
     def add_alpha_band(self, alpha=None, field='z', nodata_vals=None):
 
         if alpha is None:
@@ -1007,7 +1200,11 @@ class data(object):
         self.x=self.x[col_ind]
         self.y=self.y[row_ind]
         if band_ind is not None:
-            self.t=self.t[band_ind]
+            for field in ['t','time']:
+                try:
+                    setattr(self, field, getattr(self, field)[band_ind])
+                except:
+                    pass
         for field in fields:
             if len(getattr(self, field).shape) == 2:
                 setattr(self, field, getattr(self, field)[row_ind,:][:, col_ind])
@@ -1165,6 +1362,15 @@ class data(object):
     def crs_attributes(self, srs_proj4=None, srs_wkt=None, srs_epsg=None, **kwargs):
         """
         Return a dictionary of attributes for a projection
+
+        Parameters
+        ----------
+        srs_proj4: str or NoneType, default None
+            PROJ4 projection string
+        srs_wkt: str or NoneType, default None
+            Well-Known Text (WKT) projection string
+        srs_epsg: int or NoneType, default None
+            EPSG projection code
         """
         # output projection attributes dictionary
         self.crs = {}

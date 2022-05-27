@@ -1,4 +1,4 @@
-name: example-environment
+name: pointCollection
 channels:
   - conda-forge
 dependencies:
