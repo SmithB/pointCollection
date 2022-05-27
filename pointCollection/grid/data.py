@@ -83,6 +83,14 @@ class data(object):
                 pass
 
     def from_dict(self, thedict):
+        """
+        build a grid object from a python dictionary
+
+        Parameters
+        ----------
+        thedict: dict
+            Dictionary of spatial grid variables
+        """
         for field in thedict:
                 setattr(self, field, thedict[field])
                 if field not in self.fields and field not in ['x','y','time', 't']:
@@ -101,6 +109,15 @@ class data(object):
     def from_list(self, D_list, t_axis=None, sort=False):
         """
         build a grid object from a list of other grid objects
+
+        Parameters
+        ----------
+        D_list: list
+            List of pointCollection grid objects
+        t_axis: int or NoneType, default None
+            Time axis for output concatenated pointCollection grid object
+        sort: bool, default False
+            Sort the output pointCollection grid object by time
         """
         if t_axis is None:
             t_axis = self.t_axis
@@ -215,7 +232,17 @@ class data(object):
 
     def from_geotif(self, file, date_format=None, **kwargs):
         """
-        Read a raster from a geotif
+        Read a raster from a geotiff file
+
+        Parameters
+        ----------
+        file: str
+            geotif file
+        date_format, str or NoneType, default None
+            Date format for geotiff file
+
+            - ``'year'``: WorldView year from filename
+            - ``'matlab'``: WorldView matlab date from filename
         """
         self.filename=file
         if date_format is not None:
@@ -258,7 +285,6 @@ class data(object):
         -------
         TYPE
             pc.grid.data object containing the map data.
-
         """
         GT=ds.GetGeoTransform()
 
@@ -334,11 +360,24 @@ class data(object):
     def h5_open(self, h5_file, mode='r', compression=None):
         """
         Open an HDF5 file with or without external compression
+
+        Parameters
+        ----------
+        h5_file: str
+            HDF5 file
+        mode: str, default 'r'
+            Mode of opening the HDF5 file
+        compression: str or NoneType, default None
+            Compression format for the HDF5 file
+
+            - ``None``: file is not externally compressed
+            - ``'bzip'``
+            - ``'gzip'``
         """
         if (compression is None):
             return h5py.File(h5_file,mode=mode)
         elif (compression == 'bzip'):
-            # read bytes from bzipcompressed file
+            # read bytes from bzip compressed file
             with bz2.BZ2File(h5_file) as fd:
                 fid = io.BytesIO(fd.read())
                 fid.seek(0)
@@ -354,7 +393,46 @@ class data(object):
         xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
         t_axis=None, compression=None, swap_xy=False):
         """
-        Read a raster from an hdf5 file
+        Read a raster from an HDF5 file
+
+        Parameters
+        ----------
+        h5_file: str
+            HDF5 file
+        field_mapping: dict or NoneType, default None
+            Field mapping for input and output variables
+        group : str, default '/'
+            HDF5 group to read variables
+        fields: list or NoneType, default None
+            Fields to read from the HDF5 file
+        xname: str, default 'x'
+            x-coordinate variable to read from the HDF5 file
+        yname: str, default 'y'
+            y-coordinate variable to read from the HDF5 file
+        bounds: list or NoneType, default None
+            boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified,
+            read the whole file.
+        bands: list or NoneType, default None
+            Bands to read. If not specified, reads all contained bands.
+        skip: int, default 1
+            Specifies that every skip'th value should be read.
+        fill_value: float or NoneType, default None
+            Value for invalid data points. If not specified, is the class default
+        t_axis: int or NoneType, default None
+            Time axis for output pointCollection grid object
+        compression: str or NoneType, default None
+            Compression format for the HDF5 file
+
+            - ``None``: file is not externally compressed
+            - ``'bzip'``
+            - ``'gzip'``
+        swap_xy: bool, default False
+            Swap the orientation of x and y variables in the grid
+
+        Returns
+        -------
+        self
+            pc.grid.data object containing the map data.
         """
         if t_axis is not None:
             self.t_axis=t_axis
@@ -512,6 +590,19 @@ class data(object):
     def nc_open(self, nc_file, mode='r', compression=None):
         """
         Open a netCDF4 file with or without external compression
+
+        Parameters
+        ----------
+        nc_file: str
+            netCDF4 file
+        mode: str, default 'r'
+            Mode of opening the netCDF4 file
+        compression, str or NoneType, default None
+            Compression format for the netCDF4 file
+
+            - ``None``: file is not externally compressed
+            - ``'bzip'``
+            - ``'gzip'``
         """
         if (compression is None):
             return netCDF4.Dataset(nc_file, mode=mode)
@@ -525,10 +616,47 @@ class data(object):
                 return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
 
     def from_nc(self, nc_file, field_mapping=None, group='', fields=None,
-        xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=np.nan,
+        xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
         t_axis=None, compression=None):
         """
         Read a raster from a netCDF4 file
+
+        Parameters
+        ----------
+        nc_file: str
+            netCDF4 file
+        field_mapping: dict or NoneType, default None
+            Field mapping for input and output variables
+        group : str, default '/'
+            netCDF4 group to read variables
+        fields: list or NoneType, default None
+            Fields to read from the netCDF4 file
+        xname: str, default 'x'
+            x-coordinate variable to read from the netCDF4 file
+        yname: str, default 'y'
+            y-coordinate variable to read from the netCDF4 file
+        bounds: list or NoneType, default None
+            boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified,
+            read the whole file.
+        bands: list or NoneType, default None
+            Bands to read. If not specified, reads all contained bands.
+        skip: int, default 1
+            Specifies that every skip'th value should be read.
+        fill_value: float or NoneType, default None
+            Value for invalid data points. If not specified, is the class default
+        t_axis: int or NoneType, default None
+            Time axis for output pointCollection grid object
+        compression: str or NoneType, default None
+            Compression format for the netCDF4 file
+
+            - ``None``: file is not externally compressed
+            - ``'bzip'``
+            - ``'gzip'``
+
+        Returns
+        -------
+        self
+            pc.grid.data object containing the map data.
         """
         if t_axis is not None:
             self.t_axis=t_axis
