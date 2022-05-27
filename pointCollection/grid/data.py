@@ -150,9 +150,13 @@ class data(object):
         for D in D_list:
             try:
                 ntime = D.shape[D.t_axis]
-                self.time[i:i+ntime] = D_list[i].time
             except:
                 ntime = 1
+            # try each of the possible time attributes
+            if getattr(D,'time'):
+                self.time[i:i+ntime] = D.time
+            elif getattr(D,'t'):
+                self.time[i:i+ntime] = D.t
             i += ntime
         # if sorting by time
         if sort:
@@ -1068,7 +1072,11 @@ class data(object):
         self.x=self.x[col_ind]
         self.y=self.y[row_ind]
         if band_ind is not None:
-            self.t=self.t[band_ind]
+            for field in ['t','time']:
+                try:
+                    setattr(self, field, getattr(self, field)[band_ind])
+                except:
+                    pass
         for field in fields:
             if len(getattr(self, field).shape) == 2:
                 setattr(self, field, getattr(self, field)[row_ind,:][:, col_ind])
