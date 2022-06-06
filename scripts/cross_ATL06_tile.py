@@ -37,7 +37,7 @@ def ATL06_crossovers(files, different_cycles=False, delta_time_max=np.inf):
                 continue
             if (D[ii].size <2) or (D[jj].size < 2) or (ii>=jj) or (D[ii].rgt[0]==D[jj].rgt[0]):
                 continue
-            if different_cycles and D[ii].cycle[0]==D[jj].cycle[0]:
+            if different_cycles and D[ii].cycle_number[0]==D[jj].cycle_number[0]:
                 continue
             xyC, inds, L=pc.cross_tracks([D[ii], D[jj]], delta=20, delta_coarse=1000)
             if xyC is not None:
@@ -116,7 +116,7 @@ def calc_slope(xovers, mask_file, hemisphere=-1):
     if hemisphere==-1:
         dx=1.e4
     else:
-        dx=200
+        dx=90
 
     xy=np.c_[[item['xyC'] for item in xovers]]
 
