@@ -11,7 +11,33 @@ import pointCollection as pc
 
 
 def apply_bin_fn(D_pt, res, fn=None, fields=['z'], xy0=[0, 0]):
+    '''
+    Apply a function to binned collections of data in D_pt
+    
+    Parameters
+    ----------
+    D_pt : pointCollection.data
+        Data structure containing (at least) x and y fields.
+    res : scalar
+        Resolution at which the binning function will be applied
+    fn : TYPE, optional
+        A function that will be applied to each bin.  Must take inputs 'D_pt' 
+        and 'ind' and return one value for each entry in the 'fields' argument.
+        The default is None.
+    fields : iterable, optional
+        A list of output fields.  The outputs of fn will be mapped into these. 
+        The default is ['z'].
+    xy0 : TYPE, optional
+        The origin of the coordinates for which the function returns values. 
+        The default is [0, 0].
 
+    Returns
+    -------
+    result : pointCollection.data
+        The output pointCollection.data structure, containing fields defined
+        in the 'fields' argument, with one value for each bin.
+    '''
+    
     pt_dict=pc.bin_rows(np.c_[np.round((D_pt.x-xy0[0])/res)*res+xy0[0], np.round((D_pt.y-xy0[1])/res)*res+xy0[1]])
     keys=list(pt_dict.keys())
     xy=np.array(keys)
@@ -55,4 +81,7 @@ def points_to_grid(D_pt, res, grid=None, field='z', background=np.NaN):
     ii &=  (r>0) & (r<zg.shape[0])
     zg[tuple(np.c_[r[ii].ravel(), c[ii].ravel()].T)]=\
         getattr(D_pt, field)[ii].ravel()
+    print([id(zg), id(grid.z)])
+    grid.assign({'z':zg})
+    
     return grid

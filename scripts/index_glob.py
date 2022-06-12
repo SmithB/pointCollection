@@ -32,8 +32,8 @@ def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None,\
         dir_root += '/'
 
     files=glob.glob(glob_string)
-    if index_file is None: 
-        index_file=os.path.dirname(glob_string)+'/GeoIndex.h5'
+    if index_file is None:
+        index_file=os.path.join(os.path.dirname(glob_string),'GeoIndex.h5')
     files=glob.glob(glob_string)
     index_list=[];
     for file in files:

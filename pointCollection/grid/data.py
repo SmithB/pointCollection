@@ -391,7 +391,7 @@ class data(object):
 
     def from_h5(self, h5_file, field_mapping=None, group='/', fields=None,
         xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
-        t_axis=None, compression=None, swap_xy=False):
+        t_axis=None, compression=None, swap_xy=False, source_fillvalue=None):
         """
         Read a raster from an HDF5 file
 
@@ -534,13 +534,16 @@ class data(object):
                             elif self.t_axis==0:
                                 z = np.array(f_field[bands,i0,i1])
                     # replace invalid values with nan
-                    if hasattr(f_field, 'fillvalue'):
+                    this_fillvalue=source_fillvalue
+                    if this_fillvalue is None and hasattr(f_field, 'fillvalue'):
+                        this_fillvalue=f_field.fillvalue
+                    if this_fillvalue is not None:
                         try:
-                            z[z == f_field.fillvalue] = self.fill_value
+                            z[z == this_fillvalue] = self.fill_value
                         except ValueError:
                             # try setting the data type to the data type of the fill value
                             z=z.astype(self.fill_value.__class__)
-                            z[z == f_field.fillvalue] = self.fill_value
+                            z[z == this_fillvalue] = self.fill_value
                     # try to find grid mapping name from variable
                     try:
                         grid_mapping_name = f_field.attrs['grid_mapping']
@@ -1272,8 +1275,9 @@ class data(object):
 
         if gradient:
             zz=np.gradient(zz.squeeze(), self.x[1]-self.x[0], self.y[1]-self.y[0])[0]
-            if 'stretch_pct' not in kwargs:
+            if 'stretch_pct' not in kwargs and 'clim' not in kwargs:
                 stretch_pct=[5, 95]
+                print(stretch_pct)
             if 'cmap' not in kwargs:
                 kwargs['cmap']='gray'
         if stretch_pct is not None:

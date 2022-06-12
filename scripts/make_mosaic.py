@@ -24,6 +24,7 @@ COMMAND LINE OPTIONS:
     -R, --replace: overwrite existing output files
     -s, --show: create plot of output mosaic
     -m X, --mode X: Local permissions mode of the output mosaic
+    -N --ignore_Nodata: ignore nodata values (except Nan) in inputs
 
 UPDATE HISTORY:
     Updated 01/2021: added option for setting projection attributes
