@@ -447,6 +447,9 @@ class data(object):
             group='/'+group
         t=None
         grid_mapping_name=None
+        
+        #default
+        yorient=1
         with self.h5_open(h5_file, mode='r', compression=compression) as h5f:
             x=np.array(h5f[group+'/'+xname]).ravel()
             y=np.array(h5f[group+'/'+yname]).ravel()
@@ -457,7 +460,8 @@ class data(object):
             if t is not None and bands is not None:
                 t=t[bands]
             # get orientation of y-axis
-            yorient = np.sign(y[1] - y[0])
+            if len(y) > 1:
+                yorient = np.sign(y[1] - y[0])
 
             # if no field mapping provided, add everything in the group
             if len(field_mapping.keys())==0:
