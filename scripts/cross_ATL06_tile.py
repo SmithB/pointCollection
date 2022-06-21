@@ -16,7 +16,7 @@ import glob
 #import re
 #import sys
 
-def ATL06_crossovers(files, different_cycles=False, delta_time_max=np.inf):
+def ATL06_crossovers(files, different_cycles=False, delta_time_max=np.inf, n_extra_segments=0):
     D=[]
     with h5py.File(files[0],'r') as h5f:
         fields=list(h5f[list(h5f.keys())[0]].keys())
@@ -43,12 +43,28 @@ def ATL06_crossovers(files, different_cycles=False, delta_time_max=np.inf):
             if xyC is not None:
                 try:
                     xover_list.append({'xyC':xyC, 'data_0':D[ii][inds[0]], 'data_1':D[jj][inds[1]], 'L0':L[0], 'L1':L[1]})
+                    if n_extra_segments > 0:
+                        xover_list[-1]['data_0_extra_segments'] = list()
+                        xover_list[-1]['data_1_extra_segments'] = list()
+                        for kk in np.concatenate([np.arange(inds[0][0]-n_extra_segments, inds[0][0]), np.arange(inds[0][1]+1, inds[0][1]+n_extra_segments+1)]):
+                            if kk >= 0 and kk < D[ii].shape[0]:
+                                xover_list[-1]['data_0_extra_segments'].append(D[ii][kk])
+                            else:
+                                xover_list[-1]['data_0_extra_segments'].append(pc.data())
+                            
+                        for kk in np.concatenate([np.arange(inds[1][0]-n_extra_segments, inds[1][0]), np.arange(inds[1][1]+1, inds[1][1]+n_extra_segments+1)]):
+                            if kk >= 0 and kk < D[jj].shape[0]:
+                                xover_list[-1]['data_1_extra_segments'].append(D[jj][kk])
+                            else:
+                                xover_list[-1]['data_1_extra_segments'].append(pc.data())
+                        xover_list[-1]['data_0_extra_segments'] = pc.data().from_list(xover_list[-1]['data_0_extra_segments'])
+                        xover_list[-1]['data_1_extra_segments'] = pc.data().from_list(xover_list[-1]['data_1_extra_segments'])
                 except Exception as e:
                     print("# ATL06_crossovers: caught exception:" + str(e.__class__) + ' '+str(e))
     return xover_list
 
 
-def write_xovers(xover_list, out_file):
+def write_xovers(xover_list, out_file, n_extra_segments=0):
     if os.path.isfile(out_file):
         os.remove(out_file)
     with h5py.File(out_file,'w') as h5f:
@@ -69,6 +85,20 @@ def write_xovers(xover_list, out_file):
                 h5f.create_dataset(group+'/'+key, data=temp)
             h5f.create_dataset(group+'/W', data=np.c_[1-L, L])
 
+        if n_extra_segments > 0:
+            for key_D in ['data_0_extra_segments', 'data_1_extra_segments']:
+                group='/'+key_D
+                h5f.create_group(group)
+
+                Dtemp=[item[key_D] for item in xover_list]
+                Dtemp=pc.data().from_list(Dtemp)
+                shape=[np.int(Dtemp.size/(n_extra_segments*2)), n_extra_segments*2]
+                Dtemp.shape=shape
+                for key in Dtemp.fields:
+                    temp=getattr(Dtemp, key)
+                    temp.shape=shape
+                    h5f.create_dataset(group+'/'+key, data=temp)
+                    
         xy=np.c_[[item['xyC'] for item in xover_list]]
         h5f.create_dataset('/x', data=xy[:,0])
         h5f.create_dataset('/y', data=xy[:,1])
@@ -167,6 +197,7 @@ def main():
     parser.add_argument('--hemisphere', '-H', type=int, help="hemisphere, -1 for Antarctica, 1, for Arctic")
     parser.add_argument('--different_cycles_only','-d', action='store_true', help="Calculate crossovers only for tracks from different cycles")
     parser.add_argument('--delta_time_max','-dtm', type=float, help="Maximum delta time between crossover measurements", default=np.inf)
+    parser.add_argument('--n_extra_segments','-n', type=int, help="Number of extra ATL06 segments to include on either side of crossover", default=0)
     parser.add_argument('--queue','-q', action="store_true")
     args=parser.parse_args()
     
@@ -182,11 +213,12 @@ def main():
         make_queue(files, args)
         return
 
-    xover_list=ATL06_crossovers(files, different_cycles=args.different_cycles_only, delta_time_max=args.delta_time_max)
+    xover_list = ATL06_crossovers(files, different_cycles=args.different_cycles_only, delta_time_max=args.delta_time_max, n_extra_segments=args.n_extra_segments)
     if len(xover_list) > 0:
         if args.hemisphere is not None:
             calc_slope(xover_list, args.mask_file, hemisphere=args.hemisphere)
-        write_xovers(xover_list, os.path.join(out_dir, os.path.basename(files[0])))
+           
+        write_xovers(xover_list, os.path.join(out_dir, os.path.basename(files[0])), n_extra_segments=args.n_extra_segments)
 
 
 if __name__=='__main__':
