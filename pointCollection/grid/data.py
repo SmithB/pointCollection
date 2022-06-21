@@ -230,6 +230,31 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
+    def from_file(self, raster_file, file_format=None, **kwargs):
+        """
+        Wrapper function for reading a raster file
+
+        Parameters
+        ----------
+        raster_file: str
+            geotif file
+        file_format, str or NoneType, default None
+            Raster file format
+
+            - ``'geotif'``: geotiff
+            - ``'h5'``: HDF5
+            - ``'nc'``: netCDF4
+        kwargs, dict, default {}
+            Keyword arguments for the input reader
+        """
+        self.filename = raster_file
+        if file_format.lower() in ('tif','tiff','geotif','geotiff'):
+            return self.from_geotif(raster_file, **kwargs)
+        elif file_format.lower() in ('h5','hdf','hdf5'):
+            return self.from_h5(raster_file, **kwargs)
+        elif file_format.lower() in ('nc','netcdf'):
+            return self.from_nc(raster_file, **kwargs)
+
     def from_geotif(self, file, date_format=None, **kwargs):
         """
         Read a raster from a geotiff file
@@ -1270,6 +1295,8 @@ class data(object):
         import matplotlib.pyplot as plt
         kwargs['extent']=np.array(self.extent)*xy_scale
         kwargs['origin']='lower'
+        if ax is None:
+            ax = plt.gca()
         if band is None:
             zz=getattr(self, field)
         elif (band is not None) and (self.t_axis==2):
@@ -1289,10 +1316,7 @@ class data(object):
             kwargs['vmin']=LH[0]
             kwargs['vmax']=LH[1]
 
-        if ax is None:
-            h_im = plt.imshow(zz, **kwargs)
-        else:
-            h_im = ax.imshow(zz, **kwargs)
+        h_im = ax.imshow(zz, **kwargs)
         return h_im
 
     def interp(self, x, y, gridded=False, band=0, field='z'):
