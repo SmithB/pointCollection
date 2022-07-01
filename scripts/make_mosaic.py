@@ -122,7 +122,7 @@ def main(argv):
         args.out_group=args.in_group
 
     if args.verbose:
-        print("searching glob string:"+"["+str(args.glob_string)+"]")
+        print("searching in directory "+args.directory+" with  glob string:"+"["+str(args.glob_string)+"]")
     # find list of valid files
 
     if isinstance(args.glob_string, str):
@@ -131,6 +131,10 @@ def main(argv):
         initial_file_list = []
         for glob_string in args.glob_string:
             initial_file_list += glob.glob(args.directory +'/'+glob_string)
+
+    if args.verbose:
+        print("initial file list:")
+        print(initial_file_list)
 
     if xmin is None:
         file_list=initial_file_list
