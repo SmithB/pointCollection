@@ -11,6 +11,7 @@ import numpy as np
 
 import re
 import io
+import os
 import bz2
 import gzip
 import uuid
@@ -247,6 +248,8 @@ class data(object):
         kwargs, dict, default {}
             Keyword arguments for the input reader
         """
+        if file_format is None:
+            file_format=os.path.splitext(raster_file)[1][1:]
         self.filename = raster_file
         if file_format.lower() in ('tif','tiff','geotif','geotiff'):
             return self.from_geotif(raster_file, **kwargs)
