@@ -417,6 +417,44 @@ class data(object):
                 fid.seek(0)
                 return h5py.File(fid, 'r')
 
+
+    def read_data(self, src, i0, i1, bands):
+        '''
+        read data from a data source (array or h5py dataset)
+
+        Parameters
+        ----------
+        src : np.array, or h5py dataset
+            source from which to read the data.
+        i0, i1 : slice
+            which values to read from first and second x-y dimension
+        bands : slice
+            which time slices to read
+
+        Returns
+        -------
+        z : np.array
+            data subsetted to match i0, i1, and bands
+
+        '''
+        if len(src.shape) == 2:
+            z = np.array(src[i0, i1])
+        else:
+            if bands is None:
+                if len(src.shape) > 2:
+                    if self.t_axis==2:
+                        z = np.array(src[i0,i1,:])
+                    elif self.t_axis==0:
+                        z =  np.array(src[:,i0,i1])
+                elif len(src.shape) == 2:
+                    z = np.array(src[i0,i1])
+            else:
+                if self.t_axis==2:
+                    z = np.array(src[i0,i1,bands])
+                elif self.t_axis==0:
+                    z = np.array(src[bands,i0,i1])
+        return z
+
     def from_h5(self, h5_file, field_mapping=None, group='/', fields=None,
         xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
         t_axis=None, compression=None, swap_xy=False, source_fillvalue=None):
@@ -475,7 +513,7 @@ class data(object):
             group='/'+group
         t=None
         grid_mapping_name=None
-        
+
         #default
         yorient=1
         with self.h5_open(h5_file, mode='r', compression=compression) as h5f:
@@ -485,6 +523,7 @@ class data(object):
                 t=np.array(h5f[group]['t'])
             elif 'time' in h5f[group]:
                 t=np.array(h5f[group]['time'])
+            src_t = t.copy()
             if t is not None and bands is not None:
                 t=t[bands]
             # get orientation of y-axis
@@ -513,34 +552,23 @@ class data(object):
                 rows = slice(None,None, skip)
                 cols = slice(None,None, skip)
 
-            # old version!
-            #if (bounds is not None) and (yorient > 0):
-            #    # indices to read
-            #    xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-            #    cols = slice(xind[0],xind[-1],1)
-            #    yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-            #    rows = slice(yind[0],yind[-1],1)
-            #elif (bounds is not None) and (yorient < 0):
-            #   # indices to read with reversed y
-            #    xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-            #    cols = slice(xind[0],xind[-1],1)
-            #    yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-            #    rows = slice(yind[-1],yind[0],-1)
-            #elif (yorient < 0):
-            #    # indices to read (all) with reversed y
-            #    rows = slice(None,None,-1)
-            #    cols = slice(None,None,1)
-            #else:
-            #    # indices to read (all)
-            #    rows = slice(None,None,1)
-            #    cols = slice(None,None,1)
-
             if swap_xy:
                 i1=rows
                 i0=cols
             else:
                 i0=rows
                 i1=cols
+            if not swap_xy:
+                default_shape_2d = [len(y), len(x)]
+            else:
+                default_shape_2d = [len(x), len(y)]
+            if src_t is not None:
+                if t_axis==0:
+                    default_shape_3d = [len(src_t)] + default_shape_2d
+                else:
+                    default_shape_3d = default_shape_2d + [len(src_t)]
+
+
             # check that raster can be sliced
             if len(x[cols]) > 0 and len(y[rows]) > 0:
                 for self_field in field_mapping:
@@ -548,23 +576,15 @@ class data(object):
                     if f_field_name not in h5f:
                         continue
                     f_field=h5f[f_field_name]
-
-                    if len(f_field.shape) == 2:
-                        z = np.array(f_field[rows, cols])
+                    if f_field.shape in [tuple(default_shape_3d), tuple(default_shape_2d) ]:
+                        z=self.read_data(f_field, i0, i1, bands)
+                    elif src_t is not None and len(f_field)==np.prod(default_shape_3d):
+                        z=self.read_data(np.array(f_field).reshape(default_shape_3d), i0, i1, bands)
+                    elif len(f_field)==np.prod(default_shape_2d):
+                        z=self.read_data(np.array(f_field).reshape(default_shape_3d), i0, i1, bands)
                     else:
-                        if bands is None:
-                            if len(f_field.shape) > 2:
-                                if self.t_axis==2:
-                                    z = np.array(f_field[i0,i1,:])
-                                elif self.t_axis==0:
-                                    z =  np.array(f_field[:,i0,i1])
-                            elif len(f_field.shape) == 2:
-                                z = np.array(f_field[i0,i1])
-                        else:
-                            if self.t_axis==2:
-                                z = np.array(f_field[i0,i1,bands])
-                            elif self.t_axis==0:
-                                z = np.array(f_field[bands,i0,i1])
+                        raise(IndexError(f'field {f_field_name} has shape:{f_field.shape} incompatible with data shape:{default_shape_3d}.'))
+
                     # replace invalid values with nan
                     this_fillvalue=source_fillvalue
                     if this_fillvalue is None and hasattr(f_field, 'fillvalue'):
@@ -716,6 +736,7 @@ class data(object):
                 t=ncf.variables['t'][:].copy()
             elif 'time' in ncf.variables.keys():
                 t=ncf.variables['time'][:].copy()
+
             if t is not None and bands is not None:
                 t=t[bands]
             # get orientation of y-axis
@@ -753,6 +774,7 @@ class data(object):
                 # indices to read (all)
                 rows = slice(None,None,1)
                 cols = slice(None,None,1)
+
             # check that raster can be sliced
             if len(x[cols]) > 0 and len(y[rows]) > 0:
                 for self_field in field_mapping:
