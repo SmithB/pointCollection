@@ -157,7 +157,12 @@ class data(object):
                     for field in nan_fields:
                         setattr(self, field, np.zeros(self.shape)+np.NaN)
         if '__calc_internal__' in field_dict:
-            self.__internal_field_calc__(field_dict)
+            try:
+                self.__internal_field_calc__(field_dict)
+            except Exception as e:
+                print(f"pointCollection.data(): problem with __internal_field_calc__ for file {self.filename}, exception follows:")
+                print(e)
+                return None
         self.__update_size_and_shape__()
         return self
 

@@ -593,12 +593,21 @@ class geoIndex(dict):
                     for temp in zip(result['offset_start'], result['offset_end'])]
             elif result['type'] == 'ATL11':
                 D11_file, pair = this_file.split(':pair')
-                if not os.path.isfile(D11_file):
-                    print(D11_file)
-                D=[pc.ATL11.data().from_h5(\
-                    filename=D11_file, index_range=np.array(temp), \
-                    pair=int(pair), field_dict=field_dict) \
-                    for temp in zip(result['offset_start'], result['offset_end'])]
+                try:
+                    if not os.path.isfile(D11_file):
+                        print(D11_file)
+                    D=[pc.ATL11.data().from_h5(\
+                            filename=D11_file, index_range=np.array(temp), \
+                            pair=int(pair), field_dict=field_dict) \
+                            for temp in zip(result['offset_start'], result['offset_end'])]
+                except Exception as e:
+                    print(f"pointCollection.geoIndex: problem with ATL11 file:{D11_file} for beam pair {pair}.")
+                    print("        Indexing information:")
+                    print(result)
+                    print("         Exception:")
+                    print(e)
+                    D=[]
+                    continue
             elif result['type'] == 'ATM_Qfit':
                 D=[pc.ATM_Qfit.data().from_h5(this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]            
             elif result['type'] == 'ATM_waveform':
