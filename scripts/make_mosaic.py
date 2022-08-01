@@ -133,8 +133,8 @@ def main(argv):
             initial_file_list += glob.glob(args.directory +'/'+glob_string)
 
     if args.verbose:
-        print("initial file list:")
-        print(initial_file_list)
+        print(f"initial file list contains {len(initial_file_list)} files")
+        #print(initial_file_list)
 
     if xmin is None:
         file_list=initial_file_list
@@ -147,7 +147,7 @@ def main(argv):
                 continue
             if ((xc >= xmin) and (xc <= xmax) & (yc >= ymin) and (yc <= ymax)):
                 file_list.append(file)
-
+                
     if args.verbose:
         print(f"found {len(file_list)} files")
 
