@@ -512,6 +512,8 @@ class data(object):
         if group[0] != '/':
             group='/'+group
         t=None
+        src_t=None
+
         grid_mapping_name=None
 
         #default
@@ -523,7 +525,8 @@ class data(object):
                 t=np.array(h5f[group]['t'])
             elif 'time' in h5f[group]:
                 t=np.array(h5f[group]['time'])
-            src_t = t.copy()
+            if t is not None:
+                src_t = t.copy()
             if t is not None and bands is not None:
                 t=t[bands]
             # get orientation of y-axis
@@ -562,11 +565,15 @@ class data(object):
                 default_shape_2d = [len(y), len(x)]
             else:
                 default_shape_2d = [len(x), len(y)]
+
+            nT=1
             if src_t is not None:
-                if t_axis==0:
-                    default_shape_3d = [len(src_t)] + default_shape_2d
-                else:
-                    default_shape_3d = default_shape_2d + [len(src_t)]
+                nT=len(src_t)
+
+            if t_axis==0:
+                default_shape_3d = [nT] + default_shape_2d
+            else:
+                default_shape_3d = default_shape_2d + [nT]
 
 
             # check that raster can be sliced
