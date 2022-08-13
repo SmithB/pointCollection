@@ -1351,11 +1351,11 @@ class data(object):
         h_im = ax.imshow(zz, **kwargs)
         return h_im
 
-    def interp(self, x, y, gridded=False, band=0, field='z'):
+    def interp(self, x, y, gridded=False, band=0, field='z', replace=False):
         """
         interpolate a 2-D grid to a set of x and y points
         """
-        if field not in self.interpolator:
+        if (field not in self.interpolator) or replace:
             if (len(getattr(self, field).shape) > 2) and (self.t_axis==2):
                 z0 = getattr(self, field)[:,:,band]
             elif (len(getattr(self, field).shape) > 2) and (self.t_axis==0):
