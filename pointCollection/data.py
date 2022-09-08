@@ -126,7 +126,8 @@ class data(object):
                 if group == '__calc_internal__':
                     self.fields += field_dict[group]
                     continue
-                for field in field_dict[group]:
+                # loop over unique fields in the group
+                for field in list(dict().fromkeys(field_dict[group])):
                     if field not in self.fields:
                         self.fields.append(field)
                     try:

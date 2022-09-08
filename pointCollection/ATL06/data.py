@@ -27,7 +27,8 @@ class data(pc.data):
             if field_dict is not None:
                 for group in self.field_dict.keys():
                     for field in self.field_dict[group]:
-                        fields.append(field)
+                        if field not in fields:
+                            fields.append(field)
         if isinstance(fields, dict):
             self.fields=list(fields)
         self.fields=fields
@@ -59,7 +60,8 @@ class data(pc.data):
             fields=[]
             for group in self.field_dict.keys():
                 for field in self.field_dict[group]:
-                        fields.append(field)
+                        if field not in fields:
+                            fields.append(field)
             self.fields=fields
             self.field_dict=field_dict
         self.file=filename
@@ -92,7 +94,7 @@ class data(pc.data):
             pass
 
         for group in self.field_dict.keys():
-            for field in self.field_dict[group]:
+            for field in list(dict().fromkeys(self.field_dict[group])):
                 if field not in self.fields:
                     self.fields.append(field)
                 try:
