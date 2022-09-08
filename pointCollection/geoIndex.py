@@ -618,7 +618,7 @@ class geoIndex(dict):
                 D.index(D, np.isfinite(D.z))
             elif result['type'] == 'DEM':
                 D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
-                D.index(D, np.isfinite(D.z))
+                D.index(np.isfinite(D.z))
             elif result['type'] == 'filtered_DEM':
                 try:
                     D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
