@@ -6,7 +6,9 @@ Created on Thu Sep  6 15:44:31 2018
 """
 
 import numpy as np
-def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, index_only=False, index_and_count_only=False, return_count=False):
+def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, \
+                   index_only=False,index_and_count_only=False, return_count=False,\
+                   break_ties=False):
 
     if index_only or index_and_count_only or return_count:
        return_index=True
@@ -30,6 +32,11 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, index_onl
     xs=x[sorted_ind]
     ys=y[sorted_ind]
     zs=z[sorted_ind]
+    
+    if break_ties:
+        xcs=xr[sorted_ind]*delta+xy0[0]+delta/2
+        ycs=yr[sorted_ind]*delta+xy0[1]+delta/2
+        
     xyind=xyind[sorted_ind]
     ux, ix=np.unique(xyind, return_index=True)
     if not index_only:
@@ -52,12 +59,19 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, index_onl
         if (iM-np.floor(iM)==0) and ni>1:
             iM=int(np.floor(iM))
             iM=np.array([i0+iM, i0+iM+1])
+            if break_ties:
+                dr2=(xs[iM]-xcs[iM])**2+(ys[iM]-ycs[iM])**2
+                if dr2[0]<dr2[1]:
+                    iM[1]=iM[0]
+                else:
+                    iM[0]=iM[1]
+            if return_index:
+                ind[count,:]=sorted_ind[iM]
             if not index_only:
                 xm[count]=(xs[iM[0]]+xs[iM[1]])/2.
                 ym[count]=(ys[iM[0]]+ys[iM[1]])/2.
                 zm[count]=(zs[iM[0]]+zs[iM[1]])/2.
-            if return_index:
-                ind[count,:]=sorted_ind[iM]
+
         else:
             # odd case: iM ends in 0.5.  if ni=3, iM=3/2-1 = 0.5, want 1
             # if ni=1, iM=-0.5, want 0
@@ -71,8 +85,10 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, index_onl
         #plt.figure(1); plt.clf(); plt.subplot(211); plt.cla(); plt.scatter(xs[ii]-xm[count], ys[ii]-ym[count], c=zs[ii]); plt.axis('equal'); plt.subplot(212); plt.plot(zs[ii]); 
         #plt.pause(1)
         #print(count)
+    if break_ties and return_index:
+        ind=ind[:,0]
     if index_only:
-        return ind
+       return ind
     if index_and_count_only:
         return ind, N
     if return_index:
