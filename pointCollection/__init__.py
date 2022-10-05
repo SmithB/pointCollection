@@ -29,7 +29,9 @@ from .tools.unique_by_rows import unique_by_rows
 from .tools.resample_path import resample_path
 from .tools.along_track_coords import along_track_coords
 from .tools.interp_pts_from_grid import interp_pts_from_grid
+from .tools.calc_bias_and_R import calc_bias_and_R
 from .tools.in_axes import in_axes
+from .tools.RDE import RDE
 from .points_to_grid import points_to_grid
 from .points_to_grid import apply_bin_fn
 from .xover_search import cross_tracks
