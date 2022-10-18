@@ -50,9 +50,12 @@ class data(object):
         if fields is None:
             fields=self.fields
         temp=pc.grid.data()
-        for field in ['x','y','projection','filename','extent','time', 't'] + fields:
+        for field in ['x','y','projection','filename','extent','time', 't', 't_axis']:
             if hasattr(self, field):
                 setattr(temp, field, getattr(self, field))
+        for field in fields:
+            if hasattr(self, field):
+                setattr(temp, field, getattr(self, field).copy())
         temp.fields=fields.copy()
         temp.__update_size_and_shape__()
         return temp
@@ -66,6 +69,13 @@ class data(object):
     def copy(self, fields=None):
         return self.__copy__()
 
+    def copy_meta(self):
+        temp=pc.grid.data()
+        for field in ['x','y','projection','filename','extent','time', 't', 't_axis']:
+            if hasattr(self, field):
+                setattr(temp, field, getattr(self, field))
+        return temp
+    
     def __getitem__(self, *args, **kwargs):
         """
         wrapper for the copy_subset() method
@@ -76,10 +86,14 @@ class data(object):
         self.extent=[np.min(self.x), np.max(self.x), np.min(self.y), np.max(self.y)]
 
     def __update_size_and_shape__(self):
+        """
+        update the size and shape parameters of the object to match that of its data fields
+        """
         for field in ['z']+self.fields:
             try:
                 self.size=getattr(self, field).size
                 self.shape=getattr(self, field).shape
+                break
             except Exception:
                 pass
 
