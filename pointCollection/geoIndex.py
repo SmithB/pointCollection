@@ -252,7 +252,7 @@ class geoIndex(dict):
         indexF.close()
         return
 
-    def for_file(self, filename, file_type, number=0, dir_root=''):
+    def for_file(self, filename, file_type, number=0, dir_root='', group=None):
         """
         make a geoIndex for file 'filename'
         """
@@ -287,7 +287,7 @@ class geoIndex(dict):
                     pass
             self.from_list(temp)
         if file_type in ['h5']:
-            D=pc.data().from_h5(filename, field_dict={None:['x','y']})
+            D=pc.data().from_h5(filename, field_dict={group:['x','y']})
             if D.x.size > 0:
                 self.from_xy((D.x, D.y), filename=filename_out, file_type='h5', number=number)
         if file_type in ['ATM_Qfit']:
