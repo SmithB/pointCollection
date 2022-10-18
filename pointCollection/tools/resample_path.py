@@ -17,8 +17,8 @@ def resample_path(x, y, spacing):
     the x and y coordinates to an evenly spaced vector of distance values, separated by
     'spacing'
     """     
-    
-    s0=np.concatenate([[0], np.cumsum(np.diff(np.abs(x+1j*y)))])
+    s0=np.cumsum(np.concatenate([[0], np.abs(np.diff(x+1j*y))]))
+
     s=np.arange(s0[0], s0[-1]+spacing, spacing)
     if s[-1] < s0[-1]:
         s=np.concatenate([s, [s0[-1]]])
