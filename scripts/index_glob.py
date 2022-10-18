@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import argparse
 
 
-def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None,\
+def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None, group=None,\
                    verbose=False, delta=[1.e4, 1.e4], SRS_proj4=None, relative=False):
     """
     make a geoindex for the files in a glob string
@@ -42,7 +42,7 @@ def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None,\
         #if os.path.basename(file)[0:3]=='Geo':
         #    continue
         try:
-            index_list += [pc.geoIndex(delta=delta, SRS_proj4=SRS_proj4).for_file(file, file_type) ]
+            index_list += [pc.geoIndex(delta=delta, SRS_proj4=SRS_proj4).for_file(file, file_type, group=group) ]
         except Exception as e:
             print(f"index_glob: Exception thrown for file {file}:")
             print(e)
@@ -57,7 +57,8 @@ def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None,\
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--glob_string','-g', type=str, required=True, help="quoted string to pass to glob to find the files to index")
-    parser.add_argument('--type','-t', type=str, required=True, help="file type.  See pointCollection.geoIndex for options")
+    parser.add_argument('--type','-t', type=str, required=True, help="file type.  See pointCollection.geoIndex for options")    
+    parser.add_argument('--group', type=str, required=False, help="group within the file to read.  Defaults to None")
     parser.add_argument('--index_file','-i', type=str, help="index file, defaults to GeoIndex.h5 in the dirname of the glob string")
     parser.add_argument('--dir_root','-r', type=str, help="directory root for the index.  Defaults to None (absolute paths)")
     parser.add_argument('--bin_size', '-b', type=int, default=1.e4,  help='index bin size, default=1.e4')
@@ -80,6 +81,7 @@ def main():
                    verbose=args.verbose,\
                    delta=[np.float64(args.bin_size), np.float64(args.bin_size)], \
                    SRS_proj4=srs_proj4,\
+                   group=args.group,\
                    relative=args.Relative)
 
 if __name__=='__main__':
