@@ -1337,7 +1337,7 @@ class data(object):
            print("Error is" )
            print(e)
 
-    def show(self, field='z', band=None, ax=None, xy_scale=1, gradient=False, stretch_pct=None, **kwargs):
+    def show(self, field='z', band=None, ax=None, xy_scale=1, gradient=False, ddt=None, stretch_pct=None, **kwargs):
         import matplotlib.pyplot as plt
         kwargs['extent']=np.array(self.extent)*xy_scale
         kwargs['origin']='lower'
@@ -1350,6 +1350,19 @@ class data(object):
         elif (band is not None) and (self.t_axis==0):
             zz=getattr(self, field)[band,:,:]
 
+        if ddt is not None:
+            if self.t is not None:
+                t=self.t
+            elif self.time is not None:
+                t=self.time
+            else:
+                t=range(self.shape[self.t_axis])
+            if self.t_axis==0:
+                zz = getattr(self, field)[ddt[1],:,:]-getattr(self, field)[ddt[0],:,:]
+            else:
+                zz = getattr(self, field)[:,:,ddt[1]]-getattr(self, field)[:,:,ddt[0]]
+            zz /= (t[ddt[1]]-t[ddt[0]])
+            
         if gradient:
             zz=np.gradient(zz.squeeze(), self.x[1]-self.x[0], self.y[1]-self.y[0])[0]
             if 'stretch_pct' not in kwargs and 'clim' not in kwargs:
