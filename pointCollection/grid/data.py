@@ -83,7 +83,11 @@ class data(object):
         return self.copy_subset(*args, **kwargs)
 
     def __update_extent__(self):
-        self.extent=[np.min(self.x), np.max(self.x), np.min(self.y), np.max(self.y)]
+        try:
+            self.extent=[np.min(self.x), np.max(self.x), np.min(self.y), np.max(self.y)]
+        except ValueError:
+            # usually happens when self.x or self.y is empty
+            self.extent=[None, None, None, None]
 
     def __update_size_and_shape__(self):
         """
@@ -1270,11 +1274,9 @@ class data(object):
     def index(self, row_ind, col_ind, fields=None, band_ind=None):
         """
         slice a grid by row or column
-
         """
         if fields is None:
             fields=self.fields
-
         self.x=self.x[col_ind]
         self.y=self.y[row_ind]
         if band_ind is not None:
@@ -1315,10 +1317,8 @@ class data(object):
         """
         Return a subset of a grid by x and y range
         """
-
         col_ind = np.flatnonzero((self.x >= XR[0]) & (self.x <= XR[1]))
         row_ind = np.flatnonzero((self.y >= YR[0]) & (self.y <= YR[1]))
-
         time_ind = None
         if TR is not None:
             if self.time is not None:
@@ -1332,8 +1332,8 @@ class data(object):
            return self
         except Exception as e:
            print("grid: self extent is: ", self.extent)
-           print("XR is %s", XR)
-           print("YR is %s", YR)
+           print("XR is " + str(XR))
+           print("YR is " + str(YR))
            print("Error is" )
            print(e)
 
