@@ -6,7 +6,7 @@ Created on Fri Apr 22 12:14:24 2022
 @author: ben
 """
 
-import matplotlib.pyplot as plt
+
 import numpy as np
 import pointCollection as pc
 
@@ -37,6 +37,7 @@ def in_axes(D, ax=None):
         the in-axes elements.  For images, the y axis is listed first.
 
     '''
+    import matplotlib.pyplot as plt
     if ax is None:
         ax=plt.gca()
     XR=ax.get_xlim()

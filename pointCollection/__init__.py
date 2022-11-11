@@ -37,4 +37,4 @@ from .points_to_grid import apply_bin_fn
 from .xover_search import cross_tracks
 from pointCollection.ps_scale_for_lat import ps_scale_for_lat
 from pointCollection.reconstruct_ATL06_tracks import reconstruct_ATL06_tracks
-from pointCollection.dataPicker import dataPicker
+#from pointCollection.dataPicker import dataPicker

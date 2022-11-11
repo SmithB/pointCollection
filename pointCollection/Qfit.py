@@ -10,7 +10,7 @@ import h5py
 import numpy as np
 from datetime import datetime, timedelta
 from osgeo import osr
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from pointCollection import data
 import re
 
