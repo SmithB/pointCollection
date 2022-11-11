@@ -1371,9 +1371,9 @@ class data(object):
         """
         if (field not in self.interpolator) or replace:
             if (len(getattr(self, field).shape) > 2) and (self.t_axis==2):
-                z0 = getattr(self, field)[:,:,band]
+                z0 = getattr(self, field)[:,:,band].copy()
             elif (len(getattr(self, field).shape) > 2) and (self.t_axis==0):
-                z0 = getattr(self, field)[band,:,:]
+                z0 = getattr(self, field)[band,:,:].copy()
             else:
                 z0 = getattr(self, field).copy()
             # find where invalid
