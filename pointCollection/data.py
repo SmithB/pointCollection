@@ -56,7 +56,7 @@ class data(object):
         """
         When data size and shape may have changed, update the size and shape atttributes
         """
-        self.size=[0]
+        self.size=0
         self.shape=[0]
         for field in self.fields:
             try:
