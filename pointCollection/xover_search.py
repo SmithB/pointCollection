@@ -18,7 +18,26 @@ def dilate_bins(bins, delta):
             for this_bin in original_bins:
                 this_shifted_bin=(this_bin[0]+delta_x*delta, this_bin[1]+delta_y*delta)
                 bins.add(this_shifted_bin)
- 
+
+def x_point_vectorized(A, B):
+    """ 
+    Find crossing points between segments in complex matrices
+    """
+    
+    # assumes that A and B contain nxm matrices of complex coordinates,
+    # where each row is a path 
+    dA=A[:,-1]-A[:,0]
+    dB=B[:,-1]-B[:,0]
+    det = -(dA*(dB.conj())).imag
+    dAB0 = A[:,0]-B[:,0]
+    lA = (dAB0*(dB.conj())).imag/det
+    lB = (dAB0*(dA.conj())).imag/det
+    #print('x_point:'+str([lA, lB]))
+    status = ( lA>0 ) & ( lA < 1) & ( lB > 0) & ( lB <1 )
+    
+    return lA, lB, A[:,0]+lA*dA, status
+                
+                
 def x_point(A, B):
     '''
     find the point at which vectors A and B cross
@@ -37,6 +56,20 @@ def x_point(A, B):
         return None, None
 
     return A[0]+lA*dA, [lA, lB]
+
+def x_point_dense(A, B):
+
+    iia, iib = np.meshgrid(np.arange(0, len(A)-1), np.arange(0, len(B)-1))
+    iia=iia.ravel()
+    iib=iib.ravel()
+
+    xys=[np.c_[xj[iij], xj[iij+1]] for xj, iij in zip([A, B], [iia, iib])]
+    lA, lB, xc, status = x_point_vectorized(*xys)
+
+    if np.any(status):
+        return [iia[status], iib[status]],  np.array([lA[status], lB[status]]), xc[status]
+    else:
+        return None, None, None
 
 def cross_by_time(t, xy, ep, l0):
         
@@ -101,11 +134,33 @@ def cross_by_zoom(T, inds, delta, DOPLOT=False):
             xyC, ep, l0 = cross_by_time(t, xy, ep, l0)
         #if ep==ep_last and (Lsearch==delta):
         #    return None, None, None
+        xyC_old=xyC.copy()
         xyC, l0 = x_point(xy[0][[ep[0][0], ep[0][1]]], xy[1][[ep[1][0], ep[1][1]]] )
-        if DOPLOT:
-            import matplotlib.pyplot as plt
-            plt.plot(xyC.real, xyC.imag,'ko')
+        #if DOPLOT and xyC is not None:
+        #    import matplotlib.pyplot as plt
+        #    plt.plot(xyC.real, xyC.imag,'ko')
         if xyC is None:
+            if Lsearch < 3*delta:
+                paths = []
+                path_inds = []
+                for ii in [0, 1]:
+                    this_path=np.zeros([1,6])+1j*np.zeros([1,6])+np.NaN
+                    this_path_ind=this_path.copy().astype(float)
+                    ind_near = np.argmin(np.abs(xy[ii]-xyC_old))
+                    last_ind = np.minimum(ind_near+3, len(xy[ii])-1)
+                    first_ind = np.maximum(0, last_ind-6) 
+                    this_ind=np.arange(first_ind, last_ind)
+                    this_path[0,this_ind-this_ind[0]] = xy[ii][this_ind]#[:, None]
+                    this_path_ind[0,this_ind-this_ind[0]] = this_ind#[:,None]
+                    paths += [this_path.ravel()]
+                    path_inds += [this_path_ind.ravel()]
+                iAB, lAB, xyC = x_point_dense(*paths)
+                if DOPLOT:
+                    import matplotlib.pyplot as plt
+                    [plt.plot(np.real(xx), np.imag(xx), linewidth=3, marker='x') for xx in paths];
+                if iAB is not None:
+                    out_inds=[np.array([ind[int(pi[ii])], ind[int(pi[ii]+1)]]) for ind, pi, ii in zip(inds, path_inds, iAB)]
+                    return [xyC.real, xyC.imag], out_inds, lAB.ravel()
             return None, None, None
         if ep==ep_last and (Lsearch==delta):
             break
@@ -132,7 +187,7 @@ def cross_tracks(T, delta_coarse=10, delta=1, DOPLOT=False):
             plt.plot(T[ii].x[intersect_inds[ii]], T[ii].y[intersect_inds[ii]],'.')
         for BB in bin_keys:
             plt.plot(BB[0], BB[1],'k*')
-    xyC, inds, L = cross_by_zoom(T, intersect_inds, delta)
+    xyC, inds, L = cross_by_zoom(T, intersect_inds, delta, DOPLOT=DOPLOT)
     return xyC, inds, L
 
 def resample_path(x, y, spacing):
