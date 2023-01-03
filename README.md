@@ -7,6 +7,17 @@ Please make sure that gdal is installed before you install this package.
 
 This package is designed to allow efficient reading and writing of geospatial data from Python.  It covers some of the same ground as do community tools such as geopandas and pdal, but offers an abbreviated syntax and a modular design that may be helpful to some projects.
 
+
+## Installation
+
+An efficient way to add pointCollection to your python environment is to clone the repository, change into the repository directory, and install the package with pip:
+```bash
+git clone https://github.com/SmithB/pointCollection.git
+cd pointCollection
+pip install -e .
+```
+(I like to install packages in developer mode.)
+
 # What this package provides
 The package provides two main base classes, and a set of helper classes designed for efficient data access of files on disk.  In general use, it is usually imported with the abbreviation:
 
@@ -22,7 +33,7 @@ This is the main class for this project.  It is intended to contain data, and ha
 ```python
 import pointCollection as pc
 import numpy as np
-D=pc.data().from_dict({'x':np.arange(10),'y':np.arange(10),'z':np.arange(10)**2})
+D=pc.data().from_dict({'x':np.arange(5),'y':np.arange(5),'z':np.arange(5)**2})
 ```
 
 This creates a pointCollection.data instance with fields 'x','y', and 'z', and we can access the data using dot syntax:
@@ -37,7 +48,7 @@ All the fields in the object can also be indexed by applying standard Python sli
 ```python
 D.z[0:3]
 ```
-returns the first three elements of all fields of D.
+returns a new pointCollection.data object containing first three elements of all fields of D.
 
 pointCollection.data objects can also read data from hdf5 files, using the .from_h5() method, which accepts arguments to specify the fields and groups to be read.  Subclasses of pointCollection.data are provided for a few different ice-sheet altimetry data formats:
 * ICESat-2 ATL06 and ATL11
@@ -50,7 +61,7 @@ pointCollection.data objects can also read data from hdf5 files, using the .from
 The pointCollection grid format reads and writes data from gridded files.  It is intended to contain 'x' and 'y' fields (and sometimes 't' or 'time' for 3-D data) specifying the corrdinates of the grid, and data fields, the default for which is 'z'.  pc.grid.data() objects can be indexed using 2-d or 3-d slicing operations.  Methods are provided to read and write data from hdf-5 files and geotifs.
 
 
-# pc.GeoIndex() class
+### pointCollection.GeoIndex() class
 
 pointCollection also provides the geoIndex class, which is indended to organize data from a variety of different datasets that is contained in individual files.  Once a geoIndex has been created for a set of files, it allows data to be read transparently from all the files, returning a list of pc.data objects for a specified input area.
 
