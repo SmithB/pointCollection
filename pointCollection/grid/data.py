@@ -1243,6 +1243,9 @@ class data(object):
         setattr(self, field, getattr(self, field).astype(dtype))
         return self
 
+    def normalized(self, **kwargs):
+        return self.copy().normalize(**kwargs)
+    
     def calc_gradient(self, field='z'):
         """
         calculate the gradient of a field
@@ -1259,14 +1262,22 @@ class data(object):
         gy, gx=np.gradient(getattr(self, field), self.y, self.x)
         self.assign({field+'_x':gx, field+'_y':gy})
 
-    def toRGB(self, cmap, field='z', caxis=None, alpha=None):
+    def toRGB(self, cmap=None, field='z', bands=None, caxis=None, alpha=None):
         """
         Convert a field to RGB
         """
+        if bands is not None:
+            if self.t_axis==0:
+                setattr(self, field, getattr(self, field)[bands,:,:])
+            elif self.t_axis==2:
+                setattr(self, field, getattr(self, field)[:,:,bands])
+        
         if caxis is None:
             caxis=[getattr(self, field).min(), getattr(self, field).max()]
-        self.normalize(z0=caxis)
-        setattr(self, field, cmap(getattr(self, field)))
+        
+        self.normalize(z0=caxis, field=field)
+        if cmap is not None:
+            setattr(self, field, cmap(getattr(self, field)))
         if alpha is not None:
             self.add_alpha_band(alpha)
         return self
@@ -1337,6 +1348,9 @@ class data(object):
            print("Error is" )
            print(e)
 
+    def cropped(self, *args, **kwargs):
+        return self.crop(*args, **kwargs)
+    
     def show(self, field='z', band=None, ax=None, xy_scale=1, gradient=False, ddt=None, stretch_pct=None, **kwargs):
         import matplotlib.pyplot as plt
         kwargs['extent']=np.array(self.extent)*xy_scale
