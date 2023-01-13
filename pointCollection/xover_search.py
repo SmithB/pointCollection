@@ -159,7 +159,10 @@ def cross_by_zoom(T, inds, delta, DOPLOT=False):
                     import matplotlib.pyplot as plt
                     [plt.plot(np.real(xx), np.imag(xx), linewidth=3, marker='x') for xx in paths];
                 if iAB is not None:
-                    out_inds=[np.array([ind[int(pi[ii])], ind[int(pi[ii]+1)]]) for ind, pi, ii in zip(inds, path_inds, iAB)]
+                    if len(iAB[0]) > 0:
+                        # should investigate what's happening here
+                        iAB=[ii[0:1] for ii in iAB]
+                    out_inds=[np.array([ind[int(pi[ii])], ind[int(pi[ii]+1)]]) for ind, pi, ii in zip(inds, path_inds, iAB)]                    
                     return [xyC.real, xyC.imag], out_inds, lAB.ravel()
             return None, None, None
         if ep==ep_last and (Lsearch==delta):
