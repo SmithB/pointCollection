@@ -322,7 +322,7 @@ class data(object):
                     print("IndexError")
         return self.copy_attrs().from_dict(dd, fields=datasets)
 
-    def clipped(self, bounds, return_index=False, **kwargs):
+    def cropped(self, bounds, return_index=False, **kwargs):
         """
         return a copy of a subset of the object falling within specified bounds
 
