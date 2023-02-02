@@ -51,7 +51,7 @@ def ATL06_crossovers(files, different_cycles=False, delta_time_max=np.inf, n_ext
                                 xover_list[-1]['data_0_extra_segments'].append(D[ii][kk])
                             else:
                                 xover_list[-1]['data_0_extra_segments'].append(pc.data())
-                            
+
                         for kk in np.concatenate([np.arange(inds[1][0]-n_extra_segments, inds[1][0]), np.arange(inds[1][1]+1, inds[1][1]+n_extra_segments+1)]):
                             if kk >= 0 and kk < D[jj].shape[0]:
                                 xover_list[-1]['data_1_extra_segments'].append(D[jj][kk])
@@ -77,7 +77,7 @@ def write_xovers(xover_list, out_file, n_extra_segments=0):
 
             Dtemp=[item[key_D] for item in xover_list]
             Dtemp=pc.data().from_list(Dtemp)
-            shape=[np.int(Dtemp.size/2), 2]
+            shape=[np.int64(Dtemp.size/2), 2]
             Dtemp.shape=shape
             for key in Dtemp.fields:
                 temp=getattr(Dtemp, key)
@@ -92,13 +92,13 @@ def write_xovers(xover_list, out_file, n_extra_segments=0):
 
                 Dtemp=[item[key_D] for item in xover_list]
                 Dtemp=pc.data().from_list(Dtemp)
-                shape=[np.int(Dtemp.size/(n_extra_segments*2)), n_extra_segments*2]
+                shape=[np.int64(Dtemp.size/(n_extra_segments*2)), n_extra_segments*2]
                 Dtemp.shape=shape
                 for key in Dtemp.fields:
                     temp=getattr(Dtemp, key)
                     temp.shape=shape
                     h5f.create_dataset(group+'/'+key, data=temp)
-                    
+
         xy=np.c_[[item['xyC'] for item in xover_list]]
         h5f.create_dataset('/x', data=xy[:,0])
         h5f.create_dataset('/y', data=xy[:,1])
@@ -200,7 +200,7 @@ def main():
     parser.add_argument('--n_extra_segments','-n', type=int, help="Number of extra ATL06 segments to include on either side of crossover", default=0)
     parser.add_argument('--queue','-q', action="store_true")
     args=parser.parse_args()
-    
+
     out_dir=args.out_dir
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
@@ -217,7 +217,7 @@ def main():
     if len(xover_list) > 0:
         if args.hemisphere is not None:
             calc_slope(xover_list, args.mask_file, hemisphere=args.hemisphere)
-           
+
         write_xovers(xover_list, os.path.join(out_dir, os.path.basename(files[0])), n_extra_segments=args.n_extra_segments)
 
 

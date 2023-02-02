@@ -64,9 +64,9 @@ class mosaic(data):
         else:
             self.dimensions[2] = 1
         # calculate y dimensions with new extents
-        self.dimensions[0] = np.int((self.extent[3] - self.extent[2])/self.spacing[1]) + 1
+        self.dimensions[0] = np.int64((self.extent[3] - self.extent[2])/self.spacing[1]) + 1
         # calculate x dimensions with new extents
-        self.dimensions[1] = np.int((self.extent[1] - self.extent[0])/self.spacing[0]) + 1
+        self.dimensions[1] = np.int64((self.extent[1] - self.extent[0])/self.spacing[0]) + 1
         # calculate x and y arrays
         self.x = np.linspace(self.extent[0],self.extent[1],self.dimensions[1])
         self.y = np.linspace(self.extent[2],self.extent[3],self.dimensions[0])
@@ -76,8 +76,8 @@ class mosaic(data):
         """
         get the image coordinates
         """
-        iy = np.array((temp.y[:,None]-self.extent[2])/self.spacing[1],dtype=np.int)
-        ix = np.array((temp.x[None,:]-self.extent[0])/self.spacing[0],dtype=np.int)
+        iy = np.array((temp.y[:,None]-self.extent[2])/self.spacing[1],dtype=np.int64)
+        ix = np.array((temp.x[None,:]-self.extent[0])/self.spacing[0],dtype=np.int64)
         return (iy,ix)
 
     def raised_cosine_weights(self, pad, feather):
@@ -103,7 +103,7 @@ class mosaic(data):
             xy0 = np.mean(xy)
             W = xy[-1]-xy[0]
             dist = np.abs(xy-xy0)
-            wt = np.zeros_like(dist) 
+            wt = np.zeros_like(dist)
             i_feather = (dist >= W/2 - pad - feather) & ( dist <= W/2 -pad )
             wt_feather = np.exp(-((xy[i_feather]-xy0)/(feather/2.))**2)
             wt[ i_feather ] = wt_feather
