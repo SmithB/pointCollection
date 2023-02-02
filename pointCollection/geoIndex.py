@@ -393,7 +393,8 @@ class geoIndex(dict):
         xy_bin=self.bins_as_array()
         these=(xy_bin[0] >= xr[0]) & (xy_bin[0] <= xr[1]) &\
             (xy_bin[1] >= yr[0]) & (xy_bin[1] <= yr[1])
-        return self.query_xy([xy_bin[0][these], xy_bin[1][these]], get_data=get_data, fields=fields, dir_root=dir_root)
+        return self.query_xy([xy_bin[0][these], xy_bin[1][these]], get_data=get_data, \
+                             fields=fields, dir_root=dir_root, bounds=[xr, yr])
 
     def intersect(self, other, pad=[0, 0]):
         """
@@ -407,7 +408,8 @@ class geoIndex(dict):
         other_sub=other.copy_subset(xyBin=[xyB[:,0], xyB[:,1]], pad=pad[1])
         return self_sub, other_sub
 
-    def query_xy(self, xyb, cleanup=True, get_data=True, fields=None, pad=None, dir_root='', strict=False):
+    def query_xy(self, xyb, cleanup=True, get_data=True, fields=None, pad=None, 
+                 dir_root='', strict=False, bounds=None):
         """
         check if data exist within the current geo index for bins in lists/arrays
             xb and yb.
@@ -488,7 +490,7 @@ class geoIndex(dict):
             'x':xy[:,0],
             'y':xy[:,1]}
         if get_data:
-            query_results=self.get_data(query_results, fields=fields, dir_root=dir_root)
+            query_results=self.get_data(query_results, fields=fields, dir_root=dir_root, bounds=bounds)
             if strict is True:
                 # take the subset of data that rounds exactly to the query (OTW, may get data that extend outside)
                 if not isinstance(query_results, list):
@@ -545,7 +547,7 @@ class geoIndex(dict):
         # if nothing has happened yet, return the filename
         return filename
 
-    def get_data(self, query_results, fields=None,  data=None, dir_root=''):
+    def get_data(self, query_results, fields=None,  data=None, dir_root='', bounds=None):
         """
         read the data from a set of query results
         Currently the function knows how to read:
@@ -568,7 +570,7 @@ class geoIndex(dict):
 
         # if we are querying any DEM data, work out the bounds of the query so we don't have to read the whole DEMs
         all_types=[query_results[key]['type'] for key in query_results]
-        if 'DEM' in all_types or 'filtered_DEM' in all_types:
+        if 'DEM' in all_types or 'filtered_DEM' in all_types and bounds is None:
             all_x=list()
             all_y=list()
             for key, result in query_results.items():
@@ -617,11 +619,17 @@ class geoIndex(dict):
                 D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
                 D.index(D, np.isfinite(D.z))
             elif result['type'] == 'DEM':
-                D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
+                D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year')
+                if D.shape is None:
+                    continue
+                D=D.as_points(keep_all=True)
                 D.index(np.isfinite(D.z))
             elif result['type'] == 'filtered_DEM':
                 try:
-                    D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
+                    D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year')
+                    if D.shape is None:
+                        continue
+                    D=D.as_points(keep_all=True)
                     try:
                         D1=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[2], date_format='year').as_points(keep_all=True)
                         D.assign({'sigma':D1.z})
@@ -645,6 +653,8 @@ class geoIndex(dict):
                         Di.filename=this_file
                 out_data += D
             else:
+                if D is None:
+                    continue
                 if D.filename is None:
                     D.filename=this_file
                 out_data.append(D)
