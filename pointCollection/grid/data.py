@@ -292,10 +292,20 @@ class data(object):
         """
         self.filename=file
         if date_format is not None:
-            self.get_date(date_format)
-
-        ds=gdal.Open(file, gdalconst.GA_ReadOnly)
-        self.from_gdal(ds, **kwargs)
+            try:
+                self.get_date(date_format)
+            except Exception as e:
+                print(f'pc.grid.data.from_geotif:\n\t while getting the date, encountered exception:\n\t{e}')
+                print(f'\n\tfor filename {file}')
+                print('\t\tsetting time to NaN')
+                self.time=np.NaN
+                return self
+        try:
+            ds=gdal.Open(file, gdalconst.GA_ReadOnly)
+            self.from_gdal(ds, **kwargs)
+        except Exception as e:
+            print(f'pc.grid.data.from_geotif:\n\t while reading the file, encountered exception:\n\t{e}')
+            print(f'\n\tfor filename {file}')
         return self
 
     def from_gdal(self, ds, field='z', bands=None, bounds=None, extent=None, skip=1, fill_value=np.nan, min_res=None):
