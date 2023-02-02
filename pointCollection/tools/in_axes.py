@@ -42,9 +42,11 @@ def in_axes(D, ax=None):
         ax=plt.gca()
     XR=ax.get_xlim()
     YR=ax.get_ylim()
+    print([XR, YR])
     if isinstance(D, pc.grid.data):
         x=D.x
         y=D.y
+        # return the elements for each set of axes
         return  (y >= YR[0]) & (y< YR[1]), (x>=XR[0]) & (x <= XR[1])
     elif isinstance(D, pc.data):
         x=D.x
