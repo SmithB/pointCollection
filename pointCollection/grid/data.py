@@ -75,7 +75,7 @@ class data(object):
             if hasattr(self, field):
                 setattr(temp, field, getattr(self, field))
         return temp
-    
+
     def __getitem__(self, *args, **kwargs):
         """
         wrapper for the copy_subset() method
@@ -175,8 +175,8 @@ class data(object):
             # convert unique fields to list
             self.fields=list(fields)
         # calculate x and y dimensions with new extents
-        nx = np.int((xmax - xmin)/spacing[0]) + 1
-        ny = np.int((ymax - ymin)/spacing[1]) + 1
+        nx = np.int64((xmax - xmin)/spacing[0]) + 1
+        ny = np.int64((ymax - ymin)/spacing[1]) + 1
         # calculate x and y arrays
         self.x = np.linspace(xmin,xmax,nx)
         self.y = np.linspace(ymin,ymax,ny)
@@ -1245,7 +1245,7 @@ class data(object):
 
     def normalized(self, **kwargs):
         return self.copy().normalize(**kwargs)
-    
+
     def calc_gradient(self, field='z'):
         """
         calculate the gradient of a field
@@ -1271,10 +1271,10 @@ class data(object):
                 setattr(self, field, getattr(self, field)[bands,:,:])
             elif self.t_axis==2:
                 setattr(self, field, getattr(self, field)[:,:,bands])
-        
+
         if caxis is None:
             caxis=[getattr(self, field).min(), getattr(self, field).max()]
-        
+
         self.normalize(z0=caxis, field=field)
         if cmap is not None:
             setattr(self, field, cmap(getattr(self, field)))
@@ -1350,7 +1350,7 @@ class data(object):
 
     def cropped(self, *args, **kwargs):
         return self.crop(*args, **kwargs)
-    
+
     def show(self, field='z', band=None, ax=None, xy_scale=1, gradient=False, ddt=None, stretch_pct=None, **kwargs):
         import matplotlib.pyplot as plt
         kwargs['extent']=np.array(self.extent)*xy_scale
@@ -1376,7 +1376,7 @@ class data(object):
             else:
                 zz = getattr(self, field)[:,:,ddt[1]]-getattr(self, field)[:,:,ddt[0]]
             zz /= (t[ddt[1]]-t[ddt[0]])
-            
+
         if gradient:
             zz=np.gradient(zz.squeeze(), self.x[1]-self.x[0], self.y[1]-self.y[0])[0]
             if 'stretch_pct' not in kwargs and 'clim' not in kwargs:
