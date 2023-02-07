@@ -129,16 +129,14 @@ def cross_by_zoom(T, inds, delta, DOPLOT=False):
                 mask[ii]=mask_temp
                 W=np.where(mask[ii])[0]
                 ep[ii]=[W[0], W[-1]]
-                xy_ep[ii]=xy[ii][ep[ii]]    
+                xy_ep[ii]=xy[ii][ep[ii]]
+
+        xyC_old=xyC.copy()
         if use_time:
             xyC, ep, l0 = cross_by_time(t, xy, ep, l0)
-        #if ep==ep_last and (Lsearch==delta):
-        #    return None, None, None
-        xyC_old=xyC.copy()
-        xyC, l0 = x_point(xy[0][[ep[0][0], ep[0][1]]], xy[1][[ep[1][0], ep[1][1]]] )
-        #if DOPLOT and xyC is not None:
-        #    import matplotlib.pyplot as plt
-        #    plt.plot(xyC.real, xyC.imag,'ko')
+        else:
+            xyC, l0 = x_point(xy[0][[ep[0][0], ep[0][1]]], xy[1][[ep[1][0], ep[1][1]]] )
+
         if xyC is None:
             if Lsearch < 3*delta:
                 paths = []
