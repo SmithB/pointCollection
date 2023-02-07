@@ -61,7 +61,7 @@ def interp_pts_from_grid(D0, Dg, field='z', band=None):
     # extra-fast interpolator for a regular grid
     ccf=(x-Dg.x[0])/(Dg.x[1]-Dg.x[0])
     rrf=(y-Dg.y[0])/(Dg.x[1]-Dg.x[0])
-    good=(ccf>0) & (ccf<Dg.shape[1]-2) &  (rrf>0) & (rrf<Dg.shape[0]-2)
+    good=(ccf >= 0) & (ccf <= Dg.shape[1]-2) &  (rrf >= 0) & (rrf <= Dg.shape[0]-2)
     ccf=ccf[good]
     rrf=rrf[good]
     
@@ -78,10 +78,14 @@ def interp_pts_from_grid(D0, Dg, field='z', band=None):
     elif Dg.t_axis==0:
         z=getattr(Dg, field)[band,:,:]
 
+    # sum the the values multiplied by their bilinear weights.  the 'clip' option
+    # means that indices past the edge of the grid return the values at the edge
+    # of the grid.
+    
     v[good]=np.sum(
             z.ravel()[np.ravel_multi_index([rr.ravel(), cc.ravel()], z.shape)].reshape(rr.shape)*\
                 (1-np.abs(np.tile(rrf[:,None], [1, 4])-rr))*(1-np.abs(np.tile(ccf[:, None], [1, 4])-cc)),\
-                axis=1)
+                axis=1, mode='clip')
 
     return v
 
