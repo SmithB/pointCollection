@@ -152,8 +152,12 @@ def calc_slope(xovers, mask_file, hemisphere=-1):
 
     mask=pc.grid.data().from_geotif(mask_file, \
                 bounds=[[np.min(xy[:,0].ravel())-dx, np.max(xy[:,0].ravel()+dx)], [np.min(xy[:,1].ravel())-dx, np.max(xy[:,1].ravel()+dx)]])
+    try:
+        grounded=np.abs(mask.interp(xy[:,0], xy[:,1])-1)<.01
+    except AttributeError:
+        print(f"\cross_ATL06_tile.py: no data found in mask file {mask_file}, marking all crossovers as ungrounded\n")
+        grounded=np.zeros(xy.shape[0], dtype=bool)
 
-    grounded=np.abs(mask.interp(xy[:,0], xy[:,1])-1)<.01
     G=np.zeros((4,4))
     G[:,2]=np.array([1, 1, 0, 0])
     G[:,3]=np.array([0, 0, 1, 1])
