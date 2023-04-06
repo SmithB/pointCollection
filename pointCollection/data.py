@@ -226,12 +226,15 @@ class data(object):
         """
         build a data object from a list of other data objects
         """
+        if D_list is None:
+            return
         if len(self.fields)==0:
             fields=set()
             for D in D_list:
                 if hasattr(D,'fields'):
                     fields=fields.union(D.fields)
             self.fields=list(fields)
+
         for D in D_list:
             if D is not None:
                 D.complete_fields(self.fields)
