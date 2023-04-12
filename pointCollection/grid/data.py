@@ -18,13 +18,15 @@ import uuid
 import h5py
 import pyproj
 import netCDF4
-from scipy.interpolate import RectBivariateSpline
+from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
-from . import WV_date
+from . import DEM_date
 #import os
 
 class data(object):
+    """Class that holds gridded data."""
+
     def __init__(self, fields=None, fill_value=np.nan, t_axis=2):
         self.x=None
         self.y=None
@@ -47,6 +49,7 @@ class data(object):
             setattr(self, field, None)
 
     def __copy__(self, fields=None):
+        """Return a copy of a grid, optionally with a subset of fields."""
         if fields is None:
             fields=self.fields
         temp=pc.grid.data()
@@ -61,15 +64,18 @@ class data(object):
         return temp
 
     def __repr__(self):
+        """Return a printable representation of a grid."""
         out=f"{self.__class__} with shape {self.shape},"+"\n"
         out += "with fields:"+"\n"
         out += f"{self.fields}"
         return out
 
     def copy(self, fields=None):
+        """Return a copy of the current dataset."""
         return self.__copy__()
 
     def copy_meta(self):
+        """Return an empty dataset matching the current dataset."""
         temp=pc.grid.data()
         for field in ['x','y','projection','filename','extent','time', 't', 't_axis']:
             if hasattr(self, field):
@@ -77,12 +83,11 @@ class data(object):
         return temp
 
     def __getitem__(self, *args, **kwargs):
-        """
-        wrapper for the copy_subset() method
-        """
+        """Return a subset of the data."""
         return self.copy_subset(*args, **kwargs)
 
     def __update_extent__(self):
+        """Update the extent of the data to match its x and y fields."""
         try:
             self.extent=[np.min(self.x), np.max(self.x), np.min(self.y), np.max(self.y)]
         except ValueError:
@@ -90,9 +95,7 @@ class data(object):
             self.extent=[None, None, None, None]
 
     def __update_size_and_shape__(self):
-        """
-        update the size and shape parameters of the object to match that of its data fields
-        """
+        """Update the size and shape parameters of the object to match that of its data fields."""
         for field in ['z']+self.fields:
             try:
                 self.size=getattr(self, field).size
@@ -103,7 +106,7 @@ class data(object):
 
     def from_dict(self, thedict):
         """
-        build a grid object from a python dictionary
+        Build a grid object from a python dictionary.
 
         Parameters
         ----------
@@ -118,7 +121,14 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def assign(self, newdata):
+    def assign(self, *args, **kwargs):
+        """Set field values."""
+        if len(args):
+            newdata=args[0]
+        else:
+            newdata=dict()
+        if len(kwargs) > 0:
+            newdata |= kwargs
         for field in newdata.keys():
             setattr(self, field, newdata[field])
             if field not in self.fields:
@@ -127,7 +137,7 @@ class data(object):
 
     def from_list(self, D_list, t_axis=None, sort=False):
         """
-        build a grid object from a list of other grid objects
+        Build a grid object from a list of other grid objects.
 
         Parameters
         ----------
@@ -251,7 +261,7 @@ class data(object):
 
     def from_file(self, raster_file, file_format=None, **kwargs):
         """
-        Wrapper function for reading a raster file
+        Read a raster file.
 
         Parameters
         ----------
@@ -278,7 +288,7 @@ class data(object):
 
     def from_geotif(self, file, date_format=None, **kwargs):
         """
-        Read a raster from a geotiff file
+        Read a raster from a geotiff file.
 
         Parameters
         ----------
@@ -304,13 +314,16 @@ class data(object):
             ds=gdal.Open(file, gdalconst.GA_ReadOnly)
             self.from_gdal(ds, **kwargs)
         except Exception as e:
-            print(f'pc.grid.data.from_geotif:\n\t while reading the file, encountered exception:\n\t{e}')
-            print(f'\n\tfor filename {file}')
+            if 'verbose' in kwargs and kwargs['verbose']:
+                print(f'pc.grid.data.from_geotif:\n\t while reading the file, encountered exception:\n\t{e}')
+                print(f'\n\tfor filename {file}')
         return self
 
-    def from_gdal(self, ds, field='z', bands=None, bounds=None, extent=None, skip=1, fill_value=np.nan, min_res=None):
+    def from_gdal(self, ds, field='z', bands=None, bounds=None, extent=None,
+                  skip=1, fill_value=np.nan, min_res=None, meta_only=False,
+                  verbose=False):
         """
-        make a pointCollection.grid.data from a gdal dataset
+        Make a pointCollection.grid.data from a gdal dataset.
 
         Parameters
         ----------
@@ -328,10 +341,11 @@ class data(object):
             The default is None.
         skip : Integer, optional
             Specifies that every skip'th value should be read. The default is 1.
-        min_res : TYPE, optional
+        min_res : float, optional
             Attempt to read with a skip value chosen to match min_res.
             The default is None.
-
+        meta_only : return raster extent without reading data
+        verbose:  if true, report errors, etc
         Raises
         ------
         AttributeError
@@ -375,9 +389,19 @@ class data(object):
         else:
             rows=np.arange(band.YSize, dtype=int)
             cols=np.arange(band.XSize, dtype=int)
+        if skip >1:
+            cols=cols[::skip]
+            rows=rows[::skip]
+        x=x[cols]
+        y=y[rows]
+        self.x=x
+        self.y=y[::-1]
+        self.projection=proj
+        self.__update_extent__()
+        if meta_only:
+            return self
 
         z=list()
-
         for band_num in bands:
             if band_num > ds.RasterCount:
                 raise AttributeError()
@@ -394,28 +418,20 @@ class data(object):
             z=np.stack(z, axis=2)
         ds=None
 
-        if skip >1:
-            cols=cols[::skip]
-            rows=rows[::skip]
         if nodataValue is not None and np.isfinite(nodataValue):
             bad = z==np.array(nodataValue).astype(z.dtype)
             z = np.float64(z)
             z[bad] = self.fill_value
         else:
             z = np.float64(z)
-        x=x[cols]
-        y=y[rows]
-        self.x=x
-        self.y=y[::-1]
+
         self.assign({field: z})
-        self.projection=proj
-        self.__update_extent__()
         self.__update_size_and_shape__()
         return self
 
     def h5_open(self, h5_file, mode='r', compression=None):
         """
-        Open an HDF5 file with or without external compression
+        Open an HDF5 file with or without external compression.
 
         Parameters
         ----------
@@ -447,8 +463,8 @@ class data(object):
 
 
     def read_data(self, src, i0, i1, bands):
-        '''
-        read data from a data source (array or h5py dataset)
+        """
+        Read data from a data source (array or h5py dataset).
 
         Parameters
         ----------
@@ -464,7 +480,7 @@ class data(object):
         z : np.array
             data subsetted to match i0, i1, and bands
 
-        '''
+        """
         if len(src.shape) == 2:
             z = np.array(src[i0, i1])
         else:
@@ -487,7 +503,7 @@ class data(object):
         xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
         t_axis=None, compression=None, swap_xy=False, source_fillvalue=None):
         """
-        Read a raster from an HDF5 file
+        Read a raster from an HDF5 file.
 
         Parameters
         ----------
@@ -679,7 +695,7 @@ class data(object):
 
     def nc_open(self, nc_file, mode='r', compression=None):
         """
-        Open a netCDF4 file with or without external compression
+        Open a netCDF4 file with or without external compression.
 
         Parameters
         ----------
@@ -709,7 +725,7 @@ class data(object):
         xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
         t_axis=None, compression=None):
         """
-        Read a raster from a netCDF4 file
+        Read a raster from a netCDF4 file.
 
         Parameters
         ----------
@@ -838,7 +854,7 @@ class data(object):
                         fill_value = f_field.getncattr('_FillValue')
                         try:
                             z[z == fill_value] = self.fill_value
-                        except ValueError as e:
+                        except ValueError:
                             z=z.astype(float)
                             z[z == fill_value] = self.fill_value
                     # find grid mapping name from variable
@@ -866,9 +882,7 @@ class data(object):
         return self
 
     def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False, attributes={}, fill_value=None, **kwargs):
-        """
-        write a grid data object to an hdf5 file
-        """
+        """Write a grid data object to an hdf5 file."""
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
         kwargs.setdefault('srs_epsg', None)
@@ -942,9 +956,7 @@ class data(object):
                     h5crs.attrs[att_name] = att_val
 
     def to_nc(self, out_file, fields=None, group='', replace=False, nocompression=False, attributes={}, fill_value=None, **kwargs):
-        """
-        write a grid data object to a netCDF4 file
-        """
+        """Write a grid data object to a netCDF4 file."""
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
         kwargs.setdefault('srs_epsg', None)
@@ -959,7 +971,7 @@ class data(object):
         try:
             t_name = [field for field in ('t','time') if hasattr(self, field)
                 and np.any(getattr(self,field))].pop()
-        except Exception as e:
+        except Exception:
             t_name = None
 
         # update fill values in fields
@@ -1021,7 +1033,7 @@ class data(object):
                         ncf.createVariable(field, var.dtype, nc_dim,
                             zlib=np.logical_not(nocompression),
                             fill_value=self.fill_value)
-                    except Exception as e:
+                    except Exception:
                         pass
                     else:
                         ncf.variables[field][...] = var
@@ -1043,7 +1055,7 @@ class data(object):
 
     def to_geotif(self, out_file, **kwargs):
         """
-        write a grid object to a geotif
+        Write a grid object to a geotif.
 
         Parameters
         ----------
@@ -1061,7 +1073,7 @@ class data(object):
 
     def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None, srs_wkt=None, srs_epsg=None, dtype=gdal.GDT_Float32, options=["compress=LZW"]):
         """
-        Write a grid object to a gdal memory object
+        Write a grid object to a gdal memory object.
 
         Parameters
         ----------
@@ -1127,9 +1139,7 @@ class data(object):
         return out_ds
 
     def as_points(self, fields=None, keep_all=False):
-        """
-        Return a pointCollection.data object containing the points in the grid
-        """
+        """Return a pointCollection.data object containing the points in the grid."""
         if fields is None:
             fields=self.fields
 
@@ -1175,7 +1185,7 @@ class data(object):
 
     def get_latlon(self, srs_proj4=None, srs_wkt=None, srs_epsg=None):
         """
-        Get the latitude and longitude of grid cells
+        Get the latitude and longitude of grid cells.
 
         Parameters
         ----------
@@ -1213,7 +1223,7 @@ class data(object):
         return self
 
     def add_alpha_band(self, alpha=None, field='z', nodata_vals=None):
-
+        """Add a transparencey band to a field."""
         if alpha is None:
             if nodata_vals is not None:
                 alpha=np.ones_like(getattr(self, field)[:,:,0])
@@ -1233,19 +1243,15 @@ class data(object):
         return self
 
     def get_date(self, date_format=None):
-        """
-        Get the date from the filename of a Worldview file
-        """
+        """Get the date from the filename of a Worldview or tanDEM-x file."""
         if date_format is None or date_format == 'year':
-            self.time = WV_date.WV_year(self.filename)
+            self.time = DEM_date.DEM_year(self.filename)
         elif date_format == 'matlab':
-            self.time = WV_date.WV_MatlabDate(self.filename)
+            self.time = DEM_date.DEM_MatlabDate(self.filename)
         return self
 
     def normalize(self, field='z', z0=[0., 255.], z1=[0., 1.], truncate=True, dtype=np.float64):
-        """
-        Normalize the z range.
-        """
+        """Normalize the z range of a grid object."""
         getattr(self, field)[:] = (getattr(self, field).astype(np.float64)-z0[0])/(z0[1]-z0[0])*(z1[1]-z1[0])+z1[0]
         if truncate:
             getattr(self, field)[getattr(self, field) < z1[0]] = z1[0]
@@ -1254,11 +1260,12 @@ class data(object):
         return self
 
     def normalized(self, **kwargs):
+        """Return a normalized copy."""
         return self.copy().normalize(**kwargs)
 
-    def calc_gradient(self, field='z'):
+    def calc_gradient(self, field='z', band=0):
         """
-        calculate the gradient of a field
+        Calculate the gradient of a field.
 
         Parameters
         ----------
@@ -1269,13 +1276,19 @@ class data(object):
         -------
         None.
         """
-        gy, gx=np.gradient(getattr(self, field), self.y, self.x)
+        if len(getattr(self, field).shape) > 2:
+            if self.t_axis==0:
+                zz=getattr(self, field)[band,:,:]
+            else:
+                zz=getattr(self, field)[:,:,band]
+        else:
+            zz=getattr(self, field)
+
+        gy, gx=np.gradient(zz, self.y, self.x)
         self.assign({field+'_x':gx, field+'_y':gy})
 
     def toRGB(self, cmap=None, field='z', bands=None, caxis=None, alpha=None):
-        """
-        Convert a field to RGB
-        """
+        """Convert a field to RGB."""
         if bands is not None:
             if self.t_axis==0:
                 setattr(self, field, getattr(self, field)[bands,:,:])
@@ -1293,9 +1306,7 @@ class data(object):
         return self
 
     def index(self, row_ind, col_ind, fields=None, band_ind=None):
-        """
-        slice a grid by row or column
-        """
+        """Slice a grid by row or column."""
         if fields is None:
             fields=self.fields
         self.x=self.x[col_ind]
@@ -1325,6 +1336,7 @@ class data(object):
         return self
 
     def copy_subset(self, rc_ind, band_ind=None, fields=None):
+        """Return a subset of a grid object."""
         if fields is None:
             fields=self.fields
         if len(rc_ind) > 2:
@@ -1335,9 +1347,7 @@ class data(object):
         return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=band_ind)
 
     def crop(self, XR, YR, TR=None, fields=None):
-        """
-        Return a subset of a grid by x and y range
-        """
+        """Return a subset of a grid by x and y range."""
         col_ind = np.flatnonzero((self.x >= XR[0]) & (self.x <= XR[1]))
         row_ind = np.flatnonzero((self.y >= YR[0]) & (self.y <= YR[1]))
         time_ind = None
@@ -1359,9 +1369,11 @@ class data(object):
            print(e)
 
     def cropped(self, *args, **kwargs):
-        return self.crop(*args, **kwargs)
+        """Return a cropped copy of a grid."""
+        return self.copy().crop(*args, **kwargs)
 
     def show(self, field='z', band=None, ax=None, xy_scale=1, gradient=False, ddt=None, stretch_pct=None, **kwargs):
+        """Make a matplotlib image of a grid."""
         import matplotlib.pyplot as plt
         kwargs['extent']=np.array(self.extent)*xy_scale
         kwargs['origin']='lower'
@@ -1403,9 +1415,7 @@ class data(object):
         return h_im
 
     def interp(self, x, y, gridded=False, band=0, field='z', replace=False):
-        """
-        interpolate a 2-D grid to a set of x and y points
-        """
+        """Interpolate a 2-D grid to a set of x and y points."""
         if (field not in self.interpolator) or replace:
             if (len(getattr(self, field).shape) > 2) and (self.t_axis==2):
                 z0 = getattr(self, field)[:,:,band].copy()
@@ -1413,55 +1423,24 @@ class data(object):
                 z0 = getattr(self, field)[band,:,:].copy()
             else:
                 z0 = getattr(self, field).copy()
-            # find where invalid
-            NaN_mask =  (np.isfinite(z0)==0) | (z0 == self.fill_value)
-            z0[NaN_mask] = 0
 
-            if self.y[1]> self.y[0]:
-                self.interpolator[field] = RectBivariateSpline(self.y, self.x, z0, kx=1, ky=1)
-                if np.any(NaN_mask.ravel()):
-                    self.nan_interpolator[field] = RectBivariateSpline(self.y, self.x, NaN_mask.astype(float), kx=1, ky=1)
-            else:
-                self.interpolator[field] = RectBivariateSpline(self.y[::-1], self.x, z0[::-1,:], kx=1, ky=1)
-                if np.any(NaN_mask.ravel()):
-                    self.nan_interpolator[field] = RectBivariateSpline(self.y[::-1], self.x, NaN_mask[::-1,:].astype(float), kx=1, ky=1)
+            self.interpolator[field] = RegularGridInterpolator(
+                                                    (self.y, self.x),
+                                                    z0, bounds_error=False)
 
         if gridded:
-            result=np.zeros((len(y), len(x)))+np.NaN
-            good_x = np.flatnonzero((x >= np.min(self.x)) & (x <= np.max(self.x)))
-            good_y = np.flatnonzero((y >= np.min(self.y)) & (y <= np.max(self.y)))
-            if (len(good_y)>0) and (len(good_x)>0):
-                good_x = slice(good_x[0], good_x[-1]+1)
-                good_y = slice(good_y[0], good_y[-1]+1)
-
-                result[good_y, good_x] = self.interpolator[field](y[good_y], x[good_x])
-                if field in self.nan_interpolator:
-                    to_NaN=np.ones_like(result, dtype=bool)
-                    to_NaN[good_y, good_x] = self.nan_interpolator[field](y[good_y], x[good_x])
-                    result[to_NaN] = self.fill_value
+            xg, yg=np.meshgrid(x, y)
+            result=self.interpolator[field]((yg, xg))
         else:
-            result = np.zeros_like(x) + self.fill_value
-            good = (x >= np.min(self.x)) & (x <= np.max(self.x)) & \
-                   (y >= np.min(self.y)) & (y <= np.max(self.y))
-
-            result[good]=self.interpolator[field].ev(y[good], x[good])
-            if field in self.nan_interpolator:
-                to_NaN = good
-                # nan_interpolator returns nonzero for NaN points in self.z
-                to_NaN[good] = self.nan_interpolator[field].ev(y[good], x[good]) != 0
-                result[to_NaN] = self.fill_value
+            result=self.interpolator[field]((y,x))
         return result
 
     def bounds(self, pad=0):
-        """
-        Return the x and y bounds of a grid
-        """
+        """Return the x and y bounds of a grid."""
         return [[np.min(self.x)-pad, np.max(self.x)+pad], [np.min(self.y)-pad, np.max(self.y)+pad]]
 
     def replace_invalid(self, fields=None, fill_value=np.nan):
-        """
-        Replace invalid values within a field with a new fill_value
-        """
+        """Replace invalid values within a field with a new fill_value."""
         if fields is None:
             fields=self.fields
         # for each field
@@ -1476,7 +1455,7 @@ class data(object):
 
     def crs_attributes(self, srs_proj4=None, srs_wkt=None, srs_epsg=None, **kwargs):
         """
-        Return a dictionary of attributes for a projection
+        Return a dictionary of attributes for a projection.
 
         Parameters
         ----------
@@ -1504,7 +1483,7 @@ class data(object):
         # get projection attributes
         try:
             self.crs['spatial_epsg'] = int(sr.GetAttrValue('AUTHORITY',1))
-        except Exception as e:
+        except Exception:
             pass
         self.crs['crs_wkt'] = sr.ExportToWkt()
         self.crs['spatial_ref'] = sr.ExportToWkt()
@@ -1523,7 +1502,7 @@ class data(object):
         self.crs['longitude_of_prime_meridian'] = float(sr.GetAttrValue('PRIMEM',1))
         try:
             self.crs['latitude_of_projection_origin'] = float(proj4_dict['lat_0'])
-        except Exception as e:
+        except Exception:
             pass
         self.crs['standard_parallel'] = float(sr.GetProjParm(osr.SRS_PP_LATITUDE_OF_ORIGIN,1))
         self.crs['straight_vertical_longitude_from_pole'] = float(sr.GetProjParm(osr.SRS_PP_CENTRAL_MERIDIAN,1))
