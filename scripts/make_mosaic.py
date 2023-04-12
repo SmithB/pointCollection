@@ -142,7 +142,7 @@ def main(argv):
         file_list = []
         for file in initial_file_list:
             try:
-                xc,yc=[int(item)*1.e3 for item in re.compile(r'E(.*)_N(.*).h5').search(file).groups()]
+                xc,yc=[int(item)*1.e3 for item in re.compile(r'E([0-9-.]+)_N([0-9-.]+).h5').search(file).groups()]
             except Exception:
                 continue
             if ((xc >= xmin) and (xc <= xmax) & (yc >= ymin) and (yc <= ymax)):
