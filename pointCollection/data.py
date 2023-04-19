@@ -418,14 +418,22 @@ class data(object):
                                    compression="gzip", maxshape=tuple(maxshape))
 
 
-    def assign(self,d):
-        for key in d.keys():
-            if key not in self.fields:
-                self.fields.append(key)
-            setattr(self, key, d[key])
+    def assign(self, *args, **kwargs):
+        """Set field values."""
+        if len(args):
+            newdata=args[0]
+        else:
+            newdata=dict()
+        if len(kwargs) > 0:
+            newdata |= kwargs
+        for field in newdata.keys():
+            setattr(self, field, newdata[field])
+            if field not in self.fields:
+                self.fields.append(field)
         return self
 
     def coords(self):
+        """Return the x, y, and t coordinates"""
         if 'time' in self.fields:
             return (self.y, self.x, self.time)
         elif 't' in self.fields:
