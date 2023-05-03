@@ -55,7 +55,7 @@ class data(pc.data):
         """
         Read data from a file.
         """
-  
+
         if field_dict is not None:
             fields=[]
             for group in self.field_dict.keys():
@@ -64,7 +64,7 @@ class data(pc.data):
                             fields.append(field)
             self.fields=fields
             self.field_dict=field_dict
-        self.file=filename
+        self.filename=filename
         h5_f=h5py.File(filename,'r')
         # generate the name for the hdf5 beam groups
         beam_names=['gt%d%s' %(self.beam_pair, b) for b in ['l','r']]
@@ -170,7 +170,7 @@ class data(pc.data):
 
         if "derived" in self.field_dict and "rss_along_track_dh" in self.field_dict['derived']:
             self.get_rss_along_track_dh()
-        if "derived" in self.field_dict and "min_along_track_dh" in self.field_dict['derived']:            
+        if "derived" in self.field_dict and "min_along_track_dh" in self.field_dict['derived']:
             setattr(self, 'min_along_track_dh', self.calc_min_along_track_dh())
 
         # assign fields that must be copied from single-value attributes in the
@@ -210,7 +210,7 @@ class data(pc.data):
         else:
             min_along_track_dh=np.zeros([1,2])+np.NaN
         return min_along_track_dh
-        
+
     def get_rss_along_track_dh(self):
         self.rss_along_track_dh=np.zeros(self.shape)
         n_pts=self.shape[0]
