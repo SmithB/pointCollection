@@ -68,8 +68,10 @@ def ATL11_crossovers(D, EPSG=3031):
 def write_xovers(v, out_dir, xy0, out_file):
     if out_dir is not None and not os.path.isdir(out_dir):
         os.mkdir(out_dir)
-    if out_file is None:
+    if out_file is None and xy0 is not None:
         out_file=os.path.join(out_dir, f'E{int(np.round(xy0[0]/1000))}_N{int(np.round(xy0[0]/1000))}.h5')
+    elif out_file is None:
+        out_file=os.path.join(out_dir, 'all_xovers.h5')  
     v[0].to_h5(out_file, group='data_0', replace=True)
     v[1].to_h5(out_file, group='data_1', replace=False)
     
