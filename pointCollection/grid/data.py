@@ -722,7 +722,9 @@ class data(object):
                 return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
 
     def from_nc(self, nc_file, field_mapping=None, group='', fields=None,
-        xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
+        xname='x', yname='y', timename='time', bounds=None, t_range=None,
+        bands=None, skip=1,
+        fill_value=None,
         t_axis=None, compression=None):
         """
         Read a raster from a netCDF4 file.
@@ -741,9 +743,14 @@ class data(object):
             x-coordinate variable to read from the netCDF4 file
         yname: str, default 'y'
             y-coordinate variable to read from the netCDF4 file
+        timename:str, default 'time'
+            time-coordinate variable name to read from the netCDF4 file
         bounds: list or NoneType, default None
             boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified,
             read the whole file.
+        t_range: read time slices between these values (inclusive).  If None,
+            read either values specified by bands, values specified by bounds,
+            or the whole file
         bands: list or NoneType, default None
             Bands to read. If not specified, reads all contained bands.
         skip: int, default 1
@@ -764,6 +771,9 @@ class data(object):
         self
             pc.grid.data object containing the map data.
         """
+
+        dim_names={xname:'x',yname:'y', timename:'time'}
+
         if t_axis is not None:
             self.t_axis=t_axis
 
@@ -783,10 +793,26 @@ class data(object):
             ncf=fileID.groups[group] if group else fileID
             x=ncf.variables[xname][:].copy()
             y=ncf.variables[yname][:].copy()
-            if 't' in ncf.variables.keys():
-                t=ncf.variables['t'][:].copy()
-            elif 'time' in ncf.variables.keys():
-                t=ncf.variables['time'][:].copy()
+            for time_var_name in set(['time','t', timename]):
+                if time_var_name in ncf.variables.keys():
+                    t=ncf.variables[time_var_name][:].copy()
+                    timename=time_var_name
+                    break
+
+            if bounds is not None and len(bounds)==3:
+                if self.t_axis==0:
+                    t_range=bounds[0]
+                    bounds=bounds[1:]
+                else:
+                    t_range=bounds[2]
+                    bounds=bounds[:2]
+
+            if t_range is not None:
+                bands = np.flatnonzero((t>=t_range[0]) & (t<=t_range[1]))
+                if len(bands)==0:
+                    self.__update_extent__()
+                    self.__update_size_and_shape__()
+                    return self
 
             if t is not None and bands is not None:
                 t=t[bands]
@@ -805,70 +831,88 @@ class data(object):
                         if hasattr(var,'shape') and var.shape:
                             field_mapping.update({key:key})
             # reduce raster to bounds and orient to lower
+            slices={}
             if (bounds is not None) and (yorient > 0):
                 # indices to read
                 xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-                cols = slice(xind[0],xind[-1],1)
+                slices['x'] = slice(xind[0],xind[-1],1)
                 yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-                rows = slice(yind[0],yind[-1],1)
+                slices['y'] = slice(yind[0],yind[-1],1)
             elif (bounds is not None) and (yorient < 0):
                 # indices to read with reversed y
                 xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-                cols = slice(xind[0],xind[-1],1)
+                slices['x'] = slice(xind[0],xind[-1],1)
                 yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-                rows = slice(yind[-1],yind[0],-1)
+                slices['y'] = slice(yind[-1],yind[0],-1)
             elif (yorient < 0):
                 # indices to read (all) with reversed y
-                rows = slice(None,None,-1)
-                cols = slice(None,None,1)
+                slices['x'] = slice(None,None,1)
+                slices['y'] = slice(None,None,-1)
             else:
                 # indices to read (all)
-                rows = slice(None,None,1)
-                cols = slice(None,None,1)
+                slices['x'] = slice(None,None,1)
+                slices['y'] = slice(None,None,1)
+
+            if bands is None:
+                slices['time'] = slice(None)
+            else:
+                slices['time'] = list(bands)
 
             # check that raster can be sliced
-            if len(x[cols]) > 0 and len(y[rows]) > 0:
-                for self_field in field_mapping:
-                    f_field_name=field_mapping[self_field]
-                    if f_field_name not in ncf.variables:
-                        continue
-                    f_field=ncf.variables[f_field_name]
+            if len(x[slices['x']]) == 0 or len(y[slices['y']]) == 0:
+                self.__update_extent__()
+                self.__update_size_and_shape__()
+                return self
+            for self_field in field_mapping:
+                f_field_name=field_mapping[self_field]
+                if f_field_name not in ncf.variables:
+                    continue
+                f_field=ncf.variables[f_field_name]
 
-                    if len(f_field.shape) == 2:
-                        z = np.array(f_field[rows,cols])
+                # establish the order of output dimensions for this field
+                # based on the time-axis dimension and the number of dimensions
+                if len(f_field.shape)==2:
+                    out_dims=['y','x']
+                else:
+                    if self.t_axis==2:
+                        out_dims=['y','x','time']
                     else:
-                        if len(f_field.shape) == 2:
-                            z = np.array(f_field[rows,cols])
-                        elif bands is None and len(f_field.shape) > 2:
-                            if self.t_axis==2:
-                                z = np.array(f_field[rows,cols,:])
-                            elif self.t_axis==0:
-                                z = np.array(f_field[:,rows,cols])
-                        else:
-                            if self.t_axis==2:
-                                z = np.array(f_field[rows,cols,bands])
-                            elif self.t_axis==0:
-                                z = np.array(f_field[bands,rows,cols])
-                    # replace invalid values with nan
-                    if hasattr(f_field, '_FillValue'):
-                        fill_value = f_field.getncattr('_FillValue')
-                        try:
-                            z[z == fill_value] = self.fill_value
-                        except ValueError:
-                            z=z.astype(float)
-                            z[z == fill_value] = self.fill_value
-                    # find grid mapping name from variable
-                    if hasattr(f_field, 'grid_mapping'):
-                        grid_mapping_name = f_field.getncattr('grid_mapping')
-                    # set output field
-                    setattr(self, self_field, z)
-                    if self_field not in self.fields:
-                        self.fields.append(self_field)
-                # reduce x and y to bounds
-                self.x=x[cols]
-                self.y=y[rows]
-                if t is not None:
-                    self.t=t
+                        out_dims=['time','y','x']
+                if f_field.dimensions is None:
+                    f_dims = out_dims
+                else:
+                    f_dims = f_field.dimensions
+                # order in which dimensions appear in the file
+                this_dim_order = [dim_names[name] for name in f_dims]
+                # use the dimensions to make a tuple of slices with which to index the input field
+                this_slice = tuple([slices[dim] for dim in this_dim_order])
+                z = np.array(f_field[this_slice])
+
+                # replace invalid values with nan
+                if hasattr(f_field, '_FillValue'):
+                    fill_value = f_field.getncattr('_FillValue')
+                    try:
+                        z[z == fill_value] = self.fill_value
+                    except ValueError:
+                        z=z.astype(float)
+                        z[z == fill_value] = self.fill_value
+                # find grid mapping name from variable
+                if hasattr(f_field, 'grid_mapping'):
+                    grid_mapping_name = f_field.getncattr('grid_mapping')
+
+                # decide how to reorient the output product
+                output_order = [this_dim_order.index(dim) for dim in out_dims]
+                if not output_order==[0, 1, 2]:
+                    z=z.transpose(output_order)
+
+                # set output field
+                self.assign({self_field:z})
+
+            # reduce x and y to bounds
+            self.x=x[slices['x']]
+            self.y=y[slices['y']]
+            if t is not None:
+                self.t=t
             # try to retrieve grid mapping and add to projection
             if grid_mapping_name is not None:
                 self.projection = {}
@@ -1012,7 +1056,7 @@ class data(object):
                     var = getattr(self, field)
                     if var is not None:
                         ncf.createDimension(field, len(np.atleast_1d(var)))
-                        ncv = ncf.createVariable(field, var.dtype, (field,))
+                        _ = ncf.createVariable(field, var.dtype, (field,))
                         ncf.variables[field][:] = var
             for field in fields:
                 if (self.t_axis == 2) and t_name is not None:
@@ -1414,25 +1458,47 @@ class data(object):
         h_im = ax.imshow(zz, **kwargs)
         return h_im
 
-    def interp(self, x, y, gridded=False, band=0, field='z', replace=False):
+    def interp(self, x, y, t=None, gridded=False, band=None, field='z', replace=False):
         """Interpolate a 2-D grid to a set of x and y points."""
         if (field not in self.interpolator) or replace:
-            if (len(getattr(self, field).shape) > 2) and (self.t_axis==2):
-                z0 = getattr(self, field)[:,:,band].copy()
-            elif (len(getattr(self, field).shape) > 2) and (self.t_axis==0):
-                z0 = getattr(self, field)[band,:,:].copy()
+            if band is not None:
+                if (len(getattr(self, field).shape) > 2) and (self.t_axis==2):
+                    z0 = getattr(self, field)[:,:,band].copy()
+                elif (len(getattr(self, field).shape) > 2) and (self.t_axis==0):
+                    z0 = getattr(self, field)[band,:,:].copy()
+                else:
+                    z0 = getattr(self, field).copy()
             else:
                 z0 = getattr(self, field).copy()
-
+            if len(getattr(self, field).shape)==2 or band is not None:
+                grid_vars=(self.y, self.x)
+            else:
+                if self.t_axis==0:
+                    grid_vars=(self.t, self.y, self.x)
+                else:
+                    grid_vars=(self.y, self.x, self.t)
             self.interpolator[field] = RegularGridInterpolator(
-                                                    (self.y, self.x),
+                                                    grid_vars,
                                                     z0, bounds_error=False)
-
         if gridded:
-            xg, yg=np.meshgrid(x, y)
-            result=self.interpolator[field]((yg, xg))
+            if len(self.interpolator[field].grid)==3:
+                if self.t_axis==0:
+                    tg, yg, xg = np.meshgrid(t, y, x, indexing='ij')
+                    result=self.interpolator[field]((tg, yg, xg))
+                elif self.t_axis==2:
+                    yg, xg, tg = np.meshgrid(y, x, t, indexing='ij')
+                    result=self.interpolator[field]((yg, xg, tg))
+            else:
+                xg, yg=np.meshgrid(x, y)
+                result=self.interpolator[field]((yg, xg))
         else:
-            result=self.interpolator[field]((y,x))
+            if len(self.interpolator[field].grid)==3:
+                if self.t_axis==0:
+                    result=self.interpolator[field]((t, y, x))
+                else:
+                    result=self.interpolator[field]((y, x, t))
+            else:
+                result=self.interpolator[field]((y,x))
         return result
 
     def bounds(self, pad=0):
