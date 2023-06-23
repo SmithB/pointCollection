@@ -3,9 +3,9 @@
 """
 mosaic.py
 Routines for creating a weighted mosaic from a series of tiles
-Written by Tyler Sutterley (03/2020)
 
 UPDATE HISTORY:
+    Updated 06/2023: calculate x and y arrays using np.arange and spacing
     updated 03/2021: change scheme for calculating weights, raised cosine as default
     Updated 03/2020: check number of dimensions of z if only a single band
     Written 03/2020
@@ -68,8 +68,8 @@ class mosaic(data):
         # calculate x dimensions with new extents
         self.dimensions[1] = np.int64((self.extent[1] - self.extent[0])/self.spacing[0]) + 1
         # calculate x and y arrays
-        self.x = np.linspace(self.extent[0],self.extent[1],self.dimensions[1])
-        self.y = np.linspace(self.extent[2],self.extent[3],self.dimensions[0])
+        self.x = self.extent[0] + self.spacing[0]*np.arange(self.dimensions[1])
+        self.y = self.extent[2] + self.spacing[1]*np.arange(self.dimensions[0])
         return self
 
     def image_coordinates(self, temp):
@@ -81,7 +81,9 @@ class mosaic(data):
         return (iy,ix)
 
     def raised_cosine_weights(self, pad, feather):
-
+        """
+        Create smoothed weighting function using a raised cosine function
+        """
         weights=[]
         for dim, xy in zip([0, 1], [self.x, self.y]):
             xy0 = np.mean(xy)
@@ -97,7 +99,9 @@ class mosaic(data):
         self.weight *= weights[0][:,None].dot(weights[1][None,:])
 
     def gaussian_weights(self, pad, feather):
-        # use a gaussian filter to create smoothed weighting function
+        """
+        Create smoothed weighting function using a Gaussian function
+        """
         weights=[]
         for dim, xy in zip([0, 1], [self.x, self.y]):
             xy0 = np.mean(xy)
@@ -113,6 +117,9 @@ class mosaic(data):
         self.weight *= weights[0][:,None].dot(weights[1][None,:])
 
     def pad_edges(self, pad):
+        """
+        Pad the edges of the weights with zeros
+        """
         weights=[]
         for dim, xy in zip([0, 1], [self.x, self.y]):
             xy0 = np.mean(xy)
