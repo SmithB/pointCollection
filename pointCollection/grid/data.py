@@ -461,6 +461,75 @@ class data(object):
                 fid.seek(0)
                 return h5py.File(fid, 'r')
 
+    def select_slices(self, bounds, x, y, bands):
+        # get orientation of y-axis
+        yorient = np.sign(y[1] - y[0])
+
+        # reduce raster to bounds and orient to lower
+        slices={}
+        if (bounds is not None) and (yorient > 0):
+            # indices to read
+            xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
+            slices['x'] = slice(xind[0],xind[-1],1)
+            yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
+            slices['y'] = slice(yind[0],yind[-1],1)
+        elif (bounds is not None) and (yorient < 0):
+            # indices to read with reversed y
+            xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
+            slices['x'] = slice(xind[0],xind[-1],1)
+            yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
+            slices['y'] = slice(yind[-1],yind[0],-1)
+        elif (yorient < 0):
+            # indices to read (all) with reversed y
+            slices['x'] = slice(None,None,1)
+            slices['y'] = slice(None,None,-1)
+        else:
+            # indices to read (all)
+            slices['x'] = slice(None,None,1)
+            slices['y'] = slice(None,None,1)
+
+        if bands is None:
+            slices['time'] = slice(None)
+        else:
+            slices['time'] = list(bands)
+        return slices, yorient
+
+    def choose_bands_by_time(self, t=None, bounds=None, t_range=None):
+        """
+        Select bands based on time stamps
+
+        Parameters
+        ----------
+        t : iterable or float, optional
+            time range. The default is None.
+        bounds : iterable of iterables, optional
+            bounds to be read, if it contains three values, the appropriate one will
+            be used as the time bounds. The default is None.
+        t_range : iterable, optional
+            The time range to be read. The default is None.
+
+        Returns
+        -------
+        bands : iterable
+            Bands to be read from the file.
+        t_range : iterable
+            range of time values to be read.
+
+        """
+        bands=None
+        if bounds is not None and len(bounds)==3:
+            if self.t_axis==0:
+                t_range=bounds[0]
+                bounds=bounds[1:]
+            else:
+                t_range=bounds[2]
+                bounds=bounds[:2]
+
+        if t_range is not None:
+            bands = np.flatnonzero((t>=t_range[0]) & (t<=t_range[1]))
+
+        return bands, t_range
+
 
     def read_data(self, src, i0, i1, bands):
         """
@@ -500,8 +569,10 @@ class data(object):
         return z
 
     def from_h5(self, h5_file, field_mapping=None, group='/', fields=None,
-        xname='x', yname='y', bounds=None, bands=None, skip=1, fill_value=None,
-        t_axis=None, compression=None, swap_xy=False, source_fillvalue=None):
+        xname='x', yname='y', timename='t',
+        bounds=None,  skip=1, fill_value=None,
+        t_axis=None, t_range=None, bands=None,
+        compression=None, swap_xy=False, source_fillvalue=None):
         """
         Read a raster from an HDF5 file.
 
@@ -519,9 +590,12 @@ class data(object):
             x-coordinate variable to read from the HDF5 file
         yname: str, default 'y'
             y-coordinate variable to read from the HDF5 file
+        timename: str, default 't'
+            time-coordinate variable to read from the HDF5 file
         bounds: list or NoneType, default None
             boundaries to read, [[xmin, xmax], [ymin, ymax]]. If not specified,
             read the whole file.
+        t_range: range of time stamped bands to read.
         bands: list or NoneType, default None
             Bands to read. If not specified, reads all contained bands.
         skip: int, default 1
@@ -565,12 +639,21 @@ class data(object):
         with self.h5_open(h5_file, mode='r', compression=compression) as h5f:
             x=np.array(h5f[group+'/'+xname]).ravel()
             y=np.array(h5f[group+'/'+yname]).ravel()
-            if 't' in h5f[group]:
-                t=np.array(h5f[group]['t'])
-            elif 'time' in h5f[group]:
-                t=np.array(h5f[group]['time'])
+            for time_var_name in set(['time','t', timename]):
+                if time_var_name in h5f[group].keys():
+                    t=h5f[group][time_var_name][:].copy()
+                    timename=time_var_name
+                    break
             if t is not None:
                 src_t = t.copy()
+            if bands is None:
+                bands, t_range = self.choose_bands_by_time(t=t, bounds=bounds, t_range=t_range)
+            if bands is not None and len(bands)==0:
+                self.__update_extent__()
+                self.__update_size_and_shape__()
+                return self
+
+
             if t is not None and bands is not None:
                 t=t[bands]
             # get orientation of y-axis
@@ -798,26 +881,14 @@ class data(object):
                     t=ncf.variables[time_var_name][:].copy()
                     timename=time_var_name
                     break
-
-            if bounds is not None and len(bounds)==3:
-                if self.t_axis==0:
-                    t_range=bounds[0]
-                    bounds=bounds[1:]
-                else:
-                    t_range=bounds[2]
-                    bounds=bounds[:2]
-
-            if t_range is not None:
-                bands = np.flatnonzero((t>=t_range[0]) & (t<=t_range[1]))
-                if len(bands)==0:
-                    self.__update_extent__()
-                    self.__update_size_and_shape__()
-                    return self
+            bands, t_range = self.choose_bands_by_time(t=t, bounds=bounds, t_range=t_range)
+            if len(bands)==0:
+                self.__update_extent__()
+                self.__update_size_and_shape__()
+                return self
 
             if t is not None and bands is not None:
                 t=t[bands]
-            # get orientation of y-axis
-            yorient = np.sign(y[1] - y[0])
 
             # if no field mapping provided, add everything in the group
             if len(field_mapping.keys())==0:
@@ -830,34 +901,8 @@ class data(object):
                         var = ncf.variables[key]
                         if hasattr(var,'shape') and var.shape:
                             field_mapping.update({key:key})
-            # reduce raster to bounds and orient to lower
-            slices={}
-            if (bounds is not None) and (yorient > 0):
-                # indices to read
-                xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-                slices['x'] = slice(xind[0],xind[-1],1)
-                yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-                slices['y'] = slice(yind[0],yind[-1],1)
-            elif (bounds is not None) and (yorient < 0):
-                # indices to read with reversed y
-                xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-                slices['x'] = slice(xind[0],xind[-1],1)
-                yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-                slices['y'] = slice(yind[-1],yind[0],-1)
-            elif (yorient < 0):
-                # indices to read (all) with reversed y
-                slices['x'] = slice(None,None,1)
-                slices['y'] = slice(None,None,-1)
-            else:
-                # indices to read (all)
-                slices['x'] = slice(None,None,1)
-                slices['y'] = slice(None,None,1)
 
-            if bands is None:
-                slices['time'] = slice(None)
-            else:
-                slices['time'] = list(bands)
-
+            slices=self.select_slices(bounds, x, y, bands)[0]
             # check that raster can be sliced
             if len(x[slices['x']]) == 0 or len(y[slices['y']]) == 0:
                 self.__update_extent__()
@@ -878,6 +923,7 @@ class data(object):
                         out_dims=['y','x','time']
                     else:
                         out_dims=['time','y','x']
+
                 if f_field.dimensions is None:
                     f_dims = out_dims
                 else:
