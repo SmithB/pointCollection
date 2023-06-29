@@ -18,6 +18,7 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, \
     x=xx[temp]
     y=yy[temp]
     z=zz[temp]
+    out_ind=np.flatnonzero(temp)
     if len(x)==0:
         if return_index:
             return np.zeros([0]), np.zeros([0]), np.zeros([0]), np.zeros([0])
@@ -32,11 +33,11 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, \
     xs=x[sorted_ind]
     ys=y[sorted_ind]
     zs=z[sorted_ind]
-    
+
     if break_ties:
         xcs=xr[sorted_ind]*delta+xy0[0]+delta/2
         ycs=yr[sorted_ind]*delta+xy0[1]+delta/2
-        
+
     xyind=xyind[sorted_ind]
     ux, ix=np.unique(xyind, return_index=True)
     if not index_only:
@@ -47,7 +48,7 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, \
         ind=np.zeros((ux.size,2), dtype=int)
     if return_count:
         N=np.zeros(ux.size, dtype=int)
-        
+
     ix=np.hstack((ix.ravel(), xyind.size))
     for  count, i0 in enumerate(ix[:-1]):
         # number of elements in bin
@@ -82,11 +83,14 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, \
                 zm[count]=zs[iM]
             if return_index:
                 ind[count,:]=sorted_ind[iM]
-        #plt.figure(1); plt.clf(); plt.subplot(211); plt.cla(); plt.scatter(xs[ii]-xm[count], ys[ii]-ym[count], c=zs[ii]); plt.axis('equal'); plt.subplot(212); plt.plot(zs[ii]); 
+        #plt.figure(1); plt.clf(); plt.subplot(211); plt.cla(); plt.scatter(xs[ii]-xm[count], ys[ii]-ym[count], c=zs[ii]); plt.axis('equal'); plt.subplot(212); plt.plot(zs[ii]);
         #plt.pause(1)
         #print(count)
     if break_ties and return_index:
         ind=ind[:,0]
+
+    # reverse the NaN filtering
+    ind=out_ind[ind]
     if index_only:
        return ind
     if index_and_count_only:
@@ -95,7 +99,7 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, \
         if return_count:
             return xm, ym, zm, ind, N
         else:
-            return xm, ym, zm, ind 
+            return xm, ym, zm, ind
     else:
         if return_count:
             return xm, ym, zm, N
@@ -130,4 +134,3 @@ def __main__():
 
 if __name__=='__main__':
     __main__()
-
