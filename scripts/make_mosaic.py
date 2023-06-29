@@ -102,6 +102,8 @@ def main(argv):
     parser.add_argument('--replace','-R',
         default=False, action='store_true',
         help='overwrite existing output files')
+    parser.add_argument('--time', type=float,
+        help='specify time for one-band DEM')
     parser.add_argument('--show','-s',
         action="store_true",
         help='create plot of output mosaic')
@@ -147,7 +149,7 @@ def main(argv):
                 continue
             if ((xc >= xmin) and (xc <= xmax) & (yc >= ymin) and (yc <= ymax)):
                 file_list.append(file)
-                
+
     if args.verbose:
         print(f"found {len(file_list)} files")
 
@@ -262,6 +264,8 @@ def main(argv):
         YR = np.sort([args.crop[2],args.crop[3]])
         mosaic.crop(XR, YR, fields=mosaic.fields)
 
+    if args.time is not None:
+        mosaic.t = args.time
     # output each field
     for field in mosaic.fields:
         if field_dims[field] == 2:
