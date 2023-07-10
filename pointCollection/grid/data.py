@@ -882,7 +882,7 @@ class data(object):
                     timename=time_var_name
                     break
             bands, t_range = self.choose_bands_by_time(t=t, bounds=bounds, t_range=t_range)
-            if len(bands)==0:
+            if bands is not None and len(bands)==0:
                 self.__update_extent__()
                 self.__update_size_and_shape__()
                 return self
