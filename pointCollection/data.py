@@ -98,6 +98,46 @@ class data(object):
         out.shape=self.shape
         return out
 
+    def summary(self, return_table=True, return_dict=False):
+        """
+        Summarize the dimensions and statistics of a data object
+
+        Parameters
+        ----------
+        return_table : boolean, optional
+            If True, return a tab-delimeted (printable) table. The default is True.
+        return_dict : boolean, optional
+            If True. return a dictionary of parameters. The default is False.
+
+        Returns
+        -------
+        dict or string or both
+            string or dictionary giving the shape, number of nonzero entries,
+            standard deviation, and minmax for each field.  If no output is 
+            specified, the summary is printed.
+
+        """
+        summary={}
+        table = ['field \tshape \tn_finite \tSTD \t minmax']
+        for field in self.fields:
+            ff=getattr(self, field)
+            finfo={'shape':ff.shape, 
+                            'n_finite':np.sum(np.isfinite(ff)),
+                            'std':np.nanstd(ff),
+                            'minmax':[np.nanmin(ff), np.nanmax(ff)]}
+            
+            table += [f'{field}\t{finfo["shape"]}\t{finfo["n_finite"]}\t{finfo["std"]:0.2e}\t{finfo["minmax"][0]:0.2e} {finfo["minmax"][1]:0.2e}']
+            summary[field] = finfo
+        out=[]
+        if return_dict:
+            out += [summary]
+        if return_table:
+            out += ['\n'.join(table)]
+        if len(out)==1:
+            return(out[0])
+        else:
+            return tuple(out)
+
     def from_h5(self, filename, group=None, field_dict=None, index_range=None):
         """
         read a data object from a HDF5 file
