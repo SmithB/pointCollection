@@ -220,8 +220,8 @@ class data(object):
             for D in D_list:
                 try:
                     # calculate grid coordinates for merging fields
-                    iy = np.array((D.y[:,None]-xmin)/spacing[1],dtype=int)
-                    ix = np.array((D.x[None,:]-ymin)/spacing[0],dtype=int)
+                    iy = np.array((D.y[:,None]-ymin)/spacing[1],dtype=int)
+                    ix = np.array((D.x[None,:]-xmin)/spacing[0],dtype=int)
                     # number of time steps in field
                     try:
                         ntime = D.shape[D.t_axis]
@@ -854,7 +854,6 @@ class data(object):
         self
             pc.grid.data object containing the map data.
         """
-
         dim_names={xname:'x',yname:'y', timename:'time'}
 
         if t_axis is not None:
@@ -876,10 +875,10 @@ class data(object):
             ncf=fileID.groups[group] if group else fileID
             x=ncf.variables[xname][:].copy()
             y=ncf.variables[yname][:].copy()
-            for time_var_name in set(['time','t', timename]):
-                if time_var_name in ncf.variables.keys():
-                    t=ncf.variables[time_var_name][:].copy()
-                    timename=time_var_name
+            for this_time_var_name in [timename, 'time','t']:
+                if this_time_var_name in ncf.variables.keys():
+                    t=ncf.variables[this_time_var_name][:].copy()
+                    timename=this_time_var_name
                     break
             bands, t_range = self.choose_bands_by_time(t=t, bounds=bounds, t_range=t_range)
             if bands is not None and len(bands)==0:
@@ -929,7 +928,7 @@ class data(object):
                 else:
                     f_dims = f_field.dimensions
                 # order in which dimensions appear in the file
-                this_dim_order = [dim_names[name] for name in f_dims]
+                this_dim_order = [dim_names[name] for name in f_dims if name in dim_names]
                 # use the dimensions to make a tuple of slices with which to index the input field
                 this_slice = tuple([slices[dim] for dim in this_dim_order])
                 z = np.array(f_field[this_slice])
@@ -947,7 +946,7 @@ class data(object):
                     grid_mapping_name = f_field.getncattr('grid_mapping')
 
                 # decide how to reorient the output product
-                output_order = [this_dim_order.index(dim) for dim in out_dims]
+                output_order = [this_dim_order.index(dim) for dim in out_dims if dim in this_dim_order]
                 if not output_order==[0, 1, 2]:
                     z=z.transpose(output_order)
 
