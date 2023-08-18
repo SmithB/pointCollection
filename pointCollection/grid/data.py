@@ -33,6 +33,7 @@ class data(object):
         self.projection=None
         self.filename=None
         self.extent=None
+        self.img_extent=None
         self.interpolator={}
         self.nan_interpolator={}
         self.fill_value=fill_value
@@ -90,6 +91,9 @@ class data(object):
         """Update the extent of the data to match its x and y fields."""
         try:
             self.extent=[np.min(self.x), np.max(self.x), np.min(self.y), np.max(self.y)]
+            hdx=np.abs(self.x[1]-self.x[0])/2
+            hdy=np.abs(self.y[1]-self.y[0])/2
+            self.img_extent=[np.min(self.x)-hdx, np.max(self.x)+hdx, np.min(self.y)-hdy, np.max(self.y)+hdy]
         except ValueError:
             # usually happens when self.x or self.y is empty
             self.extent=[None, None, None, None]
@@ -1504,7 +1508,7 @@ class data(object):
     def show(self, field='z', band=None, ax=None, xy_scale=1, gradient=False, ddt=None, stretch_pct=None, **kwargs):
         """Make a matplotlib image of a grid."""
         import matplotlib.pyplot as plt
-        kwargs['extent']=np.array(self.extent)*xy_scale
+        kwargs['extent']=np.array(self.img_extent)*xy_scale
         kwargs['origin']='lower'
         if ax is None:
             ax = plt.gca()
