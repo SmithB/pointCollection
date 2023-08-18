@@ -805,7 +805,7 @@ class data(object):
                     elif len(f_field)==np.prod(default_shape_2d):
                         z=self.read_data(np.array(f_field).reshape(default_shape_3d), i0, i1, bands)
                     else:
-                        raise(IndexError(f'field {f_field_name} has shape:{f_field.shape} incompatible with data shape:{default_shape_3d}.'))
+                        raise(IndexError(f'from filename {h5_file}, field {f_field_name} has shape:{f_field.shape} incompatible with data shape:{default_shape_3d}.'))
 
                     # replace invalid values with nan
                     this_fillvalue=source_fillvalue
@@ -1062,7 +1062,7 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False, attributes={}, fill_value=None, **kwargs):
+    def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False, attributes={}, fill_value=None, overwrite_coords=False,  **kwargs):
         """Write a grid data object to an hdf5 file."""
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
@@ -1106,9 +1106,9 @@ class data(object):
                 pass
 
             for field in ['x','y','time', 't'] + fields:
-                # if field exists, overwrite it
-                f_field_name = posixpath.join(group,field)
-                if field in h5f[group]:
+
+                # if field exists, and overwrite_coords is True, overwrite it
+                if field in h5f[group] and overwrite_coords:
                     if hasattr(self, field):
                         h5f[f_field_name][...] = getattr(self, field)
                 else:
