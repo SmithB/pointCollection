@@ -50,21 +50,34 @@ D.z[0:3]
 ```
 returns a new pointCollection.data object containing first three elements of all fields of D.
 
-pointCollection.data objects can also read data from hdf5 files, using the .from_h5() method, which accepts arguments to specify the fields and groups to be read.  Subclasses of pointCollection.data are provided for a few different ice-sheet altimetry data formats:
-* ICESat-2 ATL06 and ATL11
-* ICESat GLAH12
-* IceBridge ATM Qfit, LVIS
-* Cryosat-2 data
+pointCollection.data objects can also read data from hdf5 files, using the .from_h5() method, which accepts arguments to specify the fields and groups to be read.  
 
-### pointCollection.grid.data() class
+#### Methods:
 
-The pointCollection grid format reads and writes data from gridded files.  It is intended to contain 'x' and 'y' fields (and sometimes 't' or 'time' for 3-D data) specifying the corrdinates of the grid, and data fields, the default for which is 'z'.  pc.grid.data() objects can be indexed using 2-d or 3-d slicing operations.  Methods are provided to read and write data from hdf-5 files and geotifs.
+pointCollection is designed to allow intelligent handling of subsets of data.  pc.data objects can be cropped, and indexed (affecting all fields simultaneously).  They can be read from and written to hdf5 files, and their coordinates can be transformed from gegraphic (latitude/longitude) to projected coordinates, and vice versa.  The _bounds_ method provides the spatial extent of the object.
 
+#### Properties:
+
+pointCollection.data objects have _size_ and _shape_ attributes that encode the dimensions of the fields in the object.  They have a _fields_ attribute that lists the fields that have been assigned to the object.  Objects that have been read from files retain a _filename_ attribute that specifies their source.
+
+### pointCollection.grid.data() subclass
+
+The pointCollection grid subclass reads and writes data from gridded files.  It is intended to contain 'x' and 'y' fields (and sometimes 't' or 'time' for 3-D data) specifying the corrdinates of the grid, and data fields, the default for which is 'z'.  pc.grid.data() objects can be indexed using 2-d or 3-d slicing operations.  Methods are provided to read and write data from hdf-5 files and geotifs.
 
 ### pointCollection.GeoIndex() class
 
 pointCollection also provides the geoIndex class, which is indended to organize data from a variety of different datasets that is contained in individual files.  Once a geoIndex has been created for a set of files, it allows data to be read transparently from all the files, returning a list of pc.data objects for a specified input area.
 
+### Subclassing pointCollection:
+
+One strength of pointCollection is that the pointCollection.data and pointCollection.gri.datad classes can be adapted to contain a wide variety of data.  Subclasses of pointCollection data objects can be adapted to handle reading and translation of different data formats, usually by creating a custom from_file() or from_h5 method for the subclass.  The subclasses then inherit the subsetting and projection methods from the parent class.  The subclass definition helps users read a standard set of field from a file, optionally translating the field names used in the file into a more standard name (i.e. translating a "time_of_day" field in the file into a "t" field in the pointCollection object).
+
+Subclasses of pointCollection.data are provided for a few different ice-sheet altimetry data formats:
+* ICESat-2 ATL06 and ATL11
+* ICESat GLAH12
+* IceBridge ATM Qfit, LVIS
+* Cryosat-2 data
+The definitions for these formats should serve as a model for how to generate a new subclass.
 
 [![Language](https://img.shields.io/badge/python-v3.6-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/SmithB/pointCollection/blob/master/LICENSE)
