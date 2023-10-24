@@ -41,6 +41,7 @@ class data(object):
         self.size=None
         self.shape=None
         self.t_axis=t_axis
+        self.xform=None
 
         if fields is None:
             self.fields=list()
@@ -323,7 +324,7 @@ class data(object):
         if file_format is None:
             file_format=os.path.splitext(raster_file)[1][1:]
         self.filename = raster_file
-        if file_format.lower() in ('tif','tiff','geotif','geotiff'):
+        if file_format.lower() in ('tif','tiff','geotif','geotiff','vrt'):
             return self.from_geotif(raster_file, **kwargs)
         elif file_format.lower() in ('h5','hdf','hdf5'):
             return self.from_h5(raster_file, **kwargs)
@@ -365,6 +366,7 @@ class data(object):
 
     def from_gdal(self, ds, field='z', bands=None, bounds=None, extent=None,
                   skip=1, fill_value=np.nan, min_res=None, meta_only=False,
+                  t_range=None,
                   verbose=False):
         """
         Make a pointCollection.grid.data from a gdal dataset.
@@ -388,6 +390,8 @@ class data(object):
         min_res : float, optional
             Attempt to read with a skip value chosen to match min_res.
             The default is None.
+        t_range : iterable, optional
+            read bands that have metadata 'time' values between t_range[0] and t_range[1]
         meta_only : return raster extent without reading data
         verbose:  if true, report errors, etc
         Raises
@@ -408,6 +412,19 @@ class data(object):
         if fill_value is not None:
             self.fill_value = fill_value
 
+        # check if there is time information
+        bb=ds.GetRasterBand(1)
+        if 'time' in bb.GetMetadata():
+            t=np.zeros(ds.RasterCount)
+            for this_band in range(ds.RasterCount):
+                bb=ds.GetRasterBand(this_band+1)
+                t[this_band]=float(bb.GetMetadata()['time'])
+            if bands is not None:
+                t=t[bands-1]
+            elif t_range is not None:
+                bands=np.flatnonzero((t>=t_range[0]) & (t<=t_range[1]))+1
+                t=t[bands-1]
+            self.t=t
         proj=ds.GetProjection()
         if bands is None:
             n_bands=ds.RasterCount
@@ -919,11 +936,12 @@ class data(object):
             ncf=fileID.groups[group] if group else fileID
             x=ncf.variables[xname][:].copy()
             y=ncf.variables[yname][:].copy()
-            for this_time_var_name in [timename, 'time','t']:
+            for this_time_var_name in set([timename, 'time','t']):
                 if this_time_var_name in ncf.variables.keys():
                     t=ncf.variables[this_time_var_name][:].copy()
                     timename=this_time_var_name
                     break
+            dim_names={xname:'x',yname:'y', timename:'time'}
             bands, t_range = self.choose_bands_by_time(t=t, bounds=bounds, t_range=t_range)
             if bands is not None and len(bands)==0:
                 self.__update_extent__()
@@ -951,6 +969,7 @@ class data(object):
                 self.__update_extent__()
                 self.__update_size_and_shape__()
                 return self
+
             for self_field in field_mapping:
                 f_field_name=field_mapping[self_field]
                 if f_field_name not in ncf.variables:
@@ -966,7 +985,6 @@ class data(object):
                         out_dims=['y','x','time']
                     else:
                         out_dims=['time','y','x']
-
                 if f_field.dimensions is None:
                     f_dims = out_dims
                 else:
@@ -976,7 +994,6 @@ class data(object):
                 # use the dimensions to make a tuple of slices with which to index the input field
                 this_slice = tuple([slices[dim] for dim in this_dim_order])
                 z = np.array(f_field[this_slice])
-
                 # replace invalid values with nan
                 if hasattr(f_field, '_FillValue'):
                     fill_value = f_field.getncattr('_FillValue')
@@ -988,7 +1005,6 @@ class data(object):
                 # find grid mapping name from variable
                 if hasattr(f_field, 'grid_mapping'):
                     grid_mapping_name = f_field.getncattr('grid_mapping')
-
                 # decide how to reorient the output product
                 output_order = [this_dim_order.index(dim) for dim in out_dims if dim in this_dim_order]
                 if not output_order==[0, 1, 2]:
@@ -1087,6 +1103,10 @@ class data(object):
                 h5crs = h5f.create_dataset(kwargs['grid_mapping_name'], (), dtype=np.byte)
                 for att_name,att_val in self.crs.items():
                     h5crs.attrs[att_name] = att_val
+            if self.xform:
+                h5f[group].attrs['xform_origin']=self.xform['origin']
+                h5f[group].attrs['xform_basis_vectors']=self.xform['basis_vectors']
+
 
     def to_nc(self, out_file, fields=None, group='', replace=False, nocompression=False, attributes={}, fill_value=None, **kwargs):
         """Write a grid data object to a netCDF4 file."""
