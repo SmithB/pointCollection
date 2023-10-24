@@ -11,7 +11,7 @@ import pyproj
 
 class data(object):
     np.seterr(invalid='ignore')
-    def __init__(self, fields=None, SRS_proj4=None, field_dict=None, columns=0, filename=None):
+    def __init__(self, data_dict=None, fields=None, SRS_proj4=None, field_dict=None, columns=0, filename=None):
 
         if field_dict is None:
             self.field_dict=self.__default_field_dict__()
@@ -32,6 +32,8 @@ class data(object):
         self.shape=None
         self.size=None
         self.filename=filename
+        if data_dict is not None:
+            self.assign(data_dict)
 
     def __repr__(self):
         out=f"{self.__class__} with shape {self.shape},"+"\n"
@@ -376,6 +378,15 @@ class data(object):
         if return_index:
             return ind
         return self.copy_subset(ind, **kwargs)
+
+    def crop(self, bounds, return_index=False, **kwargs):
+        """
+        subset object to points falling within specified bounds
+
+        the bounds are specified as (XR, YR)
+        """
+        self.index((self.x >= bounds[0][0]) & (self.x <= bounds[0][1]) &\
+              (self.y >= bounds[1][0]) & (self.y <= bounds[1][1]))
 
     def to_h5(self, fileOut, replace=True,  group='/', extensible=True, meta_dict=None):
         """
