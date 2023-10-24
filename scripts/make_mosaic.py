@@ -171,6 +171,17 @@ def main(argv):
     # create output mosaic, weights, and mask
     # read data grid from the first tile HDF5, use it to set the field dimensions
     temp=pc.grid.mosaic().from_h5(file_list[0], group=args.in_group, fields=args.fields)
+    if len(temp.fields) ==0:
+        print(f"make_mosaic.py: did not find fields {args.fields} in file {temp.filename}, exiting")
+        return
+    # if time is not specified, squeeze extra dimenstions out of inputs
+    use_time=False
+    for field in ['time','t']:
+        if hasattr(temp, field) and getattr(temp, field) is not None:
+            use_time=True
+    if not use_time:
+        for field in temp.fields:
+            setattr(temp, field, np.squeeze(getattr(temp, field)))
     if args.fields is None:
         args.fields=temp.fields
     these_fields=[field for field in args.fields if field in temp.fields]
@@ -194,6 +205,9 @@ def main(argv):
         for file in file_list:
             # read data grid from HDF5
             temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
+            if not use_time:
+                for field in temp.fields:
+                    setattr(temp, field, np.squeeze(getattr(temp, field)))
             these_fields=[field for field in args.fields if field in temp.fields]
             # copy weights for tile
             temp.weight=tile_weight.copy()
