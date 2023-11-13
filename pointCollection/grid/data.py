@@ -92,8 +92,14 @@ class data(object):
         """Update the extent of the data to match its x and y fields."""
         try:
             self.extent=[np.min(self.x), np.max(self.x), np.min(self.y), np.max(self.y)]
-            hdx=np.abs(self.x[1]-self.x[0])/2
-            hdy=np.abs(self.y[1]-self.y[0])/2
+            if len(self.x)>1:
+                hdx=np.abs(self.x[1]-self.x[0])/2
+            else:
+                hdx=0
+            if len(self.y)>1:
+                hdy=np.abs(self.y[1]-self.y[0])/2
+            else:
+                hdy=0
             self.img_extent=[np.min(self.x)-hdx, np.max(self.x)+hdx, np.min(self.y)-hdy, np.max(self.y)+hdy]
         except ValueError:
             # usually happens when self.x or self.y is empty
@@ -124,7 +130,7 @@ class data(object):
          -------
          dict or string or both
              string or dictionary giving the shape, number of nonzero entries,
-             standard deviation, and minmax for each field.  If no output is 
+             standard deviation, and minmax for each field.  If no output is
              specified, the summary is printed.
 
          """
@@ -132,11 +138,11 @@ class data(object):
          table = ['field \tshape \tn_finite \tSTD \t minmax']
          for field in self.fields:
              ff=getattr(self, field)
-             finfo={'shape':ff.shape, 
+             finfo={'shape':ff.shape,
                              'n_finite':np.sum(np.isfinite(ff)),
                              'std':np.nanstd(ff),
                              'minmax':[np.nanmin(ff), np.nanmax(ff)]}
-             
+
              table += [f'{field}\t{finfo["shape"]}\t{finfo["n_finite"]}\t{finfo["std"]:0.2e}\t{finfo["minmax"][0]:0.2e} {finfo["minmax"][1]:0.2e}']
              summary[field] = finfo
          out=[]
@@ -1221,10 +1227,14 @@ class data(object):
         -------
         None
         """
+        if 'options' not in kwargs:
+            options=["compress=LZW", "tiled=YES", "bigtiff=IF_SAFER"]
+            kwargs['options'] = options
         out_ds=self.to_gdal(out_file=out_file, driver='GTiff',**kwargs)
         return out_ds
 
-    def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None, srs_wkt=None, srs_epsg=None, dtype=gdal.GDT_Float32, options=["compress=LZW"]):
+    def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None,
+                srs_wkt=None, srs_epsg=None, dtype=gdal.GDT_Float32, options=["compress=LZW"]):
         """
         Write a grid object to a gdal memory object.
 
@@ -1556,9 +1566,9 @@ class data(object):
             zz=np.gradient(zz.squeeze(), self.x[1]-self.x[0], self.y[1]-self.y[0])[0]
             if 'stretch_pct' not in kwargs and 'clim' not in kwargs:
                 stretch_pct=[5, 95]
-                print(stretch_pct)
             if 'cmap' not in kwargs:
                 kwargs['cmap']='gray'
+
         if stretch_pct is not None:
             LH=scoreatpercentile(zz.ravel()[np.isfinite(zz.ravel())], stretch_pct)
             kwargs['vmin']=LH[0]
