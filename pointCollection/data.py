@@ -149,6 +149,9 @@ class data(object):
         with h5py.File(filename, 'r') as h5_f:
             nan_fields=list()
             if field_dict is None:
+                if group is None:
+                    if self.field_dict is None:
+                        group='/'
                 if group is not None:
                     # build the field dict from the group
                     if not isinstance(group, (list, tuple)):
