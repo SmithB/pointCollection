@@ -63,6 +63,7 @@ class data(object):
                 setattr(temp, field, getattr(self, field).copy())
         temp.fields=fields.copy()
         temp.__update_size_and_shape__()
+        temp.__update_extent__()
         return temp
 
     def __repr__(self):
@@ -82,6 +83,8 @@ class data(object):
         for field in ['x','y','projection','filename','extent','time', 't', 't_axis']:
             if hasattr(self, field):
                 setattr(temp, field, getattr(self, field))
+        temp.__update_size_and_shape__()
+        temp.__update_extent__()
         return temp
 
     def __getitem__(self, *args, **kwargs):
@@ -1089,7 +1092,6 @@ class data(object):
                         if nocompression or field in ['x','y','time']:
                             h5f.create_dataset(group+'/'+field, data=getattr(self, field))
                         else:
-
                             h5f.create_dataset(group+'/'+field, data=getattr(self, field),
                                 chunks=True, compression="gzip", fillvalue=self.fill_value)
                     except Exception:
