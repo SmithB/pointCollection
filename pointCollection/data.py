@@ -457,7 +457,7 @@ class data(object):
                                    **kwargs)
             if meta_dict is not None and out_field in meta_dict:
                 for key, val in meta_dict[out_field].items():
-                    if key not in ['group','source_field','precision']:
+                    if key.lower() not in ['group','source_field','precision','dimensions','coordinate']:
                         h5f_out[out_field].attrs[key]=str(val).encode('utf-8')
         h5f_out.close()
 
