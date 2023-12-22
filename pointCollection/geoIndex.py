@@ -408,7 +408,7 @@ class geoIndex(dict):
         other_sub=other.copy_subset(xyBin=[xyB[:,0], xyB[:,1]], pad=pad[1])
         return self_sub, other_sub
 
-    def query_xy(self, xyb, cleanup=True, get_data=True, fields=None, pad=None, 
+    def query_xy(self, xyb, cleanup=True, get_data=True, fields=None, pad=None,
                  dir_root='', strict=False, bounds=None):
         """
         check if data exist within the current geo index for bins in lists/arrays
@@ -582,6 +582,9 @@ class geoIndex(dict):
 
         for file_key, result in query_results.items():
             this_file=self.resolve_path(file_key, dir_root)
+            if not os.path.isfile(this_file):
+                print(f'geoIndex.get_data(): missing file {this_file}')
+                continue
             if result['type'] == 'h5':
                 D=[pc.data().from_h5(filename=this_file, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
             elif result['type'] == 'h5_geoindex':
@@ -611,7 +614,7 @@ class geoIndex(dict):
                     D=[]
                     continue
             elif result['type'] == 'ATM_Qfit':
-                D=[pc.ATM_Qfit.data().from_h5(this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]            
+                D=[pc.ATM_Qfit.data().from_h5(this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
             elif result['type'] == 'ATM_waveform':
                 D=[pc.atmWaveform(filename=this_file, index_range=np.array(temp), waveform_format=True) for temp in zip(result['offset_start'], result['offset_end'])]
             elif result['type'] == 'geotif':
@@ -635,6 +638,10 @@ class geoIndex(dict):
                         D.assign({'sigma':D1.z})
                         D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
                     except AttributeError:
+                        D.index(np.isfinite(D.z))
+                    except TypeError:
+                        # this catches missing band 2
+                        D.assign(sigma=np.ones_like(D.z))
                         D.index(np.isfinite(D.z))
                     D.filename=this_file
                 except IndexError as e:
