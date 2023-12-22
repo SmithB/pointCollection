@@ -115,7 +115,7 @@ class data(object):
         -------
         dict or string or both
             string or dictionary giving the shape, number of nonzero entries,
-            standard deviation, and minmax for each field.  If no output is 
+            standard deviation, and minmax for each field.  If no output is
             specified, the summary is printed.
 
         """
@@ -123,11 +123,11 @@ class data(object):
         table = ['field \tshape \tn_finite \tSTD \t minmax']
         for field in self.fields:
             ff=getattr(self, field)
-            finfo={'shape':ff.shape, 
+            finfo={'shape':ff.shape,
                             'n_finite':np.sum(np.isfinite(ff)),
                             'std':np.nanstd(ff),
                             'minmax':[np.nanmin(ff), np.nanmax(ff)]}
-            
+
             table += [f'{field}\t{finfo["shape"]}\t{finfo["n_finite"]}\t{finfo["std"]:0.2e}\t{finfo["minmax"][0]:0.2e} {finfo["minmax"][1]:0.2e}']
             summary[field] = finfo
         out=[]
@@ -140,11 +140,16 @@ class data(object):
         else:
             return tuple(out)
 
-    def from_h5(self, filename, group=None, field_dict=None, index_range=None):
+    def from_h5(self, filename, group=None, fields=None, field=None, field_dict=None, index_range=None):
         """
-        read a data object from a HDF5 file
+        read a data object from an HDF5 file
         """
         self.filename=filename
+
+        if fields is None and fields is not None:
+            fields = [field]
+        if fields is not None:
+            field_dict = {group:fields}
 
         with h5py.File(filename, 'r') as h5_f:
             nan_fields=list()
@@ -160,7 +165,8 @@ class data(object):
                         field_dict={this_group: [key for key in h5_f[this_group].keys() \
                                                  if isinstance(h5_f[this_group][key], h5py.Dataset)]}
                 else:
-                    field_dict=self.field_dict
+                    if self.field_dict is not None:
+                        field_dict=self.field_dict
             # make a slice out of whatever was provided in index_range
             if index_range is None:
                 ind=slice(None)
@@ -182,15 +188,28 @@ class data(object):
                         else:
                             ds=h5_f[group][field]
                         # read the data:
-                        if self.columns==0 or self.columns is None or (ds.ndim==1):
-                            setattr(self, field, np.array(ds[ind]))
+                        if 'scale_factor' in ds.attrs:
+                            scale_factor = float(ds.attrs['scale_factor'])
                         else:
-                            setattr(self, field, np.array(ds[ind,:]))
+                            scale_factor=1
+                        if 'add_offset' in ds.attrs:
+                            add_offset = float(ds.attrs['add_offset'])
+                        else:
+                            add_offset=0
+                        if self.columns==0 or self.columns is None or (ds.ndim==1):
+                            temp=np.array(ds[ind])
+                        else:
+                            temp=np.array(ds[ind,:])
                         # check if there is a '_FillValue' defined in the dataset
                         if '_FillValue' in ds.attrs:
                             if ds.dtype in ['float32', 'float64']:
-                                bad=getattr(self, field)==ds.attrs['_FillValue']
-                                getattr(self, field)[bad]=np.NaN
+                                bad = temp==ds.attrs['_FillValue']
+                                temp[bad]=np.NaN
+                        if scale_factor != 1:
+                            temp = temp.astype(float)*scale_factor
+                        if add_offset != 0:
+                            temp = temp.astype(float)+add_offset
+                        setattr(self, field, temp)
                     except KeyError:
                         nan_fields.append(field)
                 # find the first populated field
