@@ -34,6 +34,7 @@ from .tools.calc_bias_and_R import calc_bias_and_R
 from .tools.xovers_vector import cross_paths
 from .tools.in_axes import in_axes
 from .tools.RDE import RDE
+from .tools import register_grid
 from .points_to_grid import points_to_grid
 from .points_to_grid import apply_bin_fn
 from .xover_search import cross_tracks
