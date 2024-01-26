@@ -368,7 +368,7 @@ class geoIndex(dict):
         self.SRS_proj4=SRS_proj4
         return self.from_list(index_list, dir_root=dir_root)
 
-    def query_latlon(self, lat, lon, get_data=True, fields=None):
+    def query_latlon(self, lat, lon, get_data=True, fields=None, error_action='warn'):
         """
         query the current geoIndex for all bins that match the bin locations
         provided in (lat, lon),  Optionally return data, with field query in 'fields'
@@ -384,9 +384,9 @@ class geoIndex(dict):
         delta=self.attribs['delta']
         xb=np.round(x/delta[0])*delta[0]
         yb=np.round(y/delta[1])*delta[1]
-        return self.query_xy(xb, yb, get_data=get_data, fields=fields)
+        return self.query_xy(xb, yb, get_data=get_data, fields=fields, error_action=error_action)
 
-    def query_xy_box(self, xr, yr, get_data=True, fields=None, dir_root=''):
+    def query_xy_box(self, xr, yr, get_data=True, fields=None, dir_root='', error_action='warn'):
         """
         query the current geoIndex for all bins in the box specified by box [xr,yr]
         """
@@ -394,7 +394,7 @@ class geoIndex(dict):
         these=(xy_bin[0] >= xr[0]) & (xy_bin[0] <= xr[1]) &\
             (xy_bin[1] >= yr[0]) & (xy_bin[1] <= yr[1])
         return self.query_xy([xy_bin[0][these], xy_bin[1][these]], get_data=get_data, \
-                             fields=fields, dir_root=dir_root, bounds=[xr, yr])
+                             fields=fields, dir_root=dir_root, bounds=[xr, yr], error_action=error_action)
 
     def intersect(self, other, pad=[0, 0]):
         """
@@ -409,7 +409,7 @@ class geoIndex(dict):
         return self_sub, other_sub
 
     def query_xy(self, xyb, cleanup=True, get_data=True, fields=None, pad=None,
-                 dir_root='', strict=False, bounds=None):
+                 dir_root='', strict=False, bounds=None, error_action='warn'):
         """
         check if data exist within the current geo index for bins in lists/arrays
             xb and yb.
@@ -490,7 +490,7 @@ class geoIndex(dict):
             'x':xy[:,0],
             'y':xy[:,1]}
         if get_data:
-            query_results=self.get_data(query_results, fields=fields, dir_root=dir_root, bounds=bounds)
+            query_results=self.get_data(query_results, fields=fields, dir_root=dir_root, bounds=bounds, error_action=error_action)
             if strict is True:
                 # take the subset of data that rounds exactly to the query (OTW, may get data that extend outside)
                 if not isinstance(query_results, list):
@@ -547,7 +547,8 @@ class geoIndex(dict):
         # if nothing has happened yet, return the filename
         return filename
 
-    def get_data(self, query_results, fields=None,  data=None, dir_root='', bounds=None):
+    def get_data(self, query_results, fields=None,  data=None, dir_root='',
+                 bounds=None, error_action='warn'):
         """
         read the data from a set of query results
         Currently the function knows how to read:
@@ -582,89 +583,97 @@ class geoIndex(dict):
 
         for file_key, result in query_results.items():
             this_file=self.resolve_path(file_key, dir_root)
-            if not os.path.isfile(this_file):
-                print(f'geoIndex.get_data(): missing file {this_file}')
-                continue
-            if result['type'] == 'h5':
-                D=[pc.data().from_h5(filename=this_file, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
-            elif result['type'] == 'h5_geoindex':
-                D=geoIndex().from_file(this_file).query_xy((result['x'], result['y']), fields=fields, get_data=True, dir_root=dir_root)
-            elif result['type'] == 'ATL06':
-                if fields is None:
-                    fields={None:(u'latitude',u'longitude',u'h_li',u'delta_time')}
-                D6_file, pair=this_file.split(':pair')
-                D=[pc.ATL06.data(beam_pair=int(pair), fields=field_list, field_dict=field_dict).from_h5(\
-                    filename=D6_file, index_range=np.array(temp)) \
-                    for temp in zip(result['offset_start'], result['offset_end'])]
-            elif result['type'] == 'ATL11':
-                D11_file, pair = this_file.split(':pair')
-                try:
-                    if not os.path.isfile(D11_file):
-                        print(D11_file)
-                    D=[pc.ATL11.data().from_h5(\
-                            filename=D11_file, index_range=np.array(temp), \
-                            pair=int(pair), field_dict=field_dict) \
-                            for temp in zip(result['offset_start'], result['offset_end'])]
-                except Exception as e:
-                    print(f"pointCollection.geoIndex: problem with ATL11 file:{D11_file} for beam pair {pair}.")
-                    print("        Indexing information:")
-                    print(result)
-                    print("         Exception:")
-                    print(e)
-                    D=[]
+            try:
+                if not (os.path.isfile(this_file) or os.path.isfile(this_file.split(':')[0])):
+                    print(f'geoIndex.get_data(): missing file {this_file}')
                     continue
-            elif result['type'] == 'ATM_Qfit':
-                D=[pc.ATM_Qfit.data().from_h5(this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
-            elif result['type'] == 'ATM_waveform':
-                D=[pc.atmWaveform(filename=this_file, index_range=np.array(temp), waveform_format=True) for temp in zip(result['offset_start'], result['offset_end'])]
-            elif result['type'] == 'geotif':
-                # assume single band
-                D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
-                D.index(D, np.isfinite(D.z))
-            elif result['type'] == 'DEM':
-                D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year')
-                if D.shape is None:
-                    continue
-                D=D.as_points(keep_all=True)
-                D.index(np.isfinite(D.z))
-            elif result['type'] == 'filtered_DEM':
-                try:
+                if result['type'] == 'h5':
+                    D=[pc.data().from_h5(filename=this_file, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
+                elif result['type'] == 'h5_geoindex':
+                    D=geoIndex().from_file(this_file).query_xy((result['x'], result['y']), fields=fields, get_data=True, dir_root=dir_root, error_action=error_action)
+                elif result['type'] == 'ATL06':
+                    if fields is None:
+                        fields={None:(u'latitude',u'longitude',u'h_li',u'delta_time')}
+                    D6_file, pair=this_file.split(':pair')
+                    D=[pc.ATL06.data(beam_pair=int(pair), fields=field_list, field_dict=field_dict).from_h5(\
+                        filename=D6_file, index_range=np.array(temp)) \
+                        for temp in zip(result['offset_start'], result['offset_end'])]
+                elif result['type'] == 'ATL11':
+                    D11_file, pair = this_file.split(':pair')
+                    try:
+                        if not os.path.isfile(D11_file):
+                            print(D11_file)
+                        D=[pc.ATL11.data().from_h5(\
+                                filename=D11_file, index_range=np.array(temp), \
+                                pair=int(pair), field_dict=field_dict) \
+                                for temp in zip(result['offset_start'], result['offset_end'])]
+                    except Exception as e:
+                        print(f"pointCollection.geoIndex: problem with ATL11 file:{D11_file} for beam pair {pair}.")
+                        print("        Indexing information:")
+                        print(result)
+                        print("         Exception:")
+                        print(e)
+                        D=[]
+                        continue
+                elif result['type'] == 'ATM_Qfit':
+                    D=[pc.ATM_Qfit.data().from_h5(this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
+                elif result['type'] == 'ATM_waveform':
+                    D=[pc.atmWaveform(filename=this_file, index_range=np.array(temp), waveform_format=True) for temp in zip(result['offset_start'], result['offset_end'])]
+                elif result['type'] == 'geotif':
+                    # assume single band
+                    D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year').as_points(keep_all=True)
+                    D.index(D, np.isfinite(D.z))
+                elif result['type'] == 'DEM':
                     D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year')
                     if D.shape is None:
                         continue
                     D=D.as_points(keep_all=True)
+                    D.index(np.isfinite(D.z))
+                elif result['type'] == 'filtered_DEM':
                     try:
-                        D1=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[2], date_format='year').as_points(keep_all=True)
-                        D.assign({'sigma':D1.z})
-                        D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
-                    except AttributeError:
-                        D.index(np.isfinite(D.z))
-                    except TypeError:
-                        # this catches missing band 2
-                        D.assign(sigma=np.ones_like(D.z))
-                        D.index(np.isfinite(D.z))
-                    D.filename=this_file
-                except IndexError as e:
-                    warn(f"pointCollection.geoIndex: failed to read {this_file}:"+str(e))
-                    continue
-            elif result['type'] == 'indexed_h5':
-                D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
-            elif result['type'] == 'indexed_h5_from_matlab':
-                D = [ pc.indexedH5.data(filename=this_file).read([result['x']/1000, result['y']/1000],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
-            if result['type'] is None:
-                D = [data[np.arange(temp[0], temp[1])] for temp in zip(result['offset_start'], result['offset_end'])]
-            # add data to list of results.  May be a list or a single result
-            if isinstance(D,list):
-                for Di in D:
-                    if Di.filename is None:
-                        Di.filename=this_file
-                out_data += D
-            else:
-                if D is None:
-                    continue
-                if D.filename is None:
-                    D.filename=this_file
-                out_data.append(D)
+                        D=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[1], date_format='year')
+                        if D.shape is None:
+                            continue
+                        D=D.as_points(keep_all=True)
+                        try:
+                            D1=pc.grid.data().from_geotif(this_file, bounds=bounds, bands=[2], date_format='year').as_points(keep_all=True)
+                            D.assign({'sigma':D1.z})
+                            D.index(np.isfinite(D.z) & np.isfinite(D.sigma))
+                        except AttributeError:
+                            D.index(np.isfinite(D.z))
+                        except TypeError:
+                            # this catches missing band 2
+                            D.assign(sigma=np.ones_like(D.z))
+                            D.index(np.isfinite(D.z))
+                        D.filename=this_file
+                    except IndexError as e:
+                        warn(f"pointCollection.geoIndex: failed to read {this_file}:"+str(e))
+                        continue
+                elif result['type'] == 'indexed_h5':
+                    D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
+                elif result['type'] == 'indexed_h5_from_matlab':
+                    D = [ pc.indexedH5.data(filename=this_file).read([result['x']/1000, result['y']/1000],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
+                if result['type'] is None:
+                    D = [data[np.arange(temp[0], temp[1])] for temp in zip(result['offset_start'], result['offset_end'])]
+                # add data to list of results.  May be a list or a single result
+                if isinstance(D,list):
+                    for Di in D:
+                        if Di.filename is None:
+                            Di.filename=this_file
+                    out_data += D
+                else:
+                    if D is None:
+                        continue
+                    if D.filename is None:
+                        D.filename=this_file
+                    out_data.append(D)
+            except Exception as e:
+                if error_action=='warn':
+                    warn(f'geoIndex.py: caught exception attempting to read file: {this_file}')
+                    print(e)
+                else:
+                    print(f'geoindex.py: exception for file:{this_file}')
+                    raise(e)
         return out_data
 
     def bins_as_array(self):
