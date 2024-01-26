@@ -22,6 +22,7 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
 from . import DEM_date
+import shapely
 #import os
 
 class data(object):
@@ -1639,6 +1640,38 @@ class data(object):
         # update class fill value
         self.fill_value = fill_value
         return self
+
+
+    def rasterize_poly(self, in_geom, field='z', burn_value=1, raster_epsg=None, poly_epsg=None):
+        """Rasterize a shapely polygon"""
+        mask_ds=self.to_gdal(srs_epsg=raster_epsg, field=field)
+        shpDriver = ogr.GetDriverByName("memory")
+
+        # create the spatial reference system, WGS84
+        srs =  osr.SpatialReference()
+        srs.ImportFromEPSG(poly_epsg)
+
+        outDataSource = shpDriver.CreateDataSource('temp')
+        if isinstance(in_geom, shapely.Polygon):
+            outLayer = outDataSource.CreateLayer('temp', srs, geom_type=ogr.wkbPolygon)
+        else:
+            outLayer = outDataSource.CreateLayer('temp', srs, geom_type=ogr.wkbMultiPolygon)
+        # Add an ID field
+        idField = ogr.FieldDefn("id", ogr.OFTInteger)
+        outLayer.CreateField(idField)
+
+        geom=ogr.CreateGeometryFromWkb(in_geom.wkb)
+
+        # Create the feature and set values
+        featureDefn = outLayer.GetLayerDefn()
+        feature = ogr.Feature(featureDefn)
+        feature.SetGeometry(geom)
+        feature.SetField("id", 1)
+        outLayer.CreateFeature(feature)
+        gdal.RasterizeLayer(mask_ds, [1], outLayer, burn_values=[burn_value])
+        mask_ds=pc.grid.data().from_gdal(mask_ds)
+        # write the field from the mask ds to self
+        setattr(self, field, mask_ds.z)
 
     def crs_attributes(self, srs_proj4=None, srs_wkt=None, srs_epsg=None, **kwargs):
         """
