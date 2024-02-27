@@ -360,16 +360,21 @@ class data(object):
             if field not in self.fields:
                 self.assign({field:np.zeros(self.shape)+np.NaN})
 
-    def copy_subset(self, index, by_row=False, datasets=None):
+    def copy_subset(self, index, by_row=False, datasets=None, fields=None):
         """
         return a copy of a subset of the object
         """
         dd=dict()
         if self.columns is not None and self.columns >=1 and by_row is not None or isinstance(index, slice):
             by_row=True
+        if fields is not None and datasets is None:
+            datasets=fields
         if datasets is None:
             datasets=self.fields.copy()
-        if (not isinstance(index, (slice, int, np.integer, float, np.float64))) and ((len(index) == 0) or ( (index.dtype == 'bool') and np.all(index==0))):
+        if isinstance(index, tuple):
+            dd={key:getattr(self, key)[index] for key in datasets }
+        elif (not isinstance(index, (slice, int, np.integer, float, np.float64))) and \
+            ((len(index) == 0) or ( (index.dtype == 'bool') and np.all(index==0))):
             dd={key:np.zeros([1,0]) for key in datasets}
         else:
             for field in datasets:
