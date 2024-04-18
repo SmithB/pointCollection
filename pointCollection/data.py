@@ -10,9 +10,53 @@ import pointCollection as pc
 import pyproj
 
 class data(object):
-    np.seterr(invalid='ignore')
-    def __init__(self, data_dict=None, fields=None, SRS_proj4=None, field_dict=None, columns=0, filename=None):
+    """
+    pointCollection.data objects are container objects holding point-like data.
+    They can be read from hdf5 files, or constructed from dictionaries using the
+    from_dict() method or using the data_dict argument to the __init__() method,
+    and new data can be assigned to an existing object using the assign() mmethod.
 
+    The data in a pointCollection.data object is stored as a set of fields that
+    are listed in the object's fields attribute.  The object's methods will only
+    be applied to these fields, which means that all data should be assigned
+    during object creation or using the object's assign() method.  Each field
+    is assumed to be a numpy.array object.
+
+    Each object has size and shape attributes analagous to those of a numpy array.
+    By default, they will match the first field listed in self.fields.
+
+    Indexing a pointCollection.data with square brackets returns:
+        -a field's data if the index is a string
+        -a copy of the object sliced by the index otherwise
+    """
+    np.seterr(invalid='ignore')
+    def __init__(self, data_dict=None, fields=None, SRS_proj4=None, EPSG=None, field_dict=None, columns=0, filename=None):
+        """
+        Initialize a new pointCollection.data object
+
+        Parameters
+        ----------
+        data_dict : dict, optional
+            Dictionary containing fields to be assigned to the new object. The default is None.
+        fields : iterable, optional
+            list of fields in the new object. The default is None.
+        SRS_proj4 : str, optional
+            proj4 string for the object's coordinate system. The default is None.
+        EPSG : int, optional
+            EPSG string for the object's coordinate system. The default is None.
+        field_dict : dict, optional
+            dictionary specifying how the object is to be read from an hdf5 file. The default is None.
+        columns : int optional
+            number of columns in each field in the object.  Fields are assumed to be
+            of shape [Ndata, columns]. The default is 0, specifying a shape of [Ndata]
+        filename : str, optional
+            a filename indicating the source of the data. The default is None.
+
+        Returns
+        -------
+        None.
+
+        """
         if field_dict is None:
             self.field_dict=self.__default_field_dict__()
         else:
@@ -28,6 +72,7 @@ class data(object):
             self.fields=list(fields)
         self.fields=fields
         self.SRS_proj4=SRS_proj4
+        self.EPSG=EPSG
         self.columns=columns
         self.shape=None
         self.size=None
@@ -37,7 +82,7 @@ class data(object):
 
     def __repr__(self):
         out=f"{self.__class__} with shape {self.shape},"+"\n"
-        out += f"with fields:"+"\n"
+        out += "with fields:"+"\n"
         out += f"{self.fields}"
         return out
 
@@ -45,7 +90,8 @@ class data(object):
         """
         Define the default fields that get read from the h5 file
         """
-        field_dict={None:('latitude','longitude','z')}
+        field_dict=None
+        #old: {None:('latitude','longitude','z')}
         return field_dict
 
     def __copy__(self):
@@ -75,12 +121,56 @@ class data(object):
         """
         wrapper for the copy_subset() method
         """
+        if isinstance(args[0], str):
+            return getattr(self, args[0])
         return self.copy_subset(*args, **kwargs)
+
+    def __setitem__(self, *args):
+        self.assign({args[0]:args[1]})
+
+    def __add__(self, x):
+        return pc.data().from_list([self, x])
+
+    def choose_crs(self, proj4_string=None, EPSG=None, SRS_proj4=None, SRS_EPSG=None):
+        '''
+        Choose a coordinate system based on keyword arguments
+
+        Parameters
+        ----------
+        proj4_string: str, optional
+            proj4 string for the destination coordinate system
+        SRS_proj4:
+            synonym for proj4_string
+        EPSG: int, optional
+            EPSG number for the destination coordinate system
+        SRS_EPSG: int, optional
+            synonym for EPSG
+
+        Returns
+        -------
+        crs : str or int
+            coordinate system to be passed to proj4.
+
+        '''
+
+        if SRS_proj4 is not None:
+            proj4_string=SRS_proj4
+        if SRS_EPSG is not None:
+            EPSG=SRS_EPSG
+        if proj4_string is not None:
+            crs=proj4_string
+        elif EPSG is not None:
+            crs=EPSG
+        else:
+            if self.SRS_proj4 is None:
+                crs=self.SRS_proj4
+            else:
+                crs=self.EPSG
+        return crs
 
     def copy(self):
         """
-        I do not know why this is necessary, but the copy method does not work
-        without it
+        return a copy of self
         """
         return self.__copy__()
 
@@ -89,7 +179,7 @@ class data(object):
         copy attributes to a new data object
         """
         out=data()
-        for field in ['fields', 'SRS_proj4','columns']:
+        for field in ['fields', 'SRS_proj4', 'EPSG', 'columns']:
             temp=getattr(self, field)
             if temp is not None:
                 try:
@@ -143,8 +233,32 @@ class data(object):
     def from_h5(self, filename, group=None, fields=None, field=None, field_dict=None, index_range=None):
         """
         read a data object from an HDF5 file
+
+        Parameters:
+
+        filename: str
+            Filename to be read
+        group: str, optional
+            Group within the file to be read. If unspecified, will be treated as '/',
+                unless the data object has a __default_field_dict__() function that does
+                not return None
+        fields: list, optional
+            fields within the group to be read.  If None, all are read.
+        field: str, optional
+            field within the group to be read, equivalent to fields=['field']
+        field_dict: dict, optional
+            Dictionary specifying how fields are to be read.  Each key in field_dict specfies a
+                group (or subgroup) within the file, and each value specifies a list of fields
+                to be read.  If no such field appears in the file, the output will be filled with
+                numpy.NaN values.  If a group is specifled as __calc_internal__, after the rest
+                of the file has been read, the data object's __calc_internal__ function will be
+                called to fill in the missing fields.
+
         """
-        self.filename=filename
+        if filename is None:
+            filename=self.filename
+        else:
+            self.filename=filename
 
         if fields is None and fields is not None:
             fields = [field]
@@ -231,16 +345,29 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def get_xy(self, proj4_string=None, EPSG=None):
-        if proj4_string is not None:
-            crs=proj4_string
-        elif EPSG is not None:
-            crs=EPSG
+    def get_xy(self, **kwargs):
+
+        '''
+        Calculate projected coordinates from latitude and longitude fields
+
+        x and y fields are calculated based on an object's latitude and
+        longitude fields.
+
+        Parametes
+        ---------
+        **kwargs: dict
+            keyword=pair arguments passed to self.choose_crs()
+        Returns
+        -------
+        self: pointCollection.data
+            Current object with updated x and y fields
+        '''
+        crs=self.choose_crs(**kwargs)
         if hasattr(pyproj, 'proj'):
             xy=np.array(pyproj.proj.Proj(crs)(self.longitude, self.latitude))
         else:
-            if EPSG is not None:
-                xy=np.array(pyproj.Proj("+init=epsg:"+str(EPSG))(self.longitude, self.latitude))
+            if isinstance(crs, int):
+                xy=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.longitude, self.latitude))
             else:
                 xy=np.array(pyproj.Proj(crs)(self.longitude, self.latitude))
         self.x=xy[0,:].reshape(self.shape)
@@ -249,16 +376,31 @@ class data(object):
             self.fields += ['x','y']
         return self
 
-    def get_latlon(self, proj4_string=None, EPSG=None):
-        if proj4_string is not None:
-            crs=proj4_string
-        elif EPSG is not None:
-            crs=EPSG
+    def get_latlon(self, **kwargs):
+        '''
+        Calculate geographic coordinate fields from x and y fields
+
+        latitude and longitude fields are calculated based on an object's x and
+        y fields
+
+        Parameters
+        ----------
+        **kwargs: dict
+            keyword=pair arguments passed to self.choose_crs()
+
+        Returns
+        -------
+        self: pointCollection.data
+            Current object with updated latitude and longitude fields
+
+        '''
+        crs=self.choose_crs(**kwargs)
+
         if hasattr(pyproj, 'proj'):
             lonlat=np.array(pyproj.proj.Proj(crs)(self.x, self.y, inverse=True))
         else:
-            if EPSG is not None:
-                lonlat=np.array(pyproj.Proj("+init=epsg:"+str(EPSG))(self.x, self.y))
+            if isinstance(crs, int):
+                lonlat=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.x, self.y))
             else:
                 lonlat=np.array(pyproj.Proj(crs)(self.x, self.y))
         self.assign({"longitude":lonlat[0,:].reshape(self.shape), \
@@ -267,8 +409,24 @@ class data(object):
 
     def from_dict(self, dd, fields=None):
         """
-        build a data object from a dictionary
+        create a pointCollection.data object from the entries in a dict
+
+        Parameters
+        ----------
+        dd : dict
+            Dictionary containing data values for fieldnames.  Each key specifies
+            a fieldname, each value contains the data associated with that field
+        fields : iterable, optional
+            If specified, only these fields are read from dd. The default is None.
+
+        Returns
+        -------
+        pointCollection.data
+            Data object containing the values from the input dictionary
+
         """
+
+
         if fields is not None:
             self.fields=fields
         else:
@@ -288,16 +446,40 @@ class data(object):
 
     def from_list(self, D_list):
         """
-        build a data object from a list of other data objects
+        Build a data object from a list of other data objects
+
+        Constructs a pointCollection.data objects from an input list of objects.
+        The constructed object will contain fields matching the union of all
+        fields within the input objects.  If not every object contains every
+        field, the missing values will be filled with numpy.NaN values.  Each
+        field represents the concatenation of the input fields along its
+        first axis.
+
+        Parameters
+        ----------
+        D_list : iterable
+        list of pointCollection.data objects.
+
+
+        Returns
+        -------
+        pointCollection.data
+            Object containing concatenated fields from input objects
+
         """
+
         if D_list is None:
             return
         if len(self.fields)==0:
-            fields=set()
-            for D in D_list:
-                if hasattr(D,'fields'):
-                    fields=fields.union(D.fields)
-            self.fields=list(fields)
+            fields=[]
+            if len(D_list) > 1:
+                for D in D_list:
+                    if hasattr(D,'fields'):
+                        if not D.fields == fields:
+                            for ff in D.fields:
+                                if ff not in fields:
+                                    fields += [ff]
+            self.fields=fields
 
         for D in D_list:
             if D is not None:
@@ -326,9 +508,43 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
+    def as_dict(self, fields=None):
+        '''
+        Return a dictionary containing the data from self.
+
+        Parameters
+        ----------
+        fields : iterable, optional
+            fields to include in the dictionary. The default is None.
+
+        Returns
+        -------
+        dict
+            dictionary containing the data from self
+
+        '''
+        if fields is None:
+            fields=self.fields
+        return {field:getattr(self, field) for field in fields}
+
     def index(self, index):
         """
-        index the fields of a data object
+        subset a data object in place
+
+        Applies index to each field in self, assuming numpy rules for indexing
+        apply.  If more control is needed over the indexing results, the
+        copy_subset function contains more options.
+
+        Parameters
+        ----------
+        index : bool, tuple, numpy array of ints, or slice
+             Index used to subset self
+
+        Returns
+        -------
+        pointCollection.data
+            subsetted version of self.
+
         """
         for field in self.fields:
             try:
@@ -341,8 +557,32 @@ class data(object):
 
     def blockmedian(self, scale, field='z'):
         """
-        Apply a blockmedian subsetting operation to the fields
+        Apply a blockmedian subsetting operation to an object's fields.
+
+
+        Divides the points within an object into groups of size scale x scale,
+        identifies the elements within each group representing the median of
+        the specified field, and returns the values for all other fields in the
+        object corresponding to these elements.  For groups containing an even
+        number of elements, the average of the elements spanning the median is
+        returned.
+
+        Parameters
+        ----------
+        scale : float
+            Scale over which the blockmedian is calculated.
+        field : str, optional
+            Points within the object are selected based on the values in this
+            field. The default is 'z'.
+
+        Returns
+        -------
+        pointCollection.data
+            Object containing the meidan values
+
         """
+
+
         if self.size<2:
             return self
         ind = pc.pt_blockmedian(self.x, self.y, np.float64(getattr(self, field)), scale, return_index=True)[3]
@@ -356,13 +596,45 @@ class data(object):
         return self
 
     def complete_fields(self, fields):
+        """
+        Fill in missing fields with np.NaN
+
+
+        Parameters
+        ----------
+        fields : iterable
+            Strings containing fields to be filled
+
+        Returns
+        -------
+        None.
+
+        """
+
         for field in fields:
             if field not in self.fields:
                 self.assign({field:np.zeros(self.shape)+np.NaN})
 
     def copy_subset(self, index, by_row=False, datasets=None, fields=None):
         """
-        return a copy of a subset of the object
+        return a subsetted version of self.
+
+        Parameters
+        ----------
+        index : bool, tuple, numpy array, or slide
+            Object used to subset the fields in self.
+        by_row : bool, optional
+            If True, slicing operation is applied to the first dimension of each field. The default is False.
+        datasets : iterable, optional
+            List of fields to be returned. If None, all fields are returned. The default is None.
+        fields : TYPE, optional
+            list of fields to be returned.  Synonym for datasets. The default is None.
+
+        Returns
+        -------
+        pointCollection.data
+            subsetted versino of self.
+
         """
         dd=dict()
         if self.columns is not None and self.columns >=1 and by_row is not None or isinstance(index, slice):
@@ -396,28 +668,96 @@ class data(object):
 
     def cropped(self, bounds, return_index=False, **kwargs):
         """
-        return a copy of a subset of the object falling within specified bounds
+        Return a cropped copy of an object
 
-        the bounds are specified as (XR, YR)
+        Returns a copy self for which
+            bounds[0][0] <= self.x <= bounds[0][1]
+            and
+            bounds[1][0] <= self.y <= bounds[1][1]
+
+        Parameters
+        ----------
+        bounds : iterable
+            A list of two iterables containing the range of x values and y values
+            to include in the output.
+        return_index : bool, optional
+            If True, return only the indices of the points within the bounds.
+            The default is False.
+        **kwargs : dict
+            keyword arguments that are passed to copy_subset.
+
+        Returns
+        -------
+        pointCollection.data
+            cropped version of the inptu data
+
         """
+
         ind = (self.x >= bounds[0][0]) & (self.x <= bounds[0][1]) &\
               (self.y >= bounds[1][0]) & (self.y <= bounds[1][1])
         if return_index:
             return ind
         return self.copy_subset(ind, **kwargs)
 
-    def crop(self, bounds, return_index=False, **kwargs):
+    def crop(self, bounds):
         """
-        subset object to points falling within specified bounds
+        Crop current object in place.
 
-        the bounds are specified as (XR, YR)
+        Parameters
+        ----------
+        bounds : iterable
+            A list of two iterables containing the range of x values and y values
+            to include in the output.
+        return_index : bool, optional
+            If True, return only the indices of the points within the bounds.
+            The default is False.
+
+        Returns
+        -------
+        None
+
         """
+
         self.index((self.x >= bounds[0][0]) & (self.x <= bounds[0][1]) &\
               (self.y >= bounds[1][0]) & (self.y <= bounds[1][1]))
 
-    def to_h5(self, fileOut, replace=True,  group='/', extensible=True, meta_dict=None):
+    def to_h5(self, fileOut, replace=True,  group='/', extensible=True, meta_dict=None, DEBUG=False):
         """
-        write a data object to an hdf5 file
+        Write the contents of self to an hdf5 file.
+
+        Saves the current data object to a file.  Optional parameters specify the
+        group within the output file, and specify whether the file will be
+        overwritten or if the data in self will be written to new fields and
+        groups within the file.
+
+        The meta_dict parameter allows specification of dataset attributes.  Special
+        values include:
+            'compression': overwrites the default gzip compression
+            'source_field': alternative fieldname within self from which data
+                will be copied
+            'precision':
+                value passed to the 'scaleoffset' keyword in h5py
+        Other values in meta_dict are assigned as attributes to each dataset.
+
+        Parameters
+        ----------
+        fileOut : str
+            Filename to which the data are written.
+        replace : bool, optional
+            If true, any existing file is overwritten. The default is True.
+        group : str, optional
+            Group into which the data are written. The default is '/'.
+        extensible : bool, optional
+            If true, datasets are created as extensivble. The default is True.
+        meta_dict : dict optional
+            Dictionary containing attributes of output datasets. The default is None.
+        DEBUG : bool, optional
+            If True, report error messages from dataset creation
+
+        Returns
+        -------
+        None.
+
         """
         # check whether overwriting existing files
         # append to existing files as default
@@ -453,7 +793,8 @@ class data(object):
             try:
                 out_field_name = meta_dict[out_field]['group'] + out_field
             except (TypeError, KeyError) as e:
-                pass
+                if DEBUG:
+                    print(e)
             out_field_name = group + '/' +out_field
             kwargs = dict( compression="gzip", maxshape=tuple(maxshape))
             if meta_dict is not None and 'precision' in meta_dict[out_field] and meta_dict[out_field]['precision'] is not None:
@@ -497,7 +838,28 @@ class data(object):
 
 
     def assign(self, *args, **kwargs):
-        """Set field values."""
+        """
+        Assign a field to self
+
+        Method used to assign new values to an existing pointEollection.data
+        object.  The inputs can either be a single dictionary containing
+        fieldnames and values to be assigned, or a list of keyword=value
+        pairs containing new fields and their values.
+
+        Parameters
+        ----------
+        *args : list
+            Dictionary containing fieldnames and values to be assigned.
+        **kwargs : dict
+            keyword=value pairs containing fields to be assigned.
+
+        Returns
+        -------
+        pointCollection.data
+            Updated data object.
+
+        """
+
         if len(args):
             newdata=args[0]
         else:
@@ -511,7 +873,22 @@ class data(object):
         return self
 
     def coords(self):
-        """Return the x, y, and t coordinates"""
+        """
+        Return the coordinates of an object
+
+        Returns the object's coordinates, in (y, x, time) order, or (y, x)
+        if a 't' or 'time' field is not present.  Note that the coordinate
+        order for this method is not consistent with that in the bounds()
+        and crop() functions
+
+        Returns
+        -------
+        tuple
+            tuple of object coordinates
+
+        """
+
+
         if 'time' in self.fields:
             return (self.y, self.x, self.time)
         elif 't' in self.fields:
@@ -521,6 +898,8 @@ class data(object):
 
     def bounds(self, pad=0):
         """
+        Return the bounds of the x and y coordinates in self.
+
         Parameters
         ----------
         pad : float, int, optional
@@ -537,11 +916,56 @@ class data(object):
     def ravel_fields(self):
         """
         ravel all the fields in self
+
+        Applies the numpy .ravel method to each field in self
+
+        Parameters
+        ---------
+        None
+
+        Returns
+        -------
+        None
         """
         for field in self.fields:
             setattr(self, field, getattr(self, field).ravel())
         self.__update_size_and_shape__()
         return self
+
+    def map(self, fn, fields=None, copy=False, **kwargs):
+        """
+        apply a function to the fields of self
+
+        Parameters
+        ----------
+        fn : function
+        function to be applied to the fields of self.
+        fields : iterable, optional
+            fields to which the function is applied. If None, it is applied to
+            all fields. The default is None.
+        copy : bool, optional
+            If True, operations are performed on a copy of self, otherwise
+            they are performed in place.
+        **kwargs:
+            keyword args to pass to fn
+        Returns
+        -------
+        pointCollection.data
+
+
+        """
+        if copy:
+            this=self.copy()
+        else:
+            this=self
+
+        if fields is None:
+            fields=this.fields
+        for field in fields:
+            setattr(this, field, fn(getattr(this, field)))
+
+        this.__update_size_and_shape__()
+        return this
 
 def new_rows(A, B):
     """
