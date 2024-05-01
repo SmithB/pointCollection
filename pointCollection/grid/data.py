@@ -6,7 +6,7 @@ Created on Sat Dec 22 15:35:13 2018
 @author: ben
 """
 
-from osgeo import gdal, gdalconst, osr
+from osgeo import gdal, gdalconst, osr, ogr
 import numpy as np
 
 import re
