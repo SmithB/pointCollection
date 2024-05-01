@@ -12,69 +12,32 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-latest]
-        python-version: [3.8]
+        os: [ubuntu-latest, macos-latest]
+        python-version: [3.11]
+    env:
+      OS: ${{ matrix.os }}
+      PYTHON: ${{ matrix.python-version }}
+    defaults:
+      run:
+        shell: bash -l {0}
 
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Set up mamba ${{ matrix.python-version }}
+      uses: mamba-org/setup-micromamba@v1
       with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies for Linux
-      if: matrix.os == 'ubuntu-20.04'
-      env:
-        JOBS: 2
-        PROJ_VERSION: 8.0.1
-        PROJ_DATUMGRID_VERSION: 1.8
-        PROJ_NETWORK: ON
-        SQLITE3_CFLAGS: "-I/usr/local/include"
-        SQLITE3_LIBS: "-L/usr/local/lib -lsqlite3"
-      run: |
-        sudo apt-get update
-        sudo apt-get install gdal-bin libgdal-dev libgeos-dev
-        sudo apt-get install libhdf5-dev libnetcdf-dev
-        sudo apt-get install libstdc++6 libxml2-dev libxslt1-dev libsqlite3-dev
-        cd ${RUNNER_TEMP}
-        wget -q https://download.osgeo.org/proj/proj-${PROJ_VERSION}.tar.gz
-        wget -q http://download.osgeo.org/proj/proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip
-        tar -xzf proj-${PROJ_VERSION}.tar.gz
-        unzip proj-datumgrid-${PROJ_DATUMGRID_VERSION}.zip -d proj-${PROJ_VERSION}/data/
-        cd proj-${PROJ_VERSION}
-        mkdir build
-        cd build
-        sudo cmake \
-            -DPYTHON_EXECUTABLE=/usr/local/bin/python3 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=true \
-            -DCMAKE_INSTALL_PREFIX=/usr/local/ ..
-        sudo cmake --build .
-        sudo make --quiet --jobs=${JOBS}
-        sudo make --quiet install
-        make clean
-        cd ${GITHUB_WORKSPACE}
-        sudo ldconfig --verbose
-        pip install --upgrade pip
-        pip install flake8 pytest pytest-cov numpy
-        GDAL_VERSION=$(gdal-config --version)
-        export CPLUS_INCLUDE_PATH=/usr/include/gdal
-        export C_INCLUDE_PATH=/usr/include/gdal
-        pip install .
-        pip install gdal==${GDAL_VERSION}
-    - name: Install dependencies for MacOS
-      if: matrix.os == 'macos-latest'
-      run: |
-        brew install proj
-        brew install geos
-        brew install gdal
-        brew install hdf5
-        brew install netcdf
-        pip install --upgrade pip
-        pip install --upgrade setuptools
-        pip install flake8 pytest pytest-cov numpy
-        GDAL_VERSION=$(gdal-config --version)
-        pip install .
-        pip install gdal==${GDAL_VERSION}
+        micromamba-version: 'latest'
+        environment-file: environment.yml
+        init-shell: bash
+        environment-name: pointCollection
+        cache-environment: true
+        post-cleanup: 'all'
+        create-args: >-
+          python=${{ matrix.python-version }}
+          flake8
+          pytest
+          pytest-cov
+          cython
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
@@ -83,4 +46,6 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        pytest
+        pip install --no-deps .
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+        pytest --verbose --capture=no 

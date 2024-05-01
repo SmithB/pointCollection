@@ -57,6 +57,5 @@ setup(
     ],
     packages=find_packages(),
     install_requires=install_requires,
-    dependency_links=['https://github.com/tsutterley/pyTMD/tarball/master'],
     scripts=scripts,
 )
