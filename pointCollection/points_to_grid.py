@@ -64,8 +64,8 @@ def points_to_grid(D_pt, res=None, grid=None, field='z', background=np.NaN):
     y=np.round(D_pt.y/res)*res
 
     if grid is None:
-        XR=[np.min(x.ravel()), np.max(x.ravel())]
-        YR=[np.min(y.ravel()), np.max(y.ravel())]
+        XR=[np.nanmin(x.ravel()), np.nanmax(x.ravel())]
+        YR=[np.nanmin(y.ravel()), np.nanmax(y.ravel())]
         xg=np.arange(XR[0], XR[1], res)
         yg=np.arange(YR[0], YR[1], res)
         zg=np.zeros((len(yg), len(xg)))+background
