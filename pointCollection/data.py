@@ -119,7 +119,10 @@ class data(object):
 
     def __getitem__(self, *args, **kwargs):
         """
-        wrapper for the copy_subset() method
+        return a field or a subset of self
+
+        If the input argument is a single string, return the field corresponding to that string.
+        Otherwise, pass args and kwargs to the copy_subset() method
         """
         if isinstance(args[0], str):
             return getattr(self, args[0])
@@ -472,7 +475,7 @@ class data(object):
             return
         if len(self.fields)==0:
             fields=[]
-            if len(D_list) > 1:
+            if len(D_list) > 0:
                 for D in D_list:
                     if hasattr(D,'fields'):
                         if not D.fields == fields:
@@ -480,10 +483,10 @@ class data(object):
                                 if ff not in fields:
                                     fields += [ff]
             self.fields=fields
-
         for D in D_list:
             if D is not None:
                 D.complete_fields(self.fields)
+
         try:
             for field in self.fields:
                 data_list=[];
