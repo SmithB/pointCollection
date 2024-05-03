@@ -22,6 +22,7 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
 from . import DEM_date
+from .fill_edges import fill_edges, smooth_corrected
 import shapely
 #import os
 
@@ -259,7 +260,7 @@ class data(object):
         self.x = np.linspace(xmin,xmax,nx)
         self.y = np.linspace(ymin,ymax,ny)
         # try to extract times
-        self.time = np.zeros((nt))
+        time = np.zeros((nt))
         i = 0
         for D in D_list:
             try:
@@ -267,11 +268,14 @@ class data(object):
             except:
                 ntime = 1
             # try each of the possible time attributes
-            if getattr(D,'time'):
-                self.time[i:i+ntime] = D.time
-            elif getattr(D,'t'):
-                self.time[i:i+ntime] = D.t
+            if hasattr(D,'time') and D.time is not None:
+                time[i:i+ntime] = D.time
+                time_field='time'
+            elif hasattr(D,'t'):
+                time[i:i+ntime] = D.t
+                time_field='t'
             i += ntime
+        setattr(self, time_field, time)
         # if sorting by time
         if sort:
             isort = np.argsort(self.time)
@@ -747,7 +751,7 @@ class data(object):
             # if no field mapping provided, add everything in the group
             if len(field_mapping.keys())==0:
                 for key in h5f[group].keys():
-                    if key in dims:
+                    if key in dims or key in ['CRS','crs']:
                         continue
                     if fields is not None and key not in fields:
                         continue
@@ -965,7 +969,9 @@ class data(object):
                     timename=this_time_var_name
                     break
             dim_names={xname:'x',yname:'y', timename:'time'}
-            bands, t_range = self.choose_bands_by_time(t=t, bounds=bounds, t_range=t_range)
+
+            if bands is None:
+                bands, t_range = self.choose_bands_by_time(t=t, bounds=bounds, t_range=t_range)
             if bands is not None and len(bands)==0:
                 self.__update_extent__()
                 self.__update_size_and_shape__()
@@ -1758,6 +1764,12 @@ class data(object):
         self.fill_value = fill_value
         return self
 
+    def fill_smoothed(self, w_smooth=1, fields=None):
+        if fields is None:
+            fields=self.fields
+        for field in fields:
+            dim = self.t_axis if len(getattr(self,field).shape)>2 else None
+            getattr(self, field)[:]=fill_edges(getattr(self, field), w_smooth=w_smooth, dim=dim)
 
     def rasterize_poly(self, in_geom, field='z', burn_value=1, raster_epsg=None, poly_epsg=None):
         """Rasterize a shapely polygon"""
