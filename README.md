@@ -5,8 +5,21 @@ Please make sure that gdal is installed before you install this package.
 
 ## introduction
 
-This package is designed to allow efficient reading and writing of geospatial data from Python.  It covers some of the same ground as do community tools such as geopandas and pdal, but offers an abbreviated syntax and a modular design that may be helpful to some projects.
+This package is designed to allow efficient reading and writing of geospatial data from Python.  It covers some of the same ground as do community tools such as geopandas and pdal, but offers an abbreviated syntax and a modular design that may be helpful to some projects.  Benefits include:
 
+- Flexible input and output from hdf5 and netCDF files: Data can be read from file hierarchies, and field names can be reassigned within the function calls (from_h5 and to_h5 functions in _data_ and _grid.data_ objects, _from_nc_ and _to_nc_ functions in _grid.data_ objects)
+
+- Efficient spatial subsetting of objects: This is can be carried out during reading or in memory (.crop, .cropped methods of _data_ and _grid.data_ objects)
+
+- Fast transforms between coordinate systems:  Transormation routines are inherited from the proj4 library (to_xy and to_latlon functions in _data_ objects)
+
+- Data exchange between point data and gridded data: _grid.data_ objects can be converted to collections of points, and collections of points can be mapped to grids (
+
+- Subclassible data objects: The _data_ and _grid.data_ objects are designed to be subclassible to create objects with custom readers and internal field names (see examples for altimetry point formats: ATL06, ATL11, ATM_Qfit, CS2)
+
+- GeoIndex class:  The GeoIndex class can summarize the geolocation information in large numbers of files on disk, and allows efficient access to geospatial data stored within these files
+
+- IndexedH5 data format: In this format point data are stored so that spatailly adjacent data stored in contiguous blocks within the file.  This can greatly improve the efficiency of data reads from the file.
 
 ## Installation
 
@@ -70,7 +83,7 @@ pointCollection also provides the geoIndex class, which is indended to organize 
 
 ### Subclassing pointCollection:
 
-One strength of pointCollection is that the pointCollection.data and pointCollection.gri.datad classes can be adapted to contain a wide variety of data.  Subclasses of pointCollection data objects can be adapted to handle reading and translation of different data formats, usually by creating a custom from_file() or from_h5 method for the subclass.  The subclasses then inherit the subsetting and projection methods from the parent class.  The subclass definition helps users read a standard set of field from a file, optionally translating the field names used in the file into a more standard name (i.e. translating a "time_of_day" field in the file into a "t" field in the pointCollection object).
+One strength of pointCollection is that the pointCollection.data and pointCollection.grid.data classes can be adapted to contain a wide variety of data.  Subclasses of pointCollection data objects can be adapted to handle reading and translation of different data formats, usually by creating a custom from_file() or from_h5() method for the subclass.  The subclasses then inherit the subsetting and projection methods from the parent class.  The subclass definition helps users read a standard set of field from a file, optionally translating the field names used in the file into a more standard name (i.e. translating a "time_of_day" field in the file into a "t" field in the pointCollection object).
 
 Subclasses of pointCollection.data are provided for a few different ice-sheet altimetry data formats:
 * ICESat-2 ATL06 and ATL11

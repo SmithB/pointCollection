@@ -22,11 +22,25 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
 from . import DEM_date
+from .fill_edges import fill_edges, smooth_corrected
 import shapely
 #import os
 
 class data(object):
-    """Class that holds gridded data."""
+    """Class that holds gridded data.
+
+    A pointCollection.grid.data object contains one or more fields containing
+    2 or 3 dimensional arrays of data, and coordinates specifying the location
+    of those data.  Data can be read from and written to hdf5, netCDF, and geotif
+    files.
+
+    In the representation of a pointCollection.grid object, the x and y coodinates
+    specify the centers of the grid cells, similar to what is assumed in numpy
+    interpolation routines.  The rows and columns of the grid have the same
+    order as the coordinates arrays, and the order of the coordinates is assumed
+    to be increasing.  This means that pointCollection.grid objects may be seen
+    as 'upside down' in some plotting routines.
+    """
 
     def __init__(self, fields=None, fill_value=np.nan, t_axis=2):
         self.x=None
@@ -246,7 +260,7 @@ class data(object):
         self.x = np.linspace(xmin,xmax,nx)
         self.y = np.linspace(ymin,ymax,ny)
         # try to extract times
-        self.time = np.zeros((nt))
+        time = np.zeros((nt))
         i = 0
         for D in D_list:
             try:
@@ -254,11 +268,14 @@ class data(object):
             except:
                 ntime = 1
             # try each of the possible time attributes
-            if getattr(D,'time'):
-                self.time[i:i+ntime] = D.time
-            elif getattr(D,'t'):
-                self.time[i:i+ntime] = D.t
+            if hasattr(D,'time') and D.time is not None:
+                time[i:i+ntime] = D.time
+                time_field='time'
+            elif hasattr(D,'t'):
+                time[i:i+ntime] = D.t
+                time_field='t'
             i += ntime
+        setattr(self, time_field, time)
         # if sorting by time
         if sort:
             isort = np.argsort(self.time)
@@ -734,7 +751,7 @@ class data(object):
             # if no field mapping provided, add everything in the group
             if len(field_mapping.keys())==0:
                 for key in h5f[group].keys():
-                    if key in dims:
+                    if key in dims or key in ['CRS','crs']:
                         continue
                     if fields is not None and key not in fields:
                         continue
@@ -952,7 +969,9 @@ class data(object):
                     timename=this_time_var_name
                     break
             dim_names={xname:'x',yname:'y', timename:'time'}
-            bands, t_range = self.choose_bands_by_time(t=t, bounds=bounds, t_range=t_range)
+
+            if bands is None:
+                bands, t_range = self.choose_bands_by_time(t=t, bounds=bounds, t_range=t_range)
             if bands is not None and len(bands)==0:
                 self.__update_extent__()
                 self.__update_size_and_shape__()
@@ -1237,7 +1256,8 @@ class data(object):
         return out_ds
 
     def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None,
-                srs_wkt=None, srs_epsg=None, dtype=gdal.GDT_Float32, options=["compress=LZW"]):
+                srs_wkt=None, srs_epsg=None, EPSG=None,dtype=gdal.GDT_Float32,
+                options=["compress=LZW"]):
         """
         Write a grid object to a gdal memory object.
 
@@ -1255,6 +1275,8 @@ class data(object):
             Well-Known Text (WKT) projection string
         srs_epsg: int or NoneType, default None
             EPSG projection code
+        EPSG: int or Nonetype, default is None
+            synonym for srs_epsg
         dtype: obj, default gdal.GDT_Float32
             GDAL data type for output raster
         options: list, default ["compress=LZW"]
@@ -1277,6 +1299,8 @@ class data(object):
         # top left y, rotation, n-s pixel resolution
         out_ds.SetGeoTransform((self.x.min()-dx/2, dx, 0, self.y.max()+dy/2, 0., -dy))
 
+        if EPSG is not None:
+            srs_epsg=EPSG
         # set the spatial projection reference information
         sr=osr.SpatialReference()
         if srs_proj4 is not None:
@@ -1435,7 +1459,7 @@ class data(object):
 
         Parameters
         ----------
-        field : TYPE, optional
+        field : str, optional
             DESCRIPTION. The default is 'z'.
 
         Returns
@@ -1471,7 +1495,26 @@ class data(object):
             self.add_alpha_band(alpha)
         return self
 
-    def index(self, row_ind, col_ind, fields=None, band_ind=None):
+    def index(self, row_ind, col_ind, band_ind=None, fields=None ):
+        """
+        subset the rows, columns, and bands of self
+
+        Parameters
+        ----------
+        row_ind, col_ind, band_ind : bool, iterable of ints, or slice
+            variables with which to slide self, band_ind is optional
+        fields : iterable, optional
+            fields to include in the output. The default is None.
+
+
+        Returns
+        -------
+        pointCollection.grid.data
+            indexed array
+
+        """
+
+
         """Slice a grid by row or column."""
         if fields is None:
             fields=self.fields
@@ -1502,7 +1545,25 @@ class data(object):
         return self
 
     def copy_subset(self, rc_ind, band_ind=None, fields=None):
-        """Return a subset of a grid object."""
+        """
+        return a subset of a copy of self
+
+        Parameters
+        ----------
+        rc_ind : list
+            slicing objects (boolean arrays, iterables of ints, or slices) for each
+            dimension of self (following numpy rules)
+        band_ind : boolean array, iterable of ints, or slice, optional
+            slicing object for dimension 2. The default is None.
+        fields : list, optional
+            fields to include in the output. The default is None.
+
+        Returns
+        -------
+        pointCollection.grid.data
+            sliced copy of self.
+
+        """
         if fields is None:
             fields=self.fields
         if len(rc_ind) > 2:
@@ -1513,7 +1574,30 @@ class data(object):
         return self.copy(fields=fields).index(rc_ind[0], rc_ind[1], band_ind=band_ind)
 
     def crop(self, XR, YR, TR=None, fields=None):
-        """Return a subset of a grid by x and y range."""
+        '''
+        Crop self to specified bounds
+
+
+        Parameters
+        ----------
+        XR, YR, TR : iterables
+            two-element iterables specifying the range in each dimension. TR is optional
+        fields : iterable, optional
+            strings specifying fields to include in the output. The default is None.
+
+        Raises
+        ------
+        IndexError
+            If TR is specified and neither self.time nor self.t is defined, the
+            subset is not defined
+
+        Returns
+        -------
+        pointCollection.grid.data
+            cropped version of self
+
+        '''
+
         col_ind = np.flatnonzero((self.x >= XR[0]) & (self.x <= XR[1]))
         row_ind = np.flatnonzero((self.y >= YR[0]) & (self.y <= YR[1]))
         time_ind = None
@@ -1543,6 +1627,8 @@ class data(object):
         import matplotlib.pyplot as plt
         kwargs['extent']=np.array(self.img_extent)*xy_scale
         kwargs['origin']='lower'
+        if 'interpolation' not in kwargs:
+            kwargs['interpolation']='nearest'
         if ax is None:
             ax = plt.gca()
         if band is None:
@@ -1581,6 +1667,30 @@ class data(object):
         return h_im
 
     def interp(self, x, y, t=None, gridded=False, band=None, field='z', replace=False):
+        '''
+        interpolat a grid at a set of points
+
+        Parameters
+        ----------
+        x, y, t: iterables
+            Coordinates at which to interpolate self.  t is optional.
+        gridded : bool, optional
+            If true, x, y, and t are treated as the coordinates of a grid. The default is False.
+        band : int, optional
+           Band to be sampled. The default is None.
+        field : str, optional
+            field to sample. The default is 'z'.
+        replace : bool, optional
+            If true, the existing interpolator object defined for field is replaced.
+            The default is False.
+
+        Returns
+        -------
+        result : numpy.array
+            interpolated values.
+
+        '''
+
         """Interpolate a 2-D grid to a set of x and y points."""
         if (field not in self.interpolator) or replace:
             if band is not None:
@@ -1624,7 +1734,20 @@ class data(object):
         return result
 
     def bounds(self, pad=0):
-        """Return the x and y bounds of a grid."""
+        """
+        Return the bounds of the x and y coordinates in self.
+
+        Parameters
+        ----------
+        pad : float, int, optional
+            amount by which to pad the returned bounds. The default is 0.
+
+        Returns
+        -------
+        XR, YR: minimum and maximum of x and y
+
+        """
+
         return [[np.min(self.x)-pad, np.max(self.x)+pad], [np.min(self.y)-pad, np.max(self.y)+pad]]
 
     def replace_invalid(self, fields=None, fill_value=np.nan):
@@ -1641,9 +1764,16 @@ class data(object):
         self.fill_value = fill_value
         return self
 
+    def fill_smoothed(self, w_smooth=1, fields=None):
+        if fields is None:
+            fields=self.fields
+        for field in fields:
+            dim = self.t_axis if len(getattr(self,field).shape)>2 else None
+            getattr(self, field)[:]=fill_edges(getattr(self, field), w_smooth=w_smooth, dim=dim)
 
     def rasterize_poly(self, in_geom, field='z', burn_value=1, raster_epsg=None, poly_epsg=None):
         """Rasterize a shapely polygon"""
+        from osgeo import ogr
         mask_ds=self.to_gdal(srs_epsg=raster_epsg, field=field)
         shpDriver = ogr.GetDriverByName("memory")
 
