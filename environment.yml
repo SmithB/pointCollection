@@ -11,6 +11,5 @@ dependencies:
   - netCDF4
   - h5py
   - gdal
+  - shapely
   - pip
-  - pip:
-     - git+https://github.com/tsutterley/pyTMD.git

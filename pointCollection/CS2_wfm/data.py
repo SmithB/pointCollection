@@ -15,7 +15,7 @@ PYTHON DEPENDENCIES:
         http://www.numpy.org
         http://www.scipy.org/NumPy_for_Matlab_Users
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 UPDATE HISTORY:
     Updated 08/2020: flake8 compatible binary regular expression strings

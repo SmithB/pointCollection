@@ -6,7 +6,7 @@ Created on Sat Dec 22 15:35:13 2018
 @author: ben
 """
 
-from osgeo import gdal, gdalconst, osr
+from osgeo import gdal, gdalconst, osr, ogr
 import numpy as np
 
 import re
@@ -18,13 +18,13 @@ import uuid
 import h5py
 import pyproj
 import netCDF4
+import posixpath
 from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import scoreatpercentile
 import pointCollection as pc
 from . import DEM_date
 from .fill_edges import fill_edges, smooth_corrected
 import shapely
-#import os
 
 class data(object):
     """Class that holds gridded data.
@@ -715,7 +715,7 @@ class data(object):
             field_mapping={}
         self.filename=h5_file
         dims=[xname,yname,'t','time']
-        if group[0] != '/':
+        if not group.startswith('/'):
             group='/'+group
         t=None
         src_t=None
@@ -725,8 +725,8 @@ class data(object):
         #default
         yorient=1
         with self.h5_open(h5_file, mode='r', compression=compression) as h5f:
-            x=np.array(h5f[group+'/'+xname]).ravel()
-            y=np.array(h5f[group+'/'+yname]).ravel()
+            x=np.array(h5f[group][xname]).ravel()
+            y=np.array(h5f[group][yname]).ravel()
             for time_var_name in set(['time','t', timename]):
                 if time_var_name in h5f[group].keys():
                     t=h5f[group][time_var_name][:].copy()
@@ -794,7 +794,7 @@ class data(object):
             # check that raster can be sliced
             if len(x[cols]) > 0 and len(y[rows]) > 0:
                 for self_field in field_mapping:
-                    f_field_name=group+'/'+field_mapping[self_field]
+                    f_field_name = posixpath.join(group,field_mapping[self_field])
                     if f_field_name not in h5f:
                         continue
                     f_field=h5f[f_field_name]
@@ -855,8 +855,9 @@ class data(object):
             # try to retrieve grid mapping and add to projection
             if grid_mapping_name is not None:
                 self.projection = {}
+                map_field_name = posixpath.join(group,grid_mapping_name)
                 try:
-                    for att_name,att_val in h5f[group+'/'+grid_mapping_name].attrs.items():
+                    for att_name,att_val in h5f[map_field_name].attrs.items():
                         self.projection[att_name] = att_val
                 except:
                     pass
@@ -1023,6 +1024,7 @@ class data(object):
                 # use the dimensions to make a tuple of slices with which to index the input field
                 this_slice = tuple([slices[dim] for dim in this_dim_order])
                 z = np.array(f_field[this_slice])
+
                 # replace invalid values with nan
                 if hasattr(f_field, '_FillValue'):
                     fill_value = f_field.getncattr('_FillValue')
@@ -1034,6 +1036,7 @@ class data(object):
                 # find grid mapping name from variable
                 if hasattr(f_field, 'grid_mapping'):
                     grid_mapping_name = f_field.getncattr('grid_mapping')
+
                 # decide how to reorient the output product
                 output_order = [this_dim_order.index(dim) for dim in out_dims if dim in this_dim_order]
                 if not output_order==[0, 1, 2]:
@@ -1064,6 +1067,7 @@ class data(object):
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
         kwargs.setdefault('srs_epsg', None)
+        kwargs.setdefault('dimensions', {})
         kwargs.setdefault('grid_mapping_name', 'crs')
         # check whether overwriting existing files
         # append to existing files as default
@@ -1071,7 +1075,7 @@ class data(object):
 
         if fields is None:
             fields=self.fields
-        if group[0] != '/':
+        if not group.startswith('/'):
             group='/'+group
 
         # update fill values in fields
@@ -1103,30 +1107,41 @@ class data(object):
 
             for field in ['x','y','time', 't'] + fields:
                 # if field exists, overwrite it
+                f_field_name = posixpath.join(group,field)
                 if field in h5f[group]:
                     if hasattr(self, field):
-                        h5f[group+'/'+field][...] = getattr(self, field)
+                        h5f[f_field_name][...] = getattr(self, field)
                 else:
                     #Otherwise, try to create the dataset
                     try:
                         if nocompression or field in ['x','y','time']:
-                            h5f.create_dataset(group+'/'+field, data=getattr(self, field))
+                            h5f.create_dataset(f_field_name, data=getattr(self, field))
                         else:
-                            h5f.create_dataset(group+'/'+field, data=getattr(self, field),
+
+                            h5f.create_dataset(f_field_name, data=getattr(self, field),
                                 chunks=True, compression="gzip", fillvalue=self.fill_value)
                     except Exception:
                          pass
                 # try adding field attributes
                 try:
                     for att_name,att_val in attributes[field].items():
-                        h5f[group+'/'+field].attrs[att_name] = att_val
+                        h5f[f_field_name].attrs[att_name] = att_val
                 except Exception:
+                    pass
+                # try adding dimensions
+                try:
+                    if field in ['x','y','time', 't'] and any(kwargs['dimensions']):
+                        h5f[f_field_name].make_scale(field)
+                    elif any(kwargs['dimensions']):
+                        for i,dim in enumerate(kwargs['dimensions'][f_field_name]):
+                            h5f[f_field_name].dims[i].attach_scale(h5f[dim])
+                except Exception as exc:
                     pass
             # add crs attributes if applicable
             if self.crs:
                 # add grid mapping attribute to each grid field
                 for field in fields:
-                    h5f[group+'/'+field].attrs['grid_mapping'] = kwargs['grid_mapping_name']
+                    h5f[f_field_name].attrs['grid_mapping'] = kwargs['grid_mapping_name']
                 # add grid mapping variable with projection attributes
                 h5crs = h5f.create_dataset(kwargs['grid_mapping_name'], (), dtype=np.byte)
                 for att_name,att_val in self.crs.items():
