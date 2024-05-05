@@ -1106,7 +1106,7 @@ class data(object):
                 pass
 
             for field in ['x','y','time', 't'] + fields:
-
+                f_field_name = posixpath.join(group,field)
                 # if field exists, and overwrite_coords is True, overwrite it
                 if field in h5f[group] and overwrite_coords:
                     if hasattr(self, field):
@@ -1117,7 +1117,6 @@ class data(object):
                         if nocompression or field in ['x','y','time']:
                             h5f.create_dataset(f_field_name, data=getattr(self, field))
                         else:
-
                             h5f.create_dataset(f_field_name, data=getattr(self, field),
                                 chunks=True, compression="gzip", fillvalue=self.fill_value)
                     except Exception:
