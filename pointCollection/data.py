@@ -134,12 +134,14 @@ class data(object):
     def __add__(self, x):
         return pc.data().from_list([self, x])
 
-    def choose_crs(self, proj4_string=None, EPSG=None, SRS_proj4=None, SRS_EPSG=None):
+    def choose_crs(self, *args, proj4_string=None, EPSG=None, SRS_proj4=None, SRS_EPSG=None):
         '''
         Choose a coordinate system based on keyword arguments
 
         Parameters
         ----------
+        *args: iterable, optional
+            list of input arguments
         proj4_string: str, optional
             proj4 string for the destination coordinate system
         SRS_proj4:
@@ -155,6 +157,8 @@ class data(object):
             coordinate system to be passed to proj4.
 
         '''
+        if len(args)>0:
+            return args[0]
 
         if SRS_proj4 is not None:
             proj4_string=SRS_proj4
@@ -348,7 +352,7 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def get_xy(self, **kwargs):
+    def get_xy(self, *args, **kwargs):
 
         '''
         Calculate projected coordinates from latitude and longitude fields
@@ -357,7 +361,8 @@ class data(object):
         longitude fields.
 
         Parametes
-        ---------
+        *args: iterable
+            list of arguments passed to self.choose_crs()
         **kwargs: dict
             keyword=pair arguments passed to self.choose_crs()
         Returns
@@ -365,7 +370,7 @@ class data(object):
         self: pointCollection.data
             Current object with updated x and y fields
         '''
-        crs=self.choose_crs(**kwargs)
+        crs=self.choose_crs(*args,**kwargs)
         if hasattr(pyproj, 'proj'):
             xy=np.array(pyproj.proj.Proj(crs)(self.longitude, self.latitude))
         else:
@@ -379,7 +384,7 @@ class data(object):
             self.fields += ['x','y']
         return self
 
-    def get_latlon(self, **kwargs):
+    def get_latlon(self, *args, **kwargs):
         '''
         Calculate geographic coordinate fields from x and y fields
 
@@ -388,6 +393,8 @@ class data(object):
 
         Parameters
         ----------
+        *args: iterable
+            list of arguments passed to self.choose_crs()
         **kwargs: dict
             keyword=pair arguments passed to self.choose_crs()
 
@@ -397,7 +404,7 @@ class data(object):
             Current object with updated latitude and longitude fields
 
         '''
-        crs=self.choose_crs(**kwargs)
+        crs=self.choose_crs(*args,**kwargs)
 
         if hasattr(pyproj, 'proj'):
             lonlat=np.array(pyproj.proj.Proj(crs)(self.x, self.y, inverse=True))
