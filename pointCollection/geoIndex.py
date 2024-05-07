@@ -19,7 +19,7 @@ import os
 from warnings import warn
 
 class geoIndex(dict):
-    def __init__(self, delta=[1000,1000], SRS_proj4=None, data=None):
+    def __init__(self, delta=[1000,1000], SRS_proj4=None, data=None, DEBUG=False):
         dict.__init__(self)
         self.attrs={'delta':delta,'SRS_proj4':SRS_proj4, 'n_files':0, 'dir_root':''}
         self.data=data
@@ -30,6 +30,7 @@ class geoIndex(dict):
                 self.from_latlon(self.data.latitude, self.data.longitude)
         self.h5_file=None
         self.filename=None
+        self.DEBUG=DEBUG
 
     def __repr__(self):
         out = f"{self.__class__} with {len(self.keys())} bins, referencing {self.attrs['n_files']} files"
@@ -278,12 +279,14 @@ class geoIndex(dict):
             for beam_pair in (1, 2, 3):
                 field_dict={f'pt{beam_pair}':['latitude','longitude']}
                 try:
-                    D=pc.data().from_h5(filename, field_dict=field_dict).get_xy(self.attrs['SRS_proj4'])
+                    D=pc.data().from_h5(filename, field_dict=field_dict)
                     D.get_xy(self.attrs['SRS_proj4'])
                     if D.x.shape[0] > 0:
                         temp.append(geoIndex(delta=self.attrs['delta'], \
                                           SRS_proj4=self.attrs['SRS_proj4']).from_xy([D.x, D.y], '%s:pair%d' % (filename_out, beam_pair), 'ATL11', number=number))
-                except Exception:
+                except Exception as e:
+                    if self.DEBUG:
+                        raise(e)
                     pass
             self.from_list(temp)
         if file_type in ['h5']:
