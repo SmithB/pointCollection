@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 make_mosaic.py
-Written by Tyler Sutterley (01/2022)
+Written by Tyler Sutterley (05/2024)
 
 Create a weighted mosaic from a series of tiles
 
@@ -18,7 +18,8 @@ COMMAND LINE OPTIONS:
     -f X, --feather X: feathering width in meters for weights
     -w, --weight: use a weighted summation scheme for calculating mosaic
     -S X, --spacing X: output grid spacing if creating from uniform tiles
-    -c X, --crop X: crop mosaic to bounds [xmin,xmax,ymin,ymax]
+    -c X, --crop X: crop mosaic to bounds
+        [xmin,xmax,ymin,ymax] or [xmin,xmax,ymin,ymax,tmin,tmax]
     -O X, --output X: output filename
     -v, --verbose: verbose output of run
     -R, --replace: overwrite existing output files
@@ -27,6 +28,7 @@ COMMAND LINE OPTIONS:
     -N --ignore_Nodata: ignore nodata values (except Nan) in inputs
 
 UPDATE HISTORY:
+    Updated 05/2024: allow cropping in time for 3D fields
     Updated 01/2021: added option for setting projection attributes
     Updated 10/2021: added option for using a non-weighted summation
     Updated 07/2021: added option replace for overwriting existing files
@@ -91,7 +93,7 @@ def main(argv):
         nargs=2, default=[None,None], metavar=('dx','dy'),
         help='output grid spacing if creating from uniform tiles')
     parser.add_argument('--crop','-c', type=float,
-        nargs=4, metavar=('xmin','xmax','ymin','ymax'),
+        nargs='+',
         help='crop mosaic to bounds')
     parser.add_argument('--output','-O',
         type=str, default='mosaic.h5',
@@ -273,10 +275,16 @@ def main(argv):
             getattr(mosaic, field)[mosaic.invalid[:,:,0]] = mosaic.fill_value
     # crop mosaic to bounds
     if np.any(args.crop):
+        # keyword arguments for cropping
+        kwds = dict(fields=mosaic.fields)
         # x and y range (verify min and max order)
         XR = np.sort([args.crop[0],args.crop[1]])
         YR = np.sort([args.crop[2],args.crop[3]])
-        mosaic.crop(XR, YR, fields=mosaic.fields)
+        # add time range if 3D
+        if len(args.crop) == 6:
+            kwds['TR'] = np.sort([args.crop[4],args.crop[5]])
+        # crop the mosaic
+        mosaic.crop(XR, YR, **kwds)
 
     if args.time is not None:
         mosaic.t = args.time
