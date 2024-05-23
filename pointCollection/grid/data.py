@@ -1617,9 +1617,16 @@ class data(object):
             cropped version of self
 
         '''
+        if XR is not None:
+            col_ind = np.flatnonzero((self.x >= XR[0]) & (self.x <= XR[1]))
+        else:
+            col_ind=slice(None)
 
-        col_ind = np.flatnonzero((self.x >= XR[0]) & (self.x <= XR[1]))
-        row_ind = np.flatnonzero((self.y >= YR[0]) & (self.y <= YR[1]))
+        if YR is not None:
+            row_ind = np.flatnonzero((self.y >= YR[0]) & (self.y <= YR[1]))
+        else:
+            row_ind=slice(None)
+
         time_ind = None
         if TR is not None:
             if self.time is not None:
