@@ -95,6 +95,9 @@ def main(argv):
     parser.add_argument('--crop','-c', type=float,
         nargs='+',
         help='crop mosaic to bounds')
+    parser.add_argument('--t_range', type=float, 
+        nargs=2, 
+        help="crop time range to bounds")
     parser.add_argument('--output','-O',
         type=str, default='mosaic.h5',
         help='output filename')
@@ -285,6 +288,11 @@ def main(argv):
             kwds['TR'] = np.sort([args.crop[4],args.crop[5]])
         # crop the mosaic
         mosaic.crop(XR, YR, **kwds)
+
+    if args.t_range is not None:
+        kwds = dict(fields=mosaic.fields)
+        kwds['TR']=args.t_range
+        mosaic.crop(None, None, **kwds)
 
     if args.time is not None:
         mosaic.t = args.time
