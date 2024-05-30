@@ -31,10 +31,13 @@ def index_for_glob(glob_string, dir_root=None, index_file=None, file_type=None, 
     if dir_root is not None and dir_root[-1] != '/':
         dir_root += '/'
 
-    files=glob.glob(glob_string)
+    files=[]
+    for thestr in glob_string.split(' '):
+        files += glob.glob(thestr)
+
     if index_file is None:
         index_file=os.path.join(os.path.dirname(glob_string),'GeoIndex.h5')
-    files=glob.glob(glob_string)
+
     index_list=[];
     for file in files:
         if verbose:
