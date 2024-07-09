@@ -57,7 +57,8 @@ class data(object):
         self.shape=None
         self.t_axis=t_axis
         self.xform=None
-
+        self.srs_epsg=None
+        self.srs_proj4=None
         if fields is None:
             self.fields=list()
         else:
