@@ -53,6 +53,7 @@ class data(object):
         self.nan_interpolator={}
         self.fill_value=fill_value
         self.time=None
+        self.t=None
         self.size=None
         self.shape=None
         self.t_axis=t_axis
