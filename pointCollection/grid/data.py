@@ -658,6 +658,7 @@ class data(object):
         return z
 
     def from_h5(self, h5_file, field_mapping=None, group='/', fields=None,
+        field=None,
         xname='x', yname='y', timename='t',
         bounds=None,  skip=1, fill_value=None,
         t_axis=None, t_range=None, bands=None,
@@ -675,6 +676,8 @@ class data(object):
             HDF5 group to read variables
         fields: list or NoneType, default None
             Fields to read from the HDF5 file
+        field : str, default None
+            like fields, but just one
         xname: str, default 'x'
             x-coordinate variable to read from the HDF5 file
         yname: str, default 'y'
@@ -907,7 +910,7 @@ class data(object):
         nc_file: str
             netCDF4 file
         field_mapping: dict or NoneType, default None
-            Field mapping for input and output variables
+            Field mapping from input (values) to output (keys) variables
         group : str, default '/'
             netCDF4 group to read variables
         fields: list or NoneType, default None
