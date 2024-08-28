@@ -7,9 +7,16 @@ Created on Wed Mar 13 09:51:44 2019
 import numpy as np
 import re
 from datetime import datetime
+import os
+import glob
+import json
 
 def DEM_date(filename):
     """Parse a Worldview or tanDEM-x filename for a date."""
+
+    temp=datetime_from_meta(filename)
+    if temp is not None:
+        return temp
     date_re=re.compile(r'\d.*_(2\d\d\d)(\d\d)(\d\d)_')
     m=date_re.search(filename)
     if m is not None:
@@ -19,7 +26,7 @@ def DEM_date(filename):
     if m is not None:
         return datetime(*map(int, m.groups()))
     return np.NaN
-    
+
 def DEM_year(filename):
     """Return the decimal year date for a Worldview or tamDEM-x filename."""
     this_date=DEM_date(filename)
@@ -35,3 +42,27 @@ def DEM_MatlabDate(filename):
     this_delta=this_date-datetime(1, 1, 1, 0, 0, 0)
     this_delta=this_delta.days+this_delta.seconds/24./3600.+367.
     return this_delta
+
+def datetime_from_meta(filename):
+
+    """Look for a metadata file in PGC format"""
+    thedir, thefile=os.path.split(filename)
+    theparent = os.path.dirname(thedir)
+    try:
+        res=re.compile('_(\d+m)_').search(thefile).group(1)
+        glob_str = thefile.replace(res,'*')
+        glob_str=glob_str.replace('_dem_filt.tif','.json')
+        temp=glob.glob(os.path.join(thedir, glob_str))
+        if len(temp)==0:
+            temp=glob.glob(os.path.join(thedir,'meta', glob_str))
+            if len(temp)==0:
+                temp=glob.glob(os.path.join(theparent, 'meta', glob_str))
+                if len(temp)==0:
+                    return None
+        with open(temp[0]) as fh:
+            thestr=json.load(fh)['properties']['datetime']
+        return datetime.strptime(thestr,'%Y-%m-%dT%H:%M:%SZ')
+    except Exception as e:
+        print("DEM_date: exception thrown:")
+        print(e)
+        return None
