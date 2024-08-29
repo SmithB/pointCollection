@@ -127,6 +127,14 @@ class data(object):
 
     def __update_size_and_shape__(self):
         """Update the size and shape parameters of the object to match that of its data fields."""
+        if self.fields is None or len(self.fields)==0:
+            self.shape=[len(self.y), len(self.x)]
+            if hasattr(self, 't') and self.t is not None:
+                self.shape += [len(self.t)]
+            elif hasattr(self, 'time') and self.time is not None:
+                self.shape += [len(self.time)]
+            self.size =np.prod(self.shape)
+            return
         for field in ['z']+self.fields:
             try:
                 self.size=getattr(self, field).size
@@ -660,6 +668,7 @@ class data(object):
 
     def from_h5(self, h5_file, field_mapping=None, group='/', fields=None,
         xname='x', yname='y', timename='t',
+        meta_only=False,
         bounds=None,  skip=1, fill_value=None,
         t_axis=None, t_range=None, bands=None,
         compression=None, swap_xy=False, source_fillvalue=None):
@@ -794,7 +803,7 @@ class data(object):
 
 
             # check that raster can be sliced
-            if len(x[cols]) > 0 and len(y[rows]) > 0:
+            if len(x[cols]) > 0 and len(y[rows]) > 0 and not meta_only:
                 for self_field in field_mapping:
                     f_field_name = posixpath.join(group,field_mapping[self_field])
                     if f_field_name not in h5f:
@@ -847,13 +856,13 @@ class data(object):
                     if self_field not in self.fields:
                         self.fields.append(self_field)
 
-                self.x=x[cols]
-                self.y=y[rows]
-                if yorient==-1:
-                    y=y[::-1]
+            self.x=x[cols]
+            self.y=y[rows]
+            if yorient==-1:
+                y=y[::-1]
 
-                if t is not None:
-                    self.t=t
+            if t is not None:
+                self.t=t
             # try to retrieve grid mapping and add to projection
             if grid_mapping_name is not None:
                 self.projection = {}
@@ -1889,3 +1898,11 @@ class data(object):
         self.crs['false_easting'] = float(sr.GetProjParm(osr.SRS_PP_FALSE_EASTING,1))
         self.crs['scale_factor'] = float(sr.GetProjParm(osr.SRS_PP_SCALE_FACTOR,1))
         return self
+
+    def overlaps(self, other, pad=0):
+        """Determine if two objects overlap"""
+        result=True
+        bds=[self.extent[0:2], self.extent[2:4]]
+        for ii, jj in zip(bds, other.bounds(pad=pad)):
+            result &=  (ii[1]>=jj[0]) & (jj[1] >= ii[0])
+        return result
