@@ -158,8 +158,8 @@ class mosaic(data):
         else:
             prototype=item
         if len(prototype.fields) == 0:
-            print(f"make_mosaic.py: did not find fields {fields} in file {prototype.filename}, exiting")
-            return
+            message = f"pointCollection.grid.mosaic.py: did not find fields {fields} in file {prototype.filename}"
+            return message
         # if time is not specified, squeeze extra dimenstions out of inputs
         self.use_time=False
         for field in ['time','t']:
@@ -283,7 +283,7 @@ class mosaic(data):
                     self.invalid[iy0,ix0] = False
                 else:
                     field_data=getattr(temp, field).copy()
-                    getattr(self, field)[iy0, ix0, band] += field_data*temp.weight[iy1,ix1]
+                    getattr(self, field)[iy0, ix0] += field_data*temp.weight[iy1,ix1]
                     self.invalid[iy0,ix0] = False
             except (IndexError, ValueError) as e:
                 thestr = f"problem with field {field}"
@@ -545,7 +545,9 @@ class mosaic(data):
         weight = (pad is not None and pad > 0) or (feather is not None and feather>0)
 
         self.setup_bounds_from_list(in_list, group=group, fields=fields, bounds=bounds)
-        self.setup_fields(in_list[0], group=group, fields=fields)
+        message = self.setup_fields(in_list[0], group=group, fields=fields)
+        if message is not None:
+            return message
         # check if using a weighted summation scheme for calculating mosaic
         if weight:
             if by_band:
@@ -573,6 +575,3 @@ class mosaic(data):
                 self.replace(item, group=group, fields=fields)
 
         return self
-
-
-
