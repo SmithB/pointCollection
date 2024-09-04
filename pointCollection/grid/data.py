@@ -666,7 +666,8 @@ class data(object):
                     z = np.array(src[bands,i0,i1])
         return z
 
-    def from_h5(self, h5_file, field_mapping=None, group='/', fields=None,
+    def from_h5(self, h5_file, field_mapping=None, group='/',
+        fields=None, field=None,
         xname='x', yname='y', timename='t',
         meta_only=False,
         bounds=None,  skip=1, fill_value=None,
@@ -685,6 +686,8 @@ class data(object):
             HDF5 group to read variables
         fields: list or NoneType, default None
             Fields to read from the HDF5 file
+        field: str, default None
+            Singular field to read from the HDF5 file
         xname: str, default 'x'
             x-coordinate variable to read from the HDF5 file
         yname: str, default 'y'
@@ -721,7 +724,8 @@ class data(object):
             self.t_axis=t_axis
         if fill_value is not None:
             self.fill_value = fill_value
-
+        if fields is None and field is not None:
+            fields=[field]
         if field_mapping is None:
             field_mapping={}
         self.filename=h5_file
