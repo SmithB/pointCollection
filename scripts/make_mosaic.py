@@ -89,14 +89,17 @@ def main(argv):
     parser.add_argument('--weight','-w',
         action="store_true",
         help='use a weighted summation scheme for calculating mosaic')
+    parser.add_argument('--by_band',
+        action="store_true",
+        help="apply a weighted sum to each band individually, treating invalid pixels as missing data.  If False, invalid pixels in any input will overwrite all valid pixels for the same location")
     parser.add_argument('--spacing','-S', type=float,
         nargs=2, default=[None,None], metavar=('dx','dy'),
         help='output grid spacing if creating from uniform tiles')
     parser.add_argument('--crop','-c', type=float,
         nargs='+',
         help='crop mosaic to bounds')
-    parser.add_argument('--t_range', type=float, 
-        nargs=2, 
+    parser.add_argument('--t_range', type=float,
+        nargs=2,
         help="crop time range to bounds")
     parser.add_argument('--output','-O',
         type=str, default='mosaic.h5',
@@ -115,8 +118,12 @@ def main(argv):
     parser.add_argument('--mode','-m',
         type=lambda x: int(x,base=8), default=0o775,
         help='permissions mode of output mosaic')
-    args=parser.parse_args()
-
+    try:
+        assert(len(sys.argv)>1)
+        args=parser.parse_args()
+    except Exception:
+        parser.print_usage()
+        sys.exit(1)
     # valid range of tiles
     if np.any(np.isfinite(np.array(args.range))):
         xmin,xmax,ymin,ymax = args.range
@@ -158,124 +165,21 @@ def main(argv):
     if args.verbose:
         print(f"found {len(file_list)} files")
 
-    #get bounds, grid spacing and dimensions of output mosaic
-    mosaic=pc.grid.mosaic(spacing=args.spacing)
-    for file in file_list.copy():
-        # read tile grid from HDF5
-        try:
-            temp=pc.grid.data().from_h5(file, group=args.in_group, fields=[])
-            #update the mosaic bounds to include this tile
-            mosaic.update_bounds(temp)
-        except Exception:
-            print(f"failed to read group {args.in_group} "+ file)
-            file_list.remove(file)
+    if not args.weight:
+        args.pad=None
+        args.feather=None
 
-    mosaic.update_spacing(temp)
-    mosaic.update_dimensions(temp)
-
-    # create output mosaic, weights, and mask
-    # read data grid from the first tile HDF5, use it to set the field dimensions
-    temp=pc.grid.mosaic().from_h5(file_list[0], group=args.in_group, fields=args.fields)
-    if len(temp.fields) ==0:
-        print(f"make_mosaic.py: did not find fields {args.fields} in file {temp.filename}, exiting")
-        return
-    # if time is not specified, squeeze extra dimenstions out of inputs
-    use_time=False
-    for field in ['time','t']:
-        if hasattr(temp, field) and getattr(temp, field) is not None:
-            use_time=True
-    if not use_time:
-        for field in temp.fields:
-            setattr(temp, field, np.squeeze(getattr(temp, field)))
-    if args.fields is None:
-        args.fields=temp.fields
-    these_fields=[field for field in args.fields if field in temp.fields]
-    field_dims={field:getattr(temp, field).ndim for field in these_fields}
-    for field in these_fields:
-        mosaic.assign({field:np.zeros(mosaic.dimensions[0:field_dims[field]])})
-    mosaic.invalid = np.ones(mosaic.dimensions,dtype=bool)
-
-
-    # check if using a weighted summation scheme for calculating mosaic
-    if args.weight:
-        mosaic.weight = np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
-        # create the weights for a single file
-        # as the tiles have the same dimensions, we only have to calculate
-        # the first set.  After that we can just copy the first
-        temp.weights(pad=args.pad, feather=args.feather, apply=False)
-        # allocate for output weight matrix
-        mosaic.weight=np.zeros((mosaic.dimensions[0],mosaic.dimensions[1]))
-        tile_weight=temp.weight.copy()
-        # for each file in the list
-        for file in file_list:
-            # read data grid from HDF5
-            temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
-            if not use_time:
-                for field in temp.fields:
-                    setattr(temp, field, np.squeeze(getattr(temp, field)))
-            these_fields=[field for field in args.fields if field in temp.fields]
-            # copy weights for tile
-            temp.weight=tile_weight.copy()
-            # get the image coordinates of the input file
-            iy,ix = mosaic.image_coordinates(temp)
-            for field in these_fields:
-                try:
-                    if field_dims[field]==3:
-                        field_data=np.atleast_3d(getattr(temp, field))
-                        bands=range(mosaic.dimensions[2])
-                        for band in bands:
-                            getattr(mosaic, field)[iy,ix,band] += field_data[:,:,band]*temp.weight
-                            mosaic.invalid[iy,ix,band] = False
-                    else:
-                        field_data=getattr(temp, field)
-                        getattr(mosaic, field)[iy,ix] += field_data*temp.weight
-                        mosaic.invalid[iy,ix,0] = False
-                except (IndexError, ValueError) as e:
-                    print(f"problem with field {field} in group {args.in_group} in file {file}")
-                    raise(e)
-            # add weights to total weight matrix
-            mosaic.weight[iy,ix] += temp.weight[:,:]
-        # find valid weights
-        iy,ix = np.nonzero(mosaic.weight == 0)
-        mosaic.invalid[iy,ix,:] = True
-        # normalize fields by weights
-        iy,ix = np.nonzero(mosaic.weight > 0)
-        for field in mosaic.fields:
-            if field_dims[field]==3:
-                for band in range(mosaic.dimensions[2]):
-                    getattr(mosaic, field)[iy,ix,band] /= mosaic.weight[iy,ix]
-            else:
-                getattr(mosaic, field)[iy,ix] /= mosaic.weight[iy,ix]
-    else:
-        # overwrite the mosaic with each subsequent tile
-        # for each file in the list
-        for file in file_list:
-            # read data grid from HDF5
-            temp=pc.grid.mosaic().from_h5(file, group=args.in_group, fields=args.fields)
-            these_fields=[field for field in args.fields if field in temp.fields]
-            # get the image coordinates of the input file
-            iy,ix = mosaic.image_coordinates(temp)
-            for field in these_fields:
-
-                try:
-                    if field_dims[field]==3:
-                        field_data=np.atleast_3d(getattr(temp, field))
-                        for band in range(mosaic.dimensions[2]):
-                            getattr(mosaic, field)[iy,ix,band] = field_data[:,:,band]
-                            mosaic.invalid[iy,ix,band] = False
-                    else:
-                        field_data=getattr(temp, field)
-                        getattr(mosaic, field)[iy,ix] = field_data
-                        mosaic.invalid[iy, ix] = False
-                except IndexError:
-                    print(f"problem with field {field} in group {args.in_group} file {file}")
-
-    # replace invalid points with fill_value
-    for field in mosaic.fields:
-        if field_dims[field]==3:
-            getattr(mosaic, field)[mosaic.invalid] = mosaic.fill_value
-        else:
-            getattr(mosaic, field)[mosaic.invalid[:,:,0]] = mosaic.fill_value
+    mosaic=pc.grid.mosaic().from_list(file_list,
+                                      fields=args.fields,
+                                      group=args.in_group,
+                                      pad=args.pad,
+                                      feather=args.feather,
+                                      by_band=args.by_band)
+    if isinstance(mosaic, str):
+        if args.verbose:
+            print(f"pc.grid.mosaic failed for group {args.in_group} and fields {args.fields} with message:")
+            print(mosaic)
+            return
     # crop mosaic to bounds
     if np.any(args.crop):
         # keyword arguments for cropping
@@ -298,7 +202,7 @@ def main(argv):
         mosaic.t = args.time
     # output each field
     for field in mosaic.fields:
-        if field_dims[field] == 2:
+        if mosaic.field_dims[field] == 2:
             pc.grid.data().from_dict({'x':mosaic.x,'y':mosaic.y,\
                                       field:getattr(mosaic,field)})\
                 .to_h5(os.path.join(args.directory,args.output), \
