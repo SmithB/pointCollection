@@ -175,7 +175,11 @@ def main(argv):
                                       pad=args.pad,
                                       feather=args.feather,
                                       by_band=args.by_band)
-
+    if isinstance(mosaic, str):
+        if args.verbose:
+            print(f"pc.grid.mosaic failed for group {args.in_group} and fields {args.fields} with message:")
+            print(mosaic)
+            return
     # crop mosaic to bounds
     if np.any(args.crop):
         # keyword arguments for cropping
