@@ -130,6 +130,8 @@ class mosaic(data):
                     if temp is not None and (len(temp.x)>0) and (len(temp.y) > 0):
                         #update the mosaic bounds to include this tile
                         self.update_bounds(temp)
+                        if self.spacing[0] is None:
+                            self.update_spacing(temp)
                 except Exception:
                     print(f"failed to read group {group} "+ str(item))
                     in_list.remove(item)
@@ -138,8 +140,9 @@ class mosaic(data):
                     item=item.cropped(*bounds)
                 if item is not None and (len(item.x)>0) and (len(item.y) > 0):
                     self.update_bounds(item)
+                    if self.spacing[0] is None:
+                        self.update_spacing(temp)
                     temp=item
-        self.update_spacing(temp)
         self.update_dimensions(temp)
         self.__update_extent__()
         self.__update_size_and_shape__()
@@ -202,7 +205,7 @@ class mosaic(data):
                     field_data=np.atleast_3d(getattr(temp, field))
                     for band in range(self.dimensions[2]):
                         getattr(self, field)[iy0,ix0,band] = field_data[iy1,ix1,band]
-                        self.invalid[iy0,ix0,band] = False
+                    self.invalid[iy0,ix0] = False
                 else:
                     field_data=getattr(temp, field)
                     getattr(self, field)[iy0,ix0] = field_data[iy1, ix1]
@@ -390,7 +393,7 @@ class mosaic(data):
 
         self.weight[iy0,ix0] += temp.weight[iy1,ix1]
 
-    def normalize(self, fields=None, band=None):
+    def normalize(self, fields=None, band=None, by_weight=True):
         """
         Normalize the mosaic fields by the sum of the weights
 
@@ -401,9 +404,13 @@ class mosaic(data):
         """
 
         # find invalid points:
-        i_zero= np.flatnonzero( (self.weight == 0) | self.invalid)
+        if by_weight:
+            i_zero= np.flatnonzero( (self.weight == 0) | self.invalid)
+            i_nonzero = np.flatnonzero(self.weight)
+        else:
+            i_zero= np.flatnonzero( self.invalid )
+
         # find valid points
-        i_nonzero = np.flatnonzero(self.weight)
         for field in self.fields:
             if self.field_dims[field]==3 and band is None:
                 band_list = range(self.dimensions[2])
@@ -413,20 +420,24 @@ class mosaic(data):
                 band_list=[None]
             for this_band in band_list:
                 if this_band is None:
-                    getattr(self, field)[:, :, this_band].ravel()[i_nonzero] /= self.weight.ravel()[i_nonzero]
+                    if by_weight:
+                        getattr(self, field)[:, :, this_band].ravel()[i_nonzero] /= self.weight.ravel()[i_nonzero]
                     getattr(self, field)[:, :, this_band].ravel()[i_zero] = self.fill_value
                 else:
-                    iy_nz, ix_nz = np.unravel_index(i_nonzero, self.shape[0:2])
-                    i_out = np.ravel_multi_index((iy_nz, ix_nz, np.zeros_like(ix_nz)+this_band), self.shape)
-                    #temp_out=getattr(self, field)[:, :, this_band]
-                    #temp_out.ravel()[i_nonzero] /= self.weight.ravel()[i_nonzero]
-                    #getattr(self, field)[:,:,this_band]=temp_out
-                    getattr(self, field).ravel()[i_out] /= self.weight.ravel()[i_nonzero]
+                    if by_weight:
+                        iy_nz, ix_nz = np.unravel_index(i_nonzero, self.shape[0:2])
+                        i_out = np.ravel_multi_index((iy_nz, ix_nz, np.zeros_like(ix_nz)+this_band), self.shape)
+                        #temp_out=getattr(self, field)[:, :, this_band]
+                        #temp_out.ravel()[i_nonzero] /= self.weight.ravel()[i_nonzero]
+                        #getattr(self, field)[:,:,this_band]=temp_out
+                        getattr(self, field).ravel()[i_out] /= self.weight.ravel()[i_nonzero]
+
                     iy_z, ix_z = np.unravel_index(i_zero, self.shape[0:2])
                     i_out = np.ravel_multi_index((iy_z, ix_z, np.zeros_like(ix_z)+this_band), self.shape)
                     getattr(self, field).ravel()[i_out] = self.fill_value
 
-        self.weight[:]=0
+        if self.weight is not None:
+            self.weight[:]=0
         self.normalized=True
 
     def raised_cosine_weights(self, pad, feather):
@@ -571,7 +582,9 @@ class mosaic(data):
         else:
             # overwrite the mosaic with each subsequent tile
             # for each file in the list
+            self.invalid = np.ones(self.dimensions[0:2],dtype=bool)
             for item in in_list:
                 self.replace(item, group=group, fields=fields)
+            self.normalize(by_weight=False)
 
         return self

@@ -914,6 +914,7 @@ class data(object):
         xname='x', yname='y', timename='time', bounds=None, t_range=None,
         bands=None, skip=1,
         fill_value=None,
+        meta_only=False,
         t_axis=None, compression=None):
         """
         Read a raster from a netCDF4 file.
@@ -967,6 +968,8 @@ class data(object):
 
         if fill_value is not None:
             self.fill_value = fill_value
+        if meta_only:
+            fields=[]
 
         if field_mapping is None:
             field_mapping={}
