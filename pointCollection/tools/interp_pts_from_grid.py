@@ -38,7 +38,7 @@ def interp_pts_from_grid(D0, Dg, field='z', band=None):
         DESCRIPTION.
 
     '''
-    
+
     # try to work out what D0 is
     if isinstance(D0, (list, tuple) ):
         x=D0[0].copy()
@@ -50,7 +50,7 @@ def interp_pts_from_grid(D0, Dg, field='z', band=None):
             y=D0['y'].copy()
         except AttributeError:
             # it wasn't a dict or a dataFrame
-            try: 
+            try:
                 # maybe D0 is a pointCollection object or a namedTuple (or something)
                 x=D0.x.copy()
                 y=D0.y.copy()
@@ -64,12 +64,12 @@ def interp_pts_from_grid(D0, Dg, field='z', band=None):
     good=(ccf >= 0) & (ccf <= Dg.shape[1]-2) &  (rrf >= 0) & (rrf <= Dg.shape[0]-2)
     ccf=ccf[good]
     rrf=rrf[good]
-    
+
     rr0=np.floor(rrf).astype(int)
     cc0=np.floor(ccf).astype(int)
     rr=np.c_[rr0, rr0+1, rr0, rr0+1]
     cc=np.c_[cc0, cc0, cc0+1, cc0+1]
-    v=np.zeros(x.shape)+np.NaN
+    v=np.zeros(x.shape)+np.nan
     if band is None:
         z=getattr(Dg, field)
 
@@ -81,7 +81,7 @@ def interp_pts_from_grid(D0, Dg, field='z', band=None):
     # sum the the values multiplied by their bilinear weights.  the 'clip' option
     # means that indices past the edge of the grid return the values at the edge
     # of the grid.
-    
+
     v[good]=np.sum(
             z.ravel()[np.ravel_multi_index([rr.ravel(), cc.ravel()], z.shape)].reshape(rr.shape)*\
                 (1-np.abs(np.tile(rrf[:,None], [1, 4])-rr))*(1-np.abs(np.tile(ccf[:, None], [1, 4])-cc)),\

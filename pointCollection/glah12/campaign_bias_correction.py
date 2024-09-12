@@ -26,7 +26,7 @@ def campaign_bias_correction(campaign):
     correction value
 
     '''
-    correction=np.zeros_like(campaign, dtype=float)+np.NaN
+    correction=np.zeros_like(campaign, dtype=float)+np.nan
     laser2=np.in1d(campaign.astype(int), 1+np.concatenate([np.arange(1,4), np.arange(15,18)]) )
     correction[laser2] -= 0.017
     laser3=np.in1d(campaign.astype(int), 1+np.arange(4, 15) )

@@ -57,7 +57,7 @@ def apply_bin_fn(D_pt, res, fn=None, fields=['z'], xy0=[0, 0]):
     return result
 
 
-def points_to_grid(D_pt, res=None, grid=None, field='z', background=np.NaN):
+def points_to_grid(D_pt, res=None, grid=None, field='z', background=np.nan):
     if grid is not None:
         res=np.abs(grid.x[1]-grid.x[0])
     x=np.round(D_pt.x/res)*res

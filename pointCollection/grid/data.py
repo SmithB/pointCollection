@@ -390,7 +390,7 @@ class data(object):
                 print(f'pc.grid.data.from_geotif:\n\t while getting the date, encountered exception:\n\t{e}')
                 print(f'\n\tfor filename {file}')
                 print('\t\tsetting time to NaN')
-                self.time=np.NaN
+                self.time=np.nan
                 return self
         try:
             ds=gdal.Open(file, gdalconst.GA_ReadOnly)

@@ -29,7 +29,7 @@ class crossover_data(pc.data):
 
     def from_h5(self, filename, pair=None, D_at=None, crossover_fields=None):
         '''
-        Read crossover data from a file.  
+        Read crossover data from a file.
 
         inputs:
             filename: the file to read
@@ -46,12 +46,12 @@ class crossover_data(pc.data):
         if D_at is not None:
             # make the pair match the pair for D_at
             pair=D_at.pair
-            
+
         if pair is None:
             pair=self.pair
         else:
             self.pair=pair
- 
+
         self.pair_name = f'pt{int(self.pair)}'
 
         if D_at is None:
@@ -88,12 +88,12 @@ class crossover_data(pc.data):
         D_at.index(np.in1d(D_at.ref_pt[:,0], u_pt_xo))
         theshape=(u_pt_xo.size, n_cycles,2)
         all_fields=set(D_xo.fields+D_at.fields)
-        self.assign({field:np.zeros(theshape)+np.NaN for field in all_fields})
+        self.assign({field:np.zeros(theshape)+np.nan for field in all_fields})
 
         row=np.searchsorted( u_pt_xo, D_at.ref_pt.ravel())
-        col=D_at.cycle_number.ravel().astype(int)-1    
+        col=D_at.cycle_number.ravel().astype(int)-1
         self_ind0=np.ravel_multi_index((row, col, np.zeros_like(row, dtype=int)), theshape)
-               
+
         for field in D_at.fields:
             getattr(self, field).flat[self_ind0]=getattr(D_at, field).ravel()
 

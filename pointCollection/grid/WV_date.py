@@ -12,7 +12,7 @@ def WV_date(filename):
     date_re=re.compile(r'\d\d.*_(2\d\d\d)(\d\d)(\d\d)_')
     m=date_re.search(filename)
     if m is None:
-        return np.NaN
+        return np.nan
     return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
 
 def WV_year(filename):
