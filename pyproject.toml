@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pointCollection"
+description = "Utilities for organizing and manipulating point data"
+keywords = [
+    "ICESat",
+    "ICESat-2",
+    "CryoSat-2",
+    "Operation IceBridge",
+    "geoindex",
+]
+authors = [
+    {name = "Ben Smith"},
+    {email = "besmith@uw.edu"}
+]
+maintainers = [
+    {name = "pointCollection contributors"}
+]
+license = {file = "LICENSE"}
+readme = "README.md"
+version = "1.0.0.0"
+
+requires-python = "~=3.6"
+dependencies = [
+    "h5py",
+    "matplotlib",
+    "netCDF4",
+    "numpy",
+    "pyproj",
+    "scipy>=1.10.1",
+]
+
+classifiers=[
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.urls]
+Repository = "https://github.com/SmithB/pointCollection"
+Issues = "https://github.com/SmithB/pointCollection/issues"
+
+[project.optional-dependencies]
+all = ["gdal", "notebook", "shapely"]
+dev = ["flake8", "pytest>=4.6", "pytest-cov"]
+
+[project.scripts]
+"cross_ATL06_tile.py" = "pointCollection.scripts.cross_ATL06_tile:main"
+"cross_ATL11_tile.py" = "pointCollection.scripts.cross_ATL11_tile:main"
+"fix_indices.py" = "pointCollection.scripts.fix_indices:main"
+"index_glob.py" = "pointCollection.scripts.index_glob:main"
+"indexPicker.py" = "pointCollection.scripts.indexPicker:main"
+"make_mosaic.py" = "pointCollection.scripts.make_mosaic:main"
+"make_tiles.py" = "pointCollection.scripts.make_tiles:main"
+"reduce_ATM.py" = "pointCollection.scripts.reduce_ATM:main"
+"uproot_geoindex.py" = "pointCollection.scripts.uproot_geoindex:main"
+
+[tool.setuptools.packages.find]
+exclude = ["test*"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+norecursedirs = ".git"
+python_files = [
+    "test*.py"
+]
+testpaths = [
+    "test"
+]

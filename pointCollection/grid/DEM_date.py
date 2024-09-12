@@ -25,7 +25,7 @@ def DEM_date(filename):
     m=date_re.search(filename)
     if m is not None:
         return datetime(*map(int, m.groups()))
-    return np.NaN
+    return np.nan
 
 def DEM_year(filename):
     """Return the decimal year date for a Worldview or tamDEM-x filename."""

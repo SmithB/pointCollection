@@ -189,7 +189,7 @@ def along_track_dh_filter(D, threshold=None, to_nan=False):
     if threshold is not None:
         D.valid[rss_dh>threshold]=0
     if to_nan:
-        D.h_li[rss_dh>threshold]=np.NaN
+        D.h_li[rss_dh>threshold]=np.nan
 
 
 def main():

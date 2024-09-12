@@ -45,7 +45,7 @@ class crossover_data(pc.data):
         D_at.index(np.in1d(D_at.ref_pt[:,0], u_pt_xo))
 
         theshape=(u_pt_xo.size, n_cycles,2)
-        self.assign({field:np.zeros(theshape)+np.NaN for field in D_xo.fields})
+        self.assign({field:np.zeros(theshape)+np.nan for field in D_xo.fields})
 
         row=np.searchsorted( u_pt_xo, D_at.ref_pt.ravel())
         col=D_at.cycle_number.ravel().astype(int)-1

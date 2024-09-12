@@ -41,9 +41,9 @@ def pt_blockmedian(xx, yy, zz, delta, xy0=[0.,0.], return_index=False, \
     xyind=xyind[sorted_ind]
     ux, ix=np.unique(xyind, return_index=True)
     if not index_only:
-        xm=np.zeros_like(ux)+np.NaN
-        ym=np.zeros_like(ux)+np.NaN
-        zm=np.zeros_like(ux)+np.NaN
+        xm=np.zeros_like(ux)+np.nan
+        ym=np.zeros_like(ux)+np.nan
+        zm=np.zeros_like(ux)+np.nan
     if return_index:
         ind=np.zeros((ux.size,2), dtype=int)
     if return_count:

@@ -20,12 +20,12 @@ def dilate_bins(bins, delta):
                 bins.add(this_shifted_bin)
 
 def x_point_vectorized(A, B):
-    """ 
+    """
     Find crossing points between segments in complex matrices
     """
-    
+
     # assumes that A and B contain nxm matrices of complex coordinates,
-    # where each row is a path 
+    # where each row is a path
     dA=A[:,-1]-A[:,0]
     dB=B[:,-1]-B[:,0]
     det = -(dA*(dB.conj())).imag
@@ -34,10 +34,10 @@ def x_point_vectorized(A, B):
     lB = (dAB0*(dA.conj())).imag/det
     #print('x_point:'+str([lA, lB]))
     status = ( lA>0 ) & ( lA < 1) & ( lB > 0) & ( lB <1 )
-    
+
     return lA, lB, A[:,0]+lA*dA, status
-                
-                
+
+
 def x_point(A, B):
     '''
     find the point at which vectors A and B cross
@@ -72,7 +72,7 @@ def x_point_dense(A, B):
         return None, None, None
 
 def cross_by_time(t, xy, ep, l0):
-        
+
     Wsub=[[],[]]
     delta_list=[[0],[0]]
     for ii in [0, 1]:
@@ -103,7 +103,7 @@ def cross_by_zoom(T, inds, delta, DOPLOT=False):
     '''
     if inds is None:
         inds=[np.arange(len(Ti.x)) for Ti in T]
-    
+
     xy=[T[ii].x[inds[ii]]+1j*T[ii].y[inds[ii]] for ii in range(len(T))]
     use_time=False
     if hasattr(T[0], 'time'):
@@ -142,11 +142,11 @@ def cross_by_zoom(T, inds, delta, DOPLOT=False):
                 paths = []
                 path_inds = []
                 for ii in [0, 1]:
-                    this_path=np.zeros([1,6])+1j*np.zeros([1,6])+np.NaN
+                    this_path=np.zeros([1,6])+1j*np.zeros([1,6])+np.nan
                     this_path_ind=this_path.copy().astype(float)
                     ind_near = np.argmin(np.abs(xy[ii]-xyC_old))
                     last_ind = np.minimum(ind_near+3, len(xy[ii])-1)
-                    first_ind = np.maximum(0, last_ind-6) 
+                    first_ind = np.maximum(0, last_ind-6)
                     this_ind=np.arange(first_ind, last_ind)
                     this_path[0,this_ind-this_ind[0]] = xy[ii][this_ind]#[:, None]
                     this_path_ind[0,this_ind-this_ind[0]] = this_ind#[:,None]
@@ -160,20 +160,20 @@ def cross_by_zoom(T, inds, delta, DOPLOT=False):
                     if len(iAB[0]) > 0:
                         # should investigate what's happening here
                         iAB=[ii[0:1] for ii in iAB]
-                    out_inds=[np.array([ind[int(pi[ii])], ind[int(pi[ii]+1)]]) for ind, pi, ii in zip(inds, path_inds, iAB)]                    
+                    out_inds=[np.array([ind[int(pi[ii])], ind[int(pi[ii]+1)]]) for ind, pi, ii in zip(inds, path_inds, iAB)]
                     return [xyC.real, xyC.imag], out_inds, lAB.ravel()
             return None, None, None
         if ep==ep_last and (Lsearch==delta):
             break
         Lsearch=np.maximum(Lsearch/2, delta)
     return [xyC.real, xyC.imag], [inds[0][ep[0]], inds[1][ep[1]]], l0
-        
- 
+
+
 def cross_tracks(T, delta_coarse=10, delta=1, DOPLOT=False):
     '''
     find the point at which the paths in T cross
-    '''     
-    
+    '''
+
     # find the bins that are in both elements of T
     B_fun=[np.round(np.c_[Ti.x, Ti.y]/delta_coarse)*delta_coarse for Ti in T]
     B=[pc.unique_by_rows(Bsub, return_dict=True)[1] for Bsub in B_fun]
@@ -194,16 +194,16 @@ def cross_tracks(T, delta_coarse=10, delta=1, DOPLOT=False):
 def resample_path(x, y, spacing):
     """
     interpolate a path to a different resolution
-    
+
     inputs:
         x, y : path coordinates
         spacing: intended resolution of the result
-        
+
     Calculates the along-track distance for each point in x and y, then interpolates
     the x and y coordinates to an evenly spaced vector of distance values, separated by
     'spacing'
-    """     
-    
+    """
+
     s0=np.concatenate([[0], np.cumsum(np.diff(np.abs(x+1j*y)))])
     s=np.arange(s0[0], s0[-1]+spacing, spacing)
     if s[-1] < s0[-1]:
@@ -220,8 +220,8 @@ def __test__():
     x1=np.arange(0.5, 4.95, .1)
     y1=-0.25*(x1**2)+x1+2
     x1, y1=resample_path(x1, y1, 0.1)
-    
-    
+
+
     plt.figure()
     plt.plot(x0, y0)
     plt.plot(x1, y1)

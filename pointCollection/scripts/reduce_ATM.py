@@ -7,6 +7,7 @@ import scipy.spatial as sps
 import argparse
 import os
 import sys
+
 def reduce_data(D, stats_radius=50, min_sigma=0.5):
     kdt = sps.KDTree(np.c_[D.x, D.y])
 
@@ -16,7 +17,7 @@ def reduce_data(D, stats_radius=50, min_sigma=0.5):
         'z':D.z,
         'time':D.time
         })
-    D_out.assign({field:np.zeros_like(D_out.x)+np.NaN for field in ['bias_50m', 'noise_50m', 'N_50m', 'slope_x', 'slope_y']})
+    D_out.assign({field:np.zeros_like(D_out.x)+np.nan for field in ['bias_50m', 'noise_50m', 'N_50m', 'slope_x', 'slope_y']})
 
     for i0 in range(D_out.size):
         #if np.mod(i0, 100)==0:
@@ -43,7 +44,7 @@ def main():
     parser.add_argument('--out_dir', type=str, default='.')
     parser.add_argument('--out_name', type=str)
     args=parser.parse_args()
-    
+
     if args.out_name is None:
         args.out_name=os.path.join(args.out_dir, os.path.basename(args.Qfit_file).replace('.h5','_filt.h5'))
     else:
@@ -51,19 +52,19 @@ def main():
             args.out_name=os.path.join(args.out_dir, args.Qfit_file)
 
     D=pc.ATM_Qfit.data().from_h5(args.Qfit_file)
-    
+
     if np.nanmax(D.latitude > 10):
         EPSG=3413
     else:
         EPSG=3031
-        
+
     D.get_xy(EPSG=EPSG)
     D.assign({'z':D.elevation})
     if args.decimate_to > 0:
         im=pc.pt_blockmedian(D.x, D.y, D.z, args.decimate_to, break_ties=True, index_only=True)
         D.index(im)
         D.assign({'pt_num':im})
-    
+
     if args.time_format=='matlab':
         # year = (ml-730486.)/365.25+2000.
         # ml-730486. = (year-2000)*365.25$
@@ -77,10 +78,10 @@ def main():
         print(f'time_format: {args.time_format} not understood')
         raise(ValueError)
     D_out=reduce_data(D, stats_radius=args.stats_radius, min_sigma=args.min_sigma)
-    
+
     if os.path.isfile(args.out_name):
         os.remove(args.out_name)
-    
+
     pc.indexedH5.data().to_file(D_out,args.out_name)
 
 if __name__=='__main__':
