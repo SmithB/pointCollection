@@ -325,7 +325,7 @@ class data(object):
                         if '_FillValue' in ds.attrs:
                             if ds.dtype in ['float32', 'float64']:
                                 bad = temp==ds.attrs['_FillValue']
-                                temp[bad]=np.NaN
+                                temp[bad]=np.nan
                         if scale_factor != 1:
                             temp = temp.astype(float)*scale_factor
                         if add_offset != 0:
@@ -341,7 +341,7 @@ class data(object):
                         break
                 if self.shape is not None:
                     for field in nan_fields:
-                        setattr(self, field, np.zeros(self.shape)+np.NaN)
+                        setattr(self, field, np.zeros(self.shape)+np.nan)
         if '__calc_internal__' in field_dict:
             try:
                 self.__internal_field_calc__(field_dict)
@@ -450,7 +450,7 @@ class data(object):
             if field in dd:
                 setattr(self, field, dd[field])
             else:
-                setattr(self, field, np.zeros(default_shape)+np.NaN)
+                setattr(self, field, np.zeros(default_shape)+np.nan)
         self.__update_size_and_shape__()
         return self
 
@@ -561,7 +561,7 @@ class data(object):
                 setattr(self, field, getattr(self, field)[index])
             except IndexError:
                 #print("IndexError for field %s, setting to NaN" % field)
-                setattr(self, field, np.zeros(self.shape)[index]+np.NaN)
+                setattr(self, field, np.zeros(self.shape)[index]+np.nan)
         self.__update_size_and_shape__()
         return self
 
@@ -607,7 +607,7 @@ class data(object):
 
     def complete_fields(self, fields):
         """
-        Fill in missing fields with np.NaN
+        Fill in missing fields with np.nan
 
 
         Parameters
@@ -623,7 +623,7 @@ class data(object):
 
         for field in fields:
             if field not in self.fields:
-                self.assign({field:np.zeros(self.shape)+np.NaN})
+                self.assign({field:np.zeros(self.shape)+np.nan})
 
     def copy_subset(self, index, by_row=False, datasets=None, fields=None):
         """

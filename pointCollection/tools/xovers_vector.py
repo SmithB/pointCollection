@@ -9,12 +9,12 @@ import numpy as np
 import pointCollection as pc
 
 def x_point(A, B):
-    """ 
+    """
     Find crossing points between segments in complex matrices
     """
-    
+
     # assumes that A and B contain nxm matrices of complex coordinates,
-    # where each row is a path 
+    # where each row is a path
     dA=A[:,-1]-A[:,0]
     dB=B[:,-1]-B[:,0]
     det = -(dA*(dB.conj())).imag
@@ -23,7 +23,7 @@ def x_point(A, B):
     lB = (dAB0*(dA.conj())).imag/det
     #print('x_point:'+str([lA, lB]))
     status = ( lA>0 ) & ( lA < 1) & ( lB > 0) & ( lB <1 )
-    
+
     return lA, lB, A[:,0]+lA*dA, status
 
 def sub_path(Dc, rows, cols):
@@ -40,10 +40,10 @@ def sub_path(Dc, rows, cols):
 
 def guess_first_xover(Dc):
 
-    
+
     ###NEED TO PASS IN THE FIRST AND LAST FINITE POINTS.
     ## this is somewhat less clean with that change in place
-    
+
     L0, L1, xy0, status = x_point(Dc[0][:,[0, -1]], Dc[1][:,[0, -1]])
 
     # search based on along-track distance to find the first segment of the crossing point:
@@ -60,10 +60,10 @@ def guess_first_xover(Dc):
 
 def cross_paths(Dc):
     """
-    Find intersections between paths given in Dc.  
-    
+    Find intersections between paths given in Dc.
+
     Inputs:
-        Dc : iterable of two complex matrices, with one 
+        Dc : iterable of two complex matrices, with one
                 path on each row.
     outputs:
         list : indices into the columns of Dc.
@@ -72,39 +72,39 @@ def cross_paths(Dc):
         count: number of iterations
     """
     count=0
-             
+
     # find the crossing point between the endpoints of the paths
-    count += 1 
+    count += 1
     cols, status=guess_first_xover(Dc)
- 
+
     # we will examine only those rows that had a successful crossing the first time
     rows = np.flatnonzero(status)
-    
-    L0, L1 = [np.zeros((Dc[0].shape[0]))+np.NaN for ii in [0, 1]]
+
+    L0, L1 = [np.zeros((Dc[0].shape[0]))+np.nan for ii in [0, 1]]
     i0, i1 = [np.zeros((Dc[0].shape[0]), dtype=int) for ii in [0, 1]]
-    
+
     cols = [col[rows] for col in cols]
     count=0
     while count < 36:
         count += 1
         sub_paths = sub_path(Dc, rows, cols)
-        
+
         L0sub, L1sub, xy0sub, status_sub = x_point(*sub_paths)
-        
+
         rr=rows[status_sub]
-                     
+
         #write out successes
         L0[rr] = L0sub[status_sub]
         L1[rr] = L1sub[status_sub]
         i0[rr] = cols[0][status_sub]
         i1[rr] = cols[1][status_sub]
-        
+
         # shift the failures
         cols[0][L0sub<0] -= 1
         cols[0][L0sub>1] += 1
         cols[1][L1sub<0] -= 1
         cols[1][L1sub>1] += 1
-  
+
         # continue on those paths for which the search isn't out of bounds, and
         # for which we haven't found a crossover
         cc=np.c_[cols]
@@ -115,6 +115,5 @@ def cross_paths(Dc):
             cols[ii] = cols[ii][search_more]
         rows = rows[search_more]
     return [i0, i1], [L0, L1], np.isfinite(L0), count
-    
-    
-   
+
+

@@ -157,11 +157,11 @@ class data(pc.data):
                     if field != 'valid':
                         data=data.astype(np.float64)
                     # mark data that are invalid (according to the h5 file) with NaNs
-                    data[bad]=np.NaN
+                    data[bad]=np.nan
                     setattr(self, field, data)
                 except KeyError:
                     print("could not read %s/%s" % (group, field))
-                    setattr(self, field, np.zeros( [n_vals, 2])+np.NaN)
+                    setattr(self, field, np.zeros( [n_vals, 2])+np.nan)
         self.__update_size_and_shape__()
 
         if "derived" in self.field_dict and "matlab_time" in self.field_dict['derived']:
@@ -208,7 +208,7 @@ class data(pc.data):
             min_along_track_dh[0,:]=np.abs(self.h_li[1,:]-self.h_li[0,:] - (self.x_atc[1,:]-self.x_atc[0,:])*self.dh_fit_dx[0,:])
             min_along_track_dh[-1,:]=np.abs(self.h_li[-1,:]-self.h_li[-2,:] - (self.x_atc[-1,:]-self.x_atc[-2,:])*self.dh_fit_dx[-1,:])
         else:
-            min_along_track_dh=np.zeros([1,2])+np.NaN
+            min_along_track_dh=np.zeros([1,2])+np.nan
         return min_along_track_dh
 
     def get_rss_along_track_dh(self):

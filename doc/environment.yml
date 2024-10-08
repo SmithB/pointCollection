@@ -1,0 +1,11 @@
+name: pc-docs
+channels:
+  - conda-forge
+dependencies:
+  - docutils
+  - numpydoc
+  - recommonmark
+  - sphinx
+  - sphinx_rtd_theme
+  - pip:
+    - ..

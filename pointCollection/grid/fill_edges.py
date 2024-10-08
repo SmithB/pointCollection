@@ -17,7 +17,7 @@ def smooth_corrected(z, mask, w_smooth, **filter_args):
     else:
         for arg, val in filter_args.items():
             filter_defaults[arg]=val
-    
+
     mask1=snd.gaussian_filter(mask.astype(float), w_smooth, **filter_defaults)
     ztemp=np.nan_to_num(z)
     ztemp[mask==0]=0.0
@@ -33,27 +33,27 @@ def fill_edges(z, w_smooth=1, ndv=-9999, dim=None, **filter_args):
         # assume 2-d input
         temp=z1
         mask=(temp != ndv) & (np.isfinite(temp))
-        temp[mask==0]=np.NaN
+        temp[mask==0]=np.nan
         temp_s, mask1=smooth_corrected(temp, mask, w_smooth, **filter_args)
-        temp_s[mask1==0]=np.NaN
+        temp_s[mask1==0]=np.nan
         temp[mask==0]=temp_s[mask==0]
         z1=temp
     elif dim==2:
         for ii in range(z.shape[2]):
             temp=z1[:,:,ii]
             mask=(temp != ndv) & (np.isfinite(temp))
-            temp[mask==0]=np.NaN
+            temp[mask==0]=np.nan
             temp_s, mask1=smooth_corrected(temp, mask, w_smooth, **filter_args)
-            temp_s[mask1==0]=np.NaN
+            temp_s[mask1==0]=np.nan
             temp[mask==0]=temp_s[mask==0]
             z1[:,:,ii]=temp
     elif dim==0:
         for ii in range(z.shape[1]):
             temp=z1[ii,:,:]
             mask=(temp != ndv) & (np.isfinite(temp))
-            temp[mask==0]=np.NaN
+            temp[mask==0]=np.nan
             temp_s, mask1=smooth_corrected(temp, mask, w_smooth, **filter_args)
-            temp_s[mask1==0]=np.NaN
+            temp_s[mask1==0]=np.nan
             temp[mask==0]=temp_s[mask==0]
             z1[ii,:,:]=temp
     elif dim ==1:
