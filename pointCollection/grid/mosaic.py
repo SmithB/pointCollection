@@ -141,7 +141,7 @@ class mosaic(data):
                 if item is not None and (len(item.x)>0) and (len(item.y) > 0):
                     self.update_bounds(item)
                     if self.spacing[0] is None:
-                        self.update_spacing(temp)
+                        self.update_spacing(item)
                     temp=item
         self.update_dimensions(temp)
         self.__update_extent__()
@@ -431,10 +431,10 @@ class mosaic(data):
                         #temp_out.ravel()[i_nonzero] /= self.weight.ravel()[i_nonzero]
                         #getattr(self, field)[:,:,this_band]=temp_out
                         getattr(self, field).ravel()[i_out] /= self.weight.ravel()[i_nonzero]
-
-                    iy_z, ix_z = np.unravel_index(i_zero, self.shape[0:2])
-                    i_out = np.ravel_multi_index((iy_z, ix_z, np.zeros_like(ix_z)+this_band), self.shape)
-                    getattr(self, field).ravel()[i_out] = self.fill_value
+                    if len(i_zero) > 0:
+                        iy_z, ix_z = np.unravel_index(i_zero, self.shape[0:2])
+                        i_out = np.ravel_multi_index((iy_z, ix_z, np.zeros_like(ix_z)+this_band), self.shape)
+                        getattr(self, field).ravel()[i_out] = self.fill_value
 
         if self.weight is not None:
             self.weight[:]=0
