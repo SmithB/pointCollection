@@ -129,9 +129,9 @@ class data(object):
         """Update the size and shape parameters of the object to match that of its data fields."""
         if self.fields is None or len(self.fields)==0:
             self.shape=[len(self.y), len(self.x)]
-            if hasattr(self, 't') and self.t is not None:
+            if hasattr(self, 't') and self.t is not None and hasattr(self.t,'len'):
                 self.shape += [len(self.t)]
-            elif hasattr(self, 'time') and self.time is not None:
+            elif hasattr(self, 'time') and self.time is not None and hasattr(self.time,'len'):
                 self.shape += [len(self.time)]
             self.size =np.prod(self.shape)
             return
@@ -1796,6 +1796,32 @@ class data(object):
         """
 
         return [[np.min(self.x)-pad, np.max(self.x)+pad], [np.min(self.y)-pad, np.max(self.y)+pad]]
+
+    def boundary(self, type='image'):
+        """
+        Return the coordinates of a polygon bounding self.
+
+        Parameters
+        ----------
+        type : str, optional
+            if 'image', return the boundary of the image, if 'coords', return the
+            boundary of the coordinates. The default is 'image'.
+
+        Returns
+        -------
+        numpy.array
+            x coordinates of the polygon.
+        numpy.array
+            y coordinates of the polygon.
+
+        """
+        if type=='image':
+            XR, YR = np.array(self.img_extent).reshape(2,2)
+        elif type=='coords':
+            XR, YR = np.array(self.extent).reshape(2,2)
+        return  XR[[0, 0, 1, 1, 0]], \
+                YR[[0, 1, 1, 0, 0]]
+
 
     def replace_invalid(self, fields=None, fill_value=np.nan):
         """Replace invalid values within a field with a new fill_value."""
