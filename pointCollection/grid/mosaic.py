@@ -178,7 +178,7 @@ class mosaic(data):
         for field in these_fields:
             self.assign({field:np.zeros(self.dimensions[0:self.field_dims[field]])})
         self.invalid = np.ones(self.dimensions,dtype=bool)
-
+        self.__update_size_and_shape__()
 
 
     def replace(self, item, group=None, fields=None):

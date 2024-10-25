@@ -127,6 +127,10 @@ class data(object):
 
     def __update_size_and_shape__(self):
         """Update the size and shape parameters of the object to match that of its data fields."""
+        if hasattr(self, 'dimensions') and self.dimensions is not None and self.dimensions[0] is not None:
+            self.shape=self.dimensions.copy()
+            self.size=np.prod(self.shape)
+            return
         if self.fields is None or len(self.fields)==0:
             self.shape=[len(self.y), len(self.x)]
             if hasattr(self, 't') and self.t is not None and hasattr(self.t,'len'):

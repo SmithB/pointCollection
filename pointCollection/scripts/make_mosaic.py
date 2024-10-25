@@ -47,7 +47,7 @@ import matplotlib.pyplot as plt
 import pointCollection as pc
 
 import sys
-def main(argv):
+def main():
     """
     Create a weighted mosaic from a series of tiles
     """
@@ -55,6 +55,8 @@ def main(argv):
     # account for a bug in argparse that misinterprets negative arguments
     # this bug may be fixed in some versions of argparse
     # but this should keep compatibility
+    argv=sys.argv
+
     for i, arg in enumerate(argv):
         if (arg[0] == '-') and arg[1].isdigit(): argv[i] = ' ' + arg
 
@@ -225,4 +227,4 @@ def main(argv):
         plt.show()
 
 if __name__=='__main__':
-    main(sys.argv)
+    main()
