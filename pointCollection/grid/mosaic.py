@@ -132,6 +132,8 @@ class mosaic(data):
                         self.update_bounds(temp)
                         if self.spacing[0] is None:
                             self.update_spacing(temp)
+                    else:
+                        in_list.remove(item)
                 except Exception:
                     print(f"failed to read group {group} "+ str(item))
                     in_list.remove(item)
@@ -143,6 +145,9 @@ class mosaic(data):
                     if self.spacing[0] is None:
                         self.update_spacing(item)
                     temp=item
+                else:
+                    in_list.remove(item)
+
         self.update_dimensions(temp)
         self.__update_extent__()
         self.__update_size_and_shape__()
