@@ -1715,6 +1715,7 @@ class data(object):
             kwargs['vmax']=LH[1]
 
         h_im = ax.imshow(zz, **kwargs)
+        plt.sci(h_im)
         return h_im
 
     def interp(self, x, y, t=None, gridded=False, band=None, field='z', replace=False):

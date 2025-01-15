@@ -79,7 +79,7 @@ class data(object):
         self.filename=filename
         if data_dict is not None:
             self.assign(data_dict)
-
+        self.attrs={}
     def __repr__(self):
         out=f"{self.__class__} with shape {self.shape},"+"\n"
         out += "with fields:"+"\n"
@@ -157,7 +157,7 @@ class data(object):
             coordinate system to be passed to proj4.
 
         '''
-        if len(args)>0:
+        if len(args)>0 and args[0] is not None:
             return args[0]
 
         if SRS_proj4 is not None:
@@ -187,7 +187,10 @@ class data(object):
         """
         out=data()
         for field in ['fields', 'SRS_proj4', 'EPSG', 'columns']:
-            temp=getattr(self, field)
+            try:
+                temp=getattr(self, field)
+            except AttributeError:
+                continue
             if temp is not None:
                 try:
                     setattr(out, field, temp.copy())
@@ -371,13 +374,23 @@ class data(object):
             Current object with updated x and y fields
         '''
         crs=self.choose_crs(*args,**kwargs)
-        if hasattr(pyproj, 'proj'):
-            xy=np.array(pyproj.proj.Proj(crs)(self.longitude, self.latitude))
-        else:
-            if isinstance(crs, int):
-                xy=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.longitude, self.latitude))
+
+
+        try:
+            # this is compatible with pyproj 3.7.0
+            # Note that EPSG:4326 takes latitude first
+            xy=np.array(
+                pyproj.Transformer.from_crs(pyproj.CRS(4326), pyproj.CRS(crs))\
+                    .transform(self.latitude, self.longitude)
+                )
+        except Exception:
+            if hasattr(pyproj, 'proj'):
+                xy=np.array(pyproj.proj.Proj(crs)(self.longitude, self.latitude))
             else:
-                xy=np.array(pyproj.Proj(crs)(self.longitude, self.latitude))
+                if isinstance(crs, int):
+                    xy=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.longitude, self.latitude))
+                else:
+                    xy=np.array(pyproj.Proj(crs)(self.longitude, self.latitude))
         self.x=xy[0,:].reshape(self.shape)
         self.y=xy[1,:].reshape(self.shape)
         if 'x' not in self.fields:
@@ -405,16 +418,23 @@ class data(object):
 
         '''
         crs=self.choose_crs(*args,**kwargs)
-
-        if hasattr(pyproj, 'proj'):
-            lonlat=np.array(pyproj.proj.Proj(crs)(self.x, self.y, inverse=True))
-        else:
-            if isinstance(crs, int):
-                lonlat=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.x, self.y))
+        try:
+            # Compatible with pyproj 3.7.0
+            # Note that EPSG:4326 takes latitude first
+            latlon = np.array(pyproj.Transformer.from_crs(pyproj.CRS(crs),
+                                                 pyproj.CRS(4326)).transform(self.x, self.y))
+            self.assign({"longitude":latlon[1,:].reshape(self.shape),\
+                         "latitude":latlon[0,:].reshape(self.shape)})
+        except Exception:
+            if hasattr(pyproj, 'proj'):
+                lonlat=np.array(pyproj.proj.Proj(crs)(self.x, self.y, inverse=True))
             else:
-                lonlat=np.array(pyproj.Proj(crs)(self.x, self.y))
-        self.assign({"longitude":lonlat[0,:].reshape(self.shape), \
-                     "latitude":lonlat[1,:].reshape(self.shape)})
+                if isinstance(crs, int):
+                    lonlat=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.x, self.y))
+                else:
+                    lonlat=np.array(pyproj.Proj(crs)(self.x, self.y))
+            self.assign({"longitude":lonlat[0,:].reshape(self.shape), \
+                                 "latitude":lonlat[1,:].reshape(self.shape)})
         return self
 
     def from_dict(self, dd, fields=None):
@@ -815,6 +835,15 @@ class data(object):
                 for key, val in meta_dict[out_field].items():
                     if key.lower() not in ['group','source_field','precision','dimensions','coordinate']:
                         h5f_out[out_field].attrs[key]=str(val).encode('utf-8')
+
+        for key, val in self.attrs.items():
+            if val is not None:
+                h5f_out[group].attrs[key]=val
+
+        for key in ['EPSG','SRS_proj4']:
+            val=getattr(self, key)
+            if val is not None:
+                h5f_out[group].attrs[key] = val
         h5f_out.close()
 
     def append_to_h5(self, file, group='/', ind_fields=['x','y','time']):
