@@ -49,9 +49,11 @@ def datetime_from_meta(filename):
     thedir, thefile=os.path.split(filename)
     theparent = os.path.dirname(thedir)
     try:
-        res=re.compile('_(\d+m)_').search(thefile).group(1)
+        res=re.compile(r'_(\d+m)_').search(thefile).group(1)
         glob_str = thefile.replace(res,'*')
         glob_str=glob_str.replace('_dem_filt.tif','.json')
+        if not glob_str.endswith('json'):
+            return None
         temp=glob.glob(os.path.join(thedir, glob_str))
         if len(temp)==0:
             temp=glob.glob(os.path.join(thedir,'meta', glob_str))
@@ -63,6 +65,6 @@ def datetime_from_meta(filename):
             thestr=json.load(fh)['properties']['datetime']
         return datetime.strptime(thestr,'%Y-%m-%dT%H:%M:%SZ')
     except Exception as e:
-        print("DEM_date: exception thrown:")
+        print(f"DEM_date for {filename}: exception thrown:")
         print(e)
         return None
