@@ -52,21 +52,42 @@ class data(object):
         self.interpolator={}
         self.nan_interpolator={}
         self.fill_value=fill_value
-        self.time=None
-        self.t=None
         self.size=None
         self.shape=None
         self.t_axis=t_axis
         self.xform=None
         self.srs_epsg=None
         self.srs_proj4=None
+        self._time=None
+        self._spacing=[None, None]
         if fields is None:
             self.fields=list()
         else:
             self.fields=fields
         for field in self.fields:
             setattr(self, field, None)
-
+    # Properties, accessible using dot syntax
+    @property
+    def spacing(self):
+        try:
+            return [self.x[1]-self.x[0], self.y[1]-self.y[0]]
+        except Exception:
+            return [None, None]
+    @spacing.setter
+    def spacing(self, val):
+        return
+    @property
+    def t(self):
+        return self._time
+    @t.setter
+    def t(self, value):
+        self._time = value
+    @property
+    def time(self):
+        return self._time
+    @time.setter
+    def time(self, value):
+        self._time=value
     def __copy__(self, fields=None):
         """Return a copy of a grid, optionally with a subset of fields."""
         if fields is None:
@@ -194,9 +215,13 @@ class data(object):
         Parameters
         ----------
         thedict: dict
-            Dictionary of spatial grid variables
+            Dictionary of spatial grid variables, should contain fields 'x','y',
+            and optionally 'time' or 't'
         """
         for field in thedict:
+            if field in ['t','time']:
+                self._time = thedict[field]
+            else:
                 setattr(self, field, thedict[field])
                 if field not in self.fields and field not in ['x','y','time', 't']:
                     self.fields.append(field)
@@ -213,10 +238,52 @@ class data(object):
         if len(kwargs) > 0:
             newdata |= kwargs
         for field in newdata.keys():
-            setattr(self, field, newdata[field])
-            if field not in self.fields:
-                self.fields.append(field)
+            if field in ['t','time']:
+                self._time=newdata[field]
+            else:
+                setattr(self, field, newdata[field])
+                if field not in self.fields and field not in ['x','y','time','t']:
+                    self.fields.append(field)
         return self
+
+
+    def bounds_and_spacing_for_list(self, D_list, spacing_from='last'):
+        xmin,xmax,ymin,ymax = [np.inf,-np.inf,np.inf,-np.inf]
+        spacing = [None]*2
+        nt=0
+        fields=set()
+        for D in [self]+D_list:
+            if hasattr(D,'fields') and len(D.fields) > 0:
+                fields=fields.union(D.fields)
+                # get length of time dimension
+                try:
+                    ntime = D.shape[D.t_axis]
+                except:
+                    ntime = 1
+                nt += ntime
+                # get spacing
+                this_spacing=D.spacing
+                if this_spacing[0] is not None:
+                    if spacing[0] is None or spacing_from=='last':
+                        spacing =this_spacing
+                    elif spacing_from=='min':
+                        spacing = np.minumum(spacing, this_spacing)
+                    elif spacing_from=='max':
+                        spacing = np.maximum(spacing, this_spacing)
+
+                # get new extents of merged grid
+                if (D.extent[0] < xmin):
+                    xmin = np.copy(D.extent[0])
+                if (D.extent[1] > xmax):
+                    xmax = np.copy(D.extent[1])
+                if (D.extent[2] < ymin):
+                    ymin = np.copy(D.extent[2])
+                if (D.extent[3] > ymax):
+                    ymax = np.copy(D.extent[3])
+                    # convert unique fields to list
+        fields=list(fields)
+        return [xmin, xmax, ymin, ymax], spacing, nt, fields
+
 
     def from_list(self, D_list, t_axis=None, sort=False):
         """
@@ -236,43 +303,14 @@ class data(object):
         # get name of each field
         # get total number of time slices
         # get merged extent and spacing
-        if len(self.fields)==0:
-            fields=set()
-            # number of time slices
-            nt = 0
-            # calculate merged extent
-            xmin,xmax,ymin,ymax = [np.inf,-np.inf,np.inf,-np.inf]
-            spacing = [None]*2
-            for D in D_list:
-                if hasattr(D,'fields'):
-                    fields=fields.union(D.fields)
-                # get length of time dimension
-                try:
-                    ntime = D.shape[D.t_axis]
-                except:
-                    nt += 1
-                else:
-                    nt += ntime
-                # get spacing
-                spacing[0] = D.x[1] - D.x[0]
-                spacing[1] = D.y[1] - D.y[0]
-                # get new extents of merged grid
-                if (D.extent[0] < xmin):
-                    xmin = np.copy(D.extent[0])
-                if (D.extent[1] > xmax):
-                    xmax = np.copy(D.extent[1])
-                if (D.extent[2] < ymin):
-                    ymin = np.copy(D.extent[2])
-                if (D.extent[3] > ymax):
-                    ymax = np.copy(D.extent[3])
-            # convert unique fields to list
-            self.fields=list(fields)
+        [xmin, xmax, ymin, ymax], spacing, nt, fields = self.bounds_and_spacing_for_list(D_list)
+        self.fields=list(fields)
         # calculate x and y dimensions with new extents
         nx = np.int64((xmax - xmin)/spacing[0]) + 1
         ny = np.int64((ymax - ymin)/spacing[1]) + 1
         # calculate x and y arrays
-        self.x = np.linspace(xmin,xmax,nx)
-        self.y = np.linspace(ymin,ymax,ny)
+        self.x = np.arange(xmin, xmax+0.1*spacing[0], spacing[0])
+        self.y = np.arange(ymin, ymax+0.1*spacing[1], spacing[1])
         # try to extract times
         time = np.zeros((nt))
         i = 0
@@ -305,21 +343,29 @@ class data(object):
             # for each object
             for D in D_list:
                 try:
-                    # calculate grid coordinates for merging fields
-                    iy = np.array((D.y[:,None]-ymin)/spacing[1],dtype=int)
-                    ix = np.array((D.x[None,:]-xmin)/spacing[0],dtype=int)
                     # number of time steps in field
                     try:
                         ntime = D.shape[D.t_axis]
                     except:
                         ntime = 1
                     # create temporary field with merged x/y dimensions
-                    if (D.t_axis == 0):
-                        temp = np.zeros((ntime,ny,nx))
-                        temp[:,iy,ix] = getattr(D,field)
-                    elif (D.t_axis == 2) or (len(D.shape) == 2):
-                        temp = np.zeros((ny,nx,ntime))
-                        temp[iy,ix,:] = np.atleast_3d(getattr(D,field))
+                    try:
+                        assert(np.all(np.array(self.spacing)==np.array(D.spacing)))
+                        # calculate grid coordinates for merging fields
+                        iy = np.array((D.y[:,None]-ymin)/spacing[1],dtype=int)
+                        ix = np.array((D.x[None,:]-xmin)/spacing[0],dtype=int)
+                        if (D.t_axis == 0):
+                            temp = np.zeros((ntime,ny,nx))
+                            temp[:,iy,ix] = getattr(D,field)
+                        elif (D.t_axis == 2) or (len(D.shape) == 2):
+                            temp = np.zeros((ny,nx,ntime))
+                            temp[iy,ix,:] = np.atleast_3d(getattr(D,field))
+                    except AssertionError:
+                        if D.t is not None:
+                            temp = np.atleast_3d(
+                                D.interp(self.x, self.y, np.atleast_1d(D.t), field=field, gridded=True))
+                        else:
+                            temp = np.atleast_3d(D.interp(self.x, self.y, field=field, gridded=True))
                     # merge fields
                     if (t_axis == 0) and (D.t_axis == 0):
                         data_field[i:i+ntime,:,:] = temp[:]
@@ -331,8 +377,9 @@ class data(object):
                         data_field[:,:,i:i+ntime] = np.transpose(temp[:],axes=(1,2,0))
                     # add to counter
                     i += ntime
-                except AttributeError:
+                except (AttributeError, AssertionError):
                     print(f"Problem with field {field}")
+
             # sort data in field
             if sort and (t_axis == 0):
                 data_field = data_field[isort,:,:]
@@ -1485,7 +1532,21 @@ class data(object):
         return self
 
     def normalize(self, field='z', z0=[0., 255.], z1=[0., 1.], truncate=True, dtype=np.float64):
-        """Normalize the z range of a grid object."""
+        """Normalize the range of a field.
+
+        Parameters
+        ------------
+        field: str
+           Field to be normalized
+        z0: iterable, 2 values, defaut is [0, 255]
+            minimum and maximum value in the input
+        z1: iterable, 2 values, default is [0, 1]
+            minimum and maximum value in the output
+        truncate: bool
+            If true, the output is clipped to the values of z1.  Otherwise, the linear relationship between z0 and z1 will be extrapolated
+        dtype: dtype.  default is numpy.float64
+            datatype of the output
+        """
         getattr(self, field)[:] = (getattr(self, field).astype(np.float64)-z0[0])/(z0[1]-z0[0])*(z1[1]-z1[0])+z1[0]
         if truncate:
             getattr(self, field)[getattr(self, field) < z1[0]] = z1[0]
@@ -1494,7 +1555,10 @@ class data(object):
         return self
 
     def normalized(self, **kwargs):
-        """Return a normalized copy."""
+        """Return a normalized copy.
+
+        See documentation for pointCollection.grid.normalize
+        """
         return self.copy().normalize(**kwargs)
 
     def calc_gradient(self, field='z', band=0):
@@ -1715,7 +1779,10 @@ class data(object):
             kwargs['vmax']=LH[1]
 
         h_im = ax.imshow(zz, **kwargs)
-        plt.sci(h_im)
+        try:
+            plt.sci(h_im)
+        except Exception:
+            pass
         return h_im
 
     def interp(self, x, y, t=None, gridded=False, band=None, field='z', replace=False):
@@ -1849,9 +1916,20 @@ class data(object):
             dim = self.t_axis if len(getattr(self,field).shape)>2 else None
             getattr(self, field)[:]=fill_edges(getattr(self, field), w_smooth=w_smooth, dim=dim)
 
-    def rasterize_poly(self, in_geom, field='z', burn_value=1, raster_epsg=None, poly_epsg=None):
+    def rasterize_poly(self, in_geom, field='z', burn_value=1, epsg=1024, raster_epsg=None, poly_epsg=None):
         """Rasterize a shapely polygon"""
-        from osgeo import ogr
+
+        # use whatever epsgs are specified, if none, use epsg 1024 (generic xy cartesian)
+        if raster_epsg is None:
+            if self.srs_epsg is not None:
+                raster_epsg = self.srs_epsg
+            if poly_epsg is not None:
+                raster_epsg = poly_epsg
+            else:
+                raster_epsg = epsg
+        if poly_epsg is None:
+            poly_epsg=raster_epsg
+
         mask_ds=self.to_gdal(srs_epsg=raster_epsg, field=field)
         shpDriver = ogr.GetDriverByName("memory")
 
