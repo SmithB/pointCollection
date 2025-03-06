@@ -61,7 +61,7 @@ This creates a pointCollection.data instance with fields 'x','y', and 'z', and w
 
 ```python
 print(D.z)
---[0 1 2 3 4]
+--[ 0  1  4  9 16]
 ```
 
 All the fields in the object can also be indexed by applying standard Python slicing/indexing syntax to the object; for example:
