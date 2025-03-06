@@ -24,9 +24,9 @@ This package is designed to allow efficient reading and writing of geospatial da
 ## Requirement
 
 You will need to have gdal installed in your account before you try to install pointCollection.  This is quite straightforward in conda / mamba:
-'''bash
+```bash
 mamba install gdal
-'''
+```
 If you're not using conda / mamba, this may turn out to be much more difficult!
 
 ## Installation
