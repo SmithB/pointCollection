@@ -31,6 +31,7 @@ dependencies = [
     "numpy",
     "pyproj",
     "scipy>=1.10.1",
+    "shapely"
 ]
 
 classifiers=[

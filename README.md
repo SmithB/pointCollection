@@ -21,6 +21,14 @@ This package is designed to allow efficient reading and writing of geospatial da
 
 - IndexedH5 data format: In this format point data are stored so that spatailly adjacent data stored in contiguous blocks within the file.  This can greatly improve the efficiency of data reads from the file.
 
+## Requirement
+
+You will need to have gdal installed in your account before you try to install pointCollection.  This is quite straightforward in conda / mamba:
+```bash
+mamba install gdal
+```
+If you're not using conda / mamba, this may turn out to be much more difficult!
+
 ## Installation
 
 An efficient way to add pointCollection to your python environment is to clone the repository, change into the repository directory, and install the package with pip:
@@ -53,7 +61,7 @@ This creates a pointCollection.data instance with fields 'x','y', and 'z', and w
 
 ```python
 print(D.z)
---[0 1 2 3 4]
+--[ 0  1  4  9 16]
 ```
 
 All the fields in the object can also be indexed by applying standard Python slicing/indexing syntax to the object; for example:
