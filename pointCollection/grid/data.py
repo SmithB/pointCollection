@@ -72,9 +72,10 @@ class data(object):
         try:
             return [self.x[1]-self.x[0], self.y[1]-self.y[0]]
         except Exception:
-            return [None, None]
+            return self._spacing
     @spacing.setter
     def spacing(self, val):
+        self._spacing=val
         return
     @property
     def t(self):
@@ -377,8 +378,8 @@ class data(object):
                         data_field[:,:,i:i+ntime] = np.transpose(temp[:],axes=(1,2,0))
                     # add to counter
                     i += ntime
-                except (AttributeError, AssertionError):
-                    print(f"Problem with field {field}")
+                except (AttributeError, AssertionError) as e:
+                    print(f"Problem with field {field}:\n{e}")
 
             # sort data in field
             if sort and (t_axis == 0):
