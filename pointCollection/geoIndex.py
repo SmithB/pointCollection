@@ -12,7 +12,7 @@ Coordinates below are always provided as tuples or lists, the first member of wh
 import numpy as np
 import re
 import h5py
-from osgeo import osr
+#from osgeo import osr
 #import matplotlib.pyplot as plt
 import pointCollection as pc
 import os
@@ -110,15 +110,19 @@ class geoIndex(dict):
         return self
 
     def from_latlon(self, lat, lon,  filename=None, file_type=None, number=0, fake_offset_val=None):
-        out_srs=osr.SpatialReference()
-        out_srs.ImportFromProj4(self.attrs['SRS_proj4'])
-        ll_srs=osr.SpatialReference()
-        ll_srs.ImportFromEPSG(4326)
-        if hasattr(osr,'OAMS_TRADITIONAL_GIS_ORDER'):
-            ll_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-        ct=osr.CoordinateTransformation(ll_srs, out_srs).TransformPoint
+
+        temp=pc.data().from_dict({'latitude':lat,'longitude':lon}).get_xy(SRS_proj4=self.attrs['SRS_proj4'])
+        x=temp.x
+        y=temp.y
+        #out_srs=osr.SpatialReference()
+        #out_srs.ImportFromProj4(self.attrs['SRS_proj4'])
+        #ll_srs=osr.SpatialReference()
+        #ll_srs.ImportFromEPSG(4326)
+        #if hasattr(osr,'OAMS_TRADITIONAL_GIS_ORDER'):
+        #    ll_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        #ct=osr.CoordinateTransformation(ll_srs, out_srs).TransformPoint
         #xy=[ct(*xyz)[0:2] for xyz in zip(np.ravel(lon), np.ravel(lat), np.zeros_like(lat).ravel())]
-        x, y, z = list(zip(*[ct(*xy) for xy in zip(np.ravel(lon), np.ravel(lat), np.zeros_like(lat).ravel())]))
+        #x, y, z = list(zip(*[ct(*xy) for xy in zip(np.ravel(lon), np.ravel(lat), np.zeros_like(lat).ravel())]))
         return self.from_xy([np.array(x),np.array(y)], filename, file_type, number, fake_offset_val)
 
     def from_list(self, index_list, dir_root=''):
@@ -376,14 +380,17 @@ class geoIndex(dict):
         query the current geoIndex for all bins that match the bin locations
         provided in (lat, lon),  Optionally return data, with field query in 'fields'
         """
-        out_srs=osr.SpatialReference()
-        out_srs.ImportFromProj4(self.attribs['SRS_proj4'])
-        ll_srs=osr.SpatialReference()
-        ll_srs.ImportFromEPSG(4326)
-        if hasattr(osr,'OAMS_TRADITIONAL_GIS_ORDER'):
-            ll_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-        ct=osr.CoordinateTransformation(ll_srs, out_srs)
-        x, y = list(zip(*[ct.TransformPoint(xy) for xy in zip(np.ravel(lon), np.ravel(lat))]))
+        #out_srs=osr.SpatialReference()
+        #out_srs.ImportFromProj4(self.attribs['SRS_proj4'])
+        #ll_srs=osr.SpatialReference()
+        #ll_srs.ImportFromEPSG(4326)
+        #if hasattr(osr,'OAMS_TRADITIONAL_GIS_ORDER'):
+        #    ll_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        #ct=osr.CoordinateTransformation(ll_srs, out_srs)
+        #x, y = list(zip(*[ct.TransformPoint(xy) for xy in zip(np.ravel(lon), np.ravel(lat))]))
+        temp=pc.data().from_dict({'latitude':lat,'longitude':lon}).get_xy(SRS_proj4=self.attrs['SRS_proj4'])
+        x=temp.x
+        y=temp.y
         delta=self.attribs['delta']
         xb=np.round(x/delta[0])*delta[0]
         yb=np.round(y/delta[1])*delta[1]
@@ -699,15 +706,18 @@ class geoIndex(dict):
 
     def bin_latlon(self):
         xy_bin=self.bins_as_array()
-        internal_srs=osr.SpatialReference()
-        internal_srs.ImportFromProj4(self.attrs['SRS_proj4'])
-        ll_srs=osr.SpatialReference()
-        ll_srs.ImportFromEPSG(4326)
-        if hasattr(osr,'OAMS_TRADITIONAL_GIS_ORDER'):
-            ll_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-        ct=osr.CoordinateTransformation( internal_srs, ll_srs)
-        lon, lat, z0 = list(zip(*[ct.TransformPoint(*xy) for xy in zip(np.ravel(xy_bin[:,0]), np.ravel(xy_bin[:,1]), np.ravel(np.zeros_like(xy_bin[:,1])))]))
-        return (lat, lon)
+        temp=pc.data().from_dict({'x':xy_bin[:,0],'y':xy_bin[:,1]}).get_latlon(SRS_proj4=self.attrs['SRS_proj4'])
+
+        #internal_srs=osr.SpatialReference()
+        #internal_srs.ImportFromProj4(self.attrs['SRS_proj4'])
+        #ll_srs=osr.SpatialReference()
+        #ll_srs.ImportFromEPSG(4326)
+        #if hasattr(osr,'OAMS_TRADITIONAL_GIS_ORDER'):
+        #    ll_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        #ct=osr.CoordinateTransformation( internal_srs, ll_srs)
+        #lon, lat, z0 = list(zip(*[ct.TransformPoint(*xy) for xy in zip(np.ravel(xy_bin[:,0]), np.ravel(xy_bin[:,1]), np.ravel(np.zeros_like(xy_bin[:,1])))]))
+        #return (lat, lon)
+        return (temp.latitude, temp.longitude)
 
     def keys_from_xy(self, xy):
         pts=unique_points((xy[0].ravel(), xy[1].ravel()), delta=self.attrs['delta'])
