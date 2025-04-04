@@ -10,7 +10,7 @@ History
 
 
 # PURPOSE: convert heights between reference frames
-def convert_ITRF(lon, lat, z, tdec, epochs=[2014, 2020], direction='inverse'):
+def convert_ITRF(lon, lat, z, tdec, epochs=[2014, 2020], direction='forward'):
     """Converts height data between ITRF2014 and ITRF2020
 
     Parameters
