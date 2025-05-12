@@ -1235,12 +1235,16 @@ class data(object):
                 h5f[group].attrs['xform_basis_vectors']=self.xform['basis_vectors']
 
 
-    def to_nc(self, out_file, fields=None, group='', replace=False, nocompression=False, attributes={}, fill_value=None, **kwargs):
+    def to_nc(self, out_file, fields=None, group='', replace=False, nocompression=False,
+              attributes={}, fill_value=None, **kwargs):
         """Write a grid data object to a netCDF4 file."""
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
         kwargs.setdefault('srs_epsg', None)
         kwargs.setdefault('grid_mapping_name', 'crs')
+        kwargs.setdefault('xy_units', 'meter')
+        kwargs.setdefault('t_units', None)
+
         # check whether overwriting existing files
         # append to existing files as default
         mode = 'w' if replace else 'a'
@@ -1292,7 +1296,11 @@ class data(object):
                     var = getattr(self, field)
                     if var is not None:
                         ncf.createDimension(field, len(np.atleast_1d(var)))
-                        _ = ncf.createVariable(field, var.dtype, (field,))
+                        this_var = ncf.createVariable(field, var.dtype, (field,))
+                        if field in ['x','y']:
+                            this_var.units = kwargs['xy_units']
+                        if field in ['t','time'] and kwargs['t_units'] is not None:
+                            this_var.units = kwargs['t_units']
                         ncf.variables[field][:] = var
             for field in fields:
                 if (self.t_axis == 2) and t_name is not None:
