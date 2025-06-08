@@ -962,7 +962,9 @@ class data(object):
             with gzip.open(nc_file) as fd:
                 return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
 
-    def from_nc(self, nc_file, field_mapping=None, group='', fields=None,
+    def from_nc(self, nc_file, field_mapping=None, group='',
+                fields=None,
+                field=None,
         xname='x', yname='y', timename='time', bounds=None, t_range=None,
         bands=None, skip=1,
         fill_value=None,
@@ -981,6 +983,8 @@ class data(object):
             netCDF4 group to read variables
         fields: list or NoneType, default None
             Fields to read from the netCDF4 file
+        field: string, default None
+            Field to be read from the netCDF4 file
         xname: str, default 'x'
             x-coordinate variable to read from the netCDF4 file
         yname: str, default 'y'
@@ -1022,6 +1026,9 @@ class data(object):
             self.fill_value = fill_value
         if meta_only:
             fields=[]
+
+        if fields is None and field is not None:
+            fields=[field]
 
         if field_mapping is None:
             field_mapping={}
@@ -1429,7 +1436,22 @@ class data(object):
         return out_ds
 
     def as_points(self, fields=None, keep_all=False):
-        """Return a pointCollection.data object containing the points in the grid."""
+        """Return a pointCollection.data object containing the points in the grid.
+
+        Parameters:
+        ----------
+        fields: iterable of strings, default None
+            Specifies fields to include, if None, all fields are included
+        keep_all: boolean, default is False
+            If True, invalid and valid points are included in the output,
+            if False, only valid points are included
+
+        Returns:
+        -------
+            pointCollection.data
+                Object containing coordinates and field values from the grid
+                object
+        """
         if fields is None:
             fields=self.fields
 
@@ -1577,7 +1599,10 @@ class data(object):
         Parameters
         ----------
         field : str, optional
-            DESCRIPTION. The default is 'z'.
+            Field for which the gradient is calculated. The default is 'z'.
+        band: int, The default is 0
+            Band for which the gradient is calculated
+
 
         Returns
         -------
@@ -1595,7 +1620,7 @@ class data(object):
         self.assign({field+'_x':gx, field+'_y':gy})
 
     def toRGB(self, cmap=None, field='z', bands=None, caxis=None, alpha=None):
-        """Convert a field to RGB."""
+        """Convert a field to RGB based on a colormap"""
         if bands is not None:
             if self.t_axis==0:
                 setattr(self, field, getattr(self, field)[bands,:,:])
@@ -1618,8 +1643,8 @@ class data(object):
 
         Parameters
         ----------
-        row_ind, col_ind, band_ind : bool, iterable of ints, or slice
-            variables with which to slide self, band_ind is optional
+        row_ind, col_ind, band : bool, iterable of ints, or slice
+            variables with which to slice self, band_ind is optional
         fields : iterable, optional
             fields to include in the output. The default is None.
 
@@ -1627,7 +1652,7 @@ class data(object):
         Returns
         -------
         pointCollection.grid.data
-            indexed array
+            indexed structure
 
         """
 
