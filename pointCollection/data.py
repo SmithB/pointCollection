@@ -949,6 +949,9 @@ class data(object):
         XR, YR: minimum and maximum of x and y
 
         """
+        if len(self.x)==0:
+            return None, None
+
         return np.array([np.nanmin(self.x)-pad, np.nanmax(self.x)+pad]), \
                 np.array([np.nanmin(self.y)-pad, np.nanmax(self.y)+pad])
 
