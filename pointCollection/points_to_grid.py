@@ -78,8 +78,8 @@ def points_to_grid(D_pt, res=None, grid=None, field='z', background=np.nan):
         zg=grid.z.copy()
     c=((x-XR[0])/res).astype(int)
     r=((y-YR[0])/res).astype(int)
-    ii = (c>0) & (c<zg.shape[1])
-    ii &=  (r>0) & (r<zg.shape[0])
+    ii = (c>=0) & (c<zg.shape[1])
+    ii &=  (r>=0) & (r<zg.shape[0])
     zg[tuple(np.c_[r[ii].ravel(), c[ii].ravel()].T)]=\
         getattr(D_pt, field)[ii].ravel()
     grid.assign({'z':zg})
