@@ -76,8 +76,8 @@ def make_queue(index_file, queue_file, tile_W=2.e5, file_type='data', verbose=Fa
                 print("make_tiles--adding to queue: \n \t "+this_str)
             qh.write(this_str+'\n')
 
-def main(argv):
-
+def main():
+    argv = sys.argv
     # account for a bug in argparse that misinterprets negative agruents
     for i, arg in enumerate(argv):
         if (arg[0] == '-') and arg[1].isdigit(): argv[i] = ' ' + arg
@@ -126,4 +126,5 @@ def main(argv):
                    verbose=args.verbose)
 
 if __name__=='__main__':
-    main(sys.argv)
+    main()
+#    main(sys.argv)
