@@ -35,7 +35,7 @@ def from_text(self, thefile, EPSG=None, format='csv'):
                     last_comment=line
                     if 'ITRF' in line[-1]:
                         ITRF=ITRF_re.search(line[-1]).group(1)
-            else:
+                else:
                    lines += [[*map(float, line)]]
     except Exception:
         format='ssv'

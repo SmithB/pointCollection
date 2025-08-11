@@ -218,9 +218,9 @@ class mosaic(data):
             except IndexError as e:
                 thestr = f"problem with field {field}"
                 if isinstance(item, str):
-                    thestr += "in group {group} in file {item}"
+                    thestr += f" in group {group} in file {item}"
                 else:
-                    thestr += "in item {in_list.index(item))}"
+                    thestr += f" in item {in_list[in_list.index(item)]}"
                 print(thestr)
                 raise(e)
 

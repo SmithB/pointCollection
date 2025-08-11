@@ -1666,6 +1666,7 @@ class data(object):
             for field in ['t','time']:
                 try:
                     setattr(self, field, getattr(self, field)[band_ind])
+                    break
                 except:
                     pass
         for field in fields:
