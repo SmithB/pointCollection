@@ -56,6 +56,9 @@ class data(pc.data):
             elif temp.size==rows:
                 if temp.ndim==1:
                         temp.shape=(rows,1)
+                # BUGFIX: don't tile empty fields that already have the right number of columns
+                if temp.size==0 and np.max(temp.shape)==cols:
+                    continue
                 setattr(self, field, np.tile(temp, [1, cols]))
         self.__update_size_and_shape__()
         
