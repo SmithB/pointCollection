@@ -9,19 +9,24 @@ Created on Tue May  6 21:11:44 2025
 import numpy as np
 import pointCollection as pc
 import scipy.ndimage as snd
-def blend(inputs, dst=None, group=None, field=None, erode=[], feather=None):
-    
+def blend(inputs, dst=None, inplace=False, group=None, field='z', erode=[], feather=None):
+
+    if dst is None:
+        dst=inputs[0].copy_meta()
+
     temp=dst.copy_meta()
     temp.assign(zw=np.zeros(temp.shape), w=np.zeros(temp.shape))
     dx=dst.x[1]-dst.x[0]
 
-    if len(erode) > 0:
+    if erode is not None:
         N_erode = np.ceil(np.array(erode)/dx)
     else:
         N_erode=0
 
     if np.isscalar(N_erode) or len(N_erode)==1:
         N_erode=np.zeros(len(inputs))+N_erode
+
+    print(N_erode)
 
     if feather is not None:
         N_feather = np.ceil(feather/dx)
@@ -32,11 +37,12 @@ def blend(inputs, dst=None, group=None, field=None, erode=[], feather=None):
             this = pc.grid.data().from_file(jj, group=group, field_dict={'z':field})
         else:
             this = jj
-        this_z = this.interp(dst.x, dst.y, gridded=True)
+        this_z = this.interp(dst.x, dst.y, field=field, gridded=True)
         mask=np.isfinite(this_z)
+
         if N_erode[count] > 0:
-            mask=snd.binary_erosion(mask, N_erode[count])
-            
+            mask=snd.binary_erosion(mask, np.ones(np.array([N_erode[count], N_erode[count]]).astype(int)))
+
         if feather is not None:
             wt = snd.distance_transform_edt(mask)
             # check this!
@@ -45,7 +51,11 @@ def blend(inputs, dst=None, group=None, field=None, erode=[], feather=None):
             wt=mask.astype(float)
         temp.zw += np.nan_to_num(this_z)*wt
         temp.w += wt
-    dst.assign(z=np.zeros(dst.shape)+np.nan)
+    temp.assign(z=np.zeros(dst.shape)+np.nan)
     nz=temp.w>0
-    dst.z[nz] = temp.zw[nz] / temp.w[nz]
-    return dst
+    temp.z[nz] = temp.zw[nz] / temp.w[nz]
+    dst.assign({field:temp.z})
+    if inplace:
+        return
+    else:
+        return dst
