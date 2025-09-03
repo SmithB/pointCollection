@@ -75,7 +75,7 @@ class geoIndex(dict):
         out.data=self.data
         return out
 
-    def from_xy(self, xy,  filename=None, file_type=None, number=0, fake_offset_val=None, first_last=None):
+    def from_xy(self, xy,  filename=None, file_type=None, number=0, bin_function=np.round, fake_offset_val=None, first_last=None):
         """
         build a geoIndex from a list of x, y points, for a specified filename
         and file_type.  If the file_type is 'geoIndex', optionally specify a
@@ -83,7 +83,7 @@ class geoIndex(dict):
         """
         delta=self.attrs['delta']
         self.filename=filename
-        xy_bin=np.round(np.c_[xy[0].ravel(), xy[1].ravel()]/delta).astype(int)
+        xy_bin = bin_function(np.c_[xy[0].ravel(), xy[1].ravel()]/delta).astype(int)
         if first_last is None:
             # If the inputs haven't provided the first and last index for each bin, need to calculate it:
             # sort by magnitude of (x,y), then by angle
