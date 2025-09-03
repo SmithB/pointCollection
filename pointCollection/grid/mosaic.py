@@ -220,7 +220,7 @@ class mosaic(data):
                 if isinstance(item, str):
                     thestr += f" in group {group} in file {item}"
                 else:
-                    thestr += f" in item {in_list[in_list.index(item)]}"
+                    thestr += f" in item {item}"
                 print(thestr)
                 raise(e)
 
@@ -296,9 +296,9 @@ class mosaic(data):
             except (IndexError, ValueError) as e:
                 thestr = f"problem with field {field}"
                 if isinstance(item, str):
-                    thestr += "in group {group} in file {item}"
+                    thestr += f"in group {group} in file {item}"
                 else:
-                    thestr += "in item {in_list.index(item))}"
+                    thestr += f"in item {item}"
                 print(thestr)
                 raise(e)
         # add weights to total weight matrix
@@ -384,14 +384,17 @@ class mosaic(data):
                 if not np.all(valid_mask):
                     temp.weight[valid_mask==0]=0
                     field_data[valid_mask==0]=0
-                getattr(self, field)[iy0, ix0, out_band] += field_data[iy1, ix1] * temp.weight[iy1,ix1]
+                if getattr(self, field).ndim==3:
+                    getattr(self, field)[iy0, ix0, out_band] += field_data[iy1, ix1] * temp.weight[iy1,ix1]
+                else:
+                    getattr(self, field)[iy0, ix0] += field_data[iy1, ix1] * temp.weight[iy1,ix1]
                 self.invalid[iy0, ix0] = False
             except (IndexError, ValueError) as e:
                 thestr = f"problem with field {field}"
                 if isinstance(item, str):
-                    thestr += "in group {group} in file {item}"
+                    thestr += f"in group {group} in file {item}"
                 else:
-                    thestr += "in item {in_list.index(item))}"
+                    thestr += f"in item {item}"
                 print(thestr)
                 raise(e)
         # add weights to total weight matrix
@@ -526,6 +529,7 @@ class mosaic(data):
                   pad=0,
                   feather=0,
                   by_band=True,
+                  verbose=False
                   ):
         """
         Generate a mosaic from a list of inputs.
@@ -582,7 +586,11 @@ class mosaic(data):
                 self.weight = np.zeros((self.dimensions[0],self.dimensions[1]))
                 # for each file in the list
                 for item in in_list:
-                   self.add(item, group=group, fields=fields, pad=pad, feather=feather)
+                    try:
+                        self.add(item, group=group, fields=fields, pad=pad, feather=feather)
+                    except Exception as e:
+                        print(f"make_mosaic.py: problem with {item}")
+                        print(e)
                 self.normalize()
         else:
             # overwrite the mosaic with each subsequent tile

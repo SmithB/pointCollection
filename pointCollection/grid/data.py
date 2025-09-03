@@ -1091,9 +1091,9 @@ class data(object):
                     out_dims=['y','x']
                 else:
                     if self.t_axis==2:
-                        out_dims=['y','x','time']
+                        out_dims=['y', 'x', timename]
                     else:
-                        out_dims=['time','y','x']
+                        out_dims=[timename,'y','x']
                 if f_field.dimensions is None:
                     f_dims = out_dims
                 else:
@@ -1235,7 +1235,8 @@ class data(object):
                 h5f[group].attrs['xform_basis_vectors']=self.xform['basis_vectors']
 
 
-    def to_nc(self, out_file, fields=None, group='', replace=False, nocompression=False,
+    def to_nc(self, out_file, fields=None, group='', replace=False, time_name='time',
+              nocompression=False,
               attributes={}, fill_value=None, **kwargs):
         """Write a grid data object to a netCDF4 file."""
         kwargs.setdefault('srs_proj4', None)
@@ -1286,7 +1287,7 @@ class data(object):
                     pass
 
             # for each dimension variable
-            for field in ['x','y','time','t']:
+            for field in ['x','y', time_name]:
                 # if field exists, overwrite it
                 if field in ncf.variables.keys() and hasattr(self, field):
                     var = getattr(self, field)
