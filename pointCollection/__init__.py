@@ -8,6 +8,7 @@ Created on Wed Oct 16 13:36:21 2019
 # base classes
 from .data import data
 from .tile import tile
+from .tilingSchema import tilingSchema
 from .geoIndex import geoIndex
 # data classes
 from pointCollection import ATM_Qfit

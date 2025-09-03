@@ -11,7 +11,7 @@ import pointCollection as pc
 import os
 import json
 
-class tiling(object):
+class tilingSchema(object):
     def __init__(self, tile_spacing=1.e5, mapping_function_name='round',
                  mapping_function=None, EPSG=None, coords=['x','y'],
                  scale=1000, format_str='E%d_N%d', extension='.h5',
