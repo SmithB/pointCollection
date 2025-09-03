@@ -86,11 +86,9 @@ class tilingSchema(object):
         if xy is None:
             xy = [data.x.ravel(), data.y.ravel()]
         if np.isscalar(xy[0]):
-            xy=[xy[0], xy[1]]
-        if not return_dict:
-            return pc.unique_by_rows(self.mapping_function(np.c_[*xy]/self.tile_spacing)*self.tile_spacing)
-        else:
-            return pc.unique_by_rows(self.mapping_function(np.c_[*xy]/self.tile_spacing)*self.tile_spacing, return_dict=True)
+            xy = [xy[0], xy[1]]
+        tile_xys = self.mapping_function( np.c_[*xy] / self.tile_spacing ) * self.tile_spacing            
+        return pc.unique_by_rows(tile_xys, return_dict=return_dict) 
 
     def tile_filename(self, xy_t):
         return os.path.join(self.directory, self.format_str % tuple([xy_t[0]/self.scale, xy_t[1]/self.scale]))+self.extension
