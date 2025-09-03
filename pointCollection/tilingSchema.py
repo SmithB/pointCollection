@@ -80,14 +80,17 @@ class tilingSchema(object):
         return self
 
     # TBD: implement latlon keyword
-    def tile_xy(self, xy=None, data=None):
+    def tile_xy(self, xy=None, data=None, return_dict=False):
         if self.mapping_function is None:
             self.set_mapping_function()
         if xy is None:
             xy = [data.x.ravel(), data.y.ravel()]
         if np.isscalar(xy[0]):
             xy=[xy[0], xy[1]]
-        return pc.unique_by_rows(self.mapping_function(np.c_[*xy]/self.tile_spacing)*self.tile_spacing)
+        if not return_dict:
+            return pc.unique_by_rows(self.mapping_function(np.c_[*xy]/self.tile_spacing)*self.tile_spacing)
+        else:
+            return pc.unique_by_rows(self.mapping_function(np.c_[*xy]/self.tile_spacing)*self.tile_spacing, return_dict=True)
 
     def tile_filename(self, xy_t):
         return os.path.join(self.directory, self.format_str % tuple([xy_t[0]/self.scale, xy_t[1]/self.scale]))+self.extension
