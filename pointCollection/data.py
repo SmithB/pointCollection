@@ -220,7 +220,15 @@ class data(object):
 
         """
         summary={}
-        table = ['field \tshape \tn_finite \tSTD \t minmax']
+
+        strlen = len('field')
+        for field in self.fields:
+            strlen = np.maximum(len(field), strlen)
+        strlen += 1
+        fmt = '%'+str(strlen)+'s'
+
+        table = [fmt %'field'+' \tshape \tn_finite \tSTD \t minmax']
+
         for field in self.fields:
             ff=getattr(self, field)
             finfo={'shape':ff.shape,
@@ -228,7 +236,7 @@ class data(object):
                             'std':np.nanstd(ff),
                             'minmax':[np.nanmin(ff), np.nanmax(ff)]}
 
-            table += [f'{field}\t{finfo["shape"]}\t{finfo["n_finite"]}\t{finfo["std"]:0.2e}\t{finfo["minmax"][0]:0.2e} {finfo["minmax"][1]:0.2e}']
+            table += [fmt % field +f' \t{finfo["shape"]}\t{finfo["n_finite"]}\t{finfo["std"]:0.2e}\t{finfo["minmax"][0]:0.2e} {finfo["minmax"][1]:0.2e}']
             summary[field] = finfo
         out=[]
         if return_dict:
