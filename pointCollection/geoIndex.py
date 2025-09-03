@@ -278,21 +278,24 @@ class geoIndex(dict):
                                 from_xy([np.nanmean(D.x, axis=1), np.nanmean(D.y, axis=1)],
                                         '%s:pair%d' % (filename_out, beam_pair), 'ATL06', number=number))
             self.from_list(temp, dir_root=dir_root)
-        if file_type in ['ATL11']:
+        if file_type in ['ATL11','ATL11_xo']:
             temp=list()
             for beam_pair in (1, 2, 3):
-                field_dict={f'pt{beam_pair}':['latitude','longitude']}
+                if file_type=='ATL11':
+                    field_dict={f'pt{beam_pair}':['latitude','longitude']}
+                else:
+                    field_dict={f'pt{beam_pair}/crossing_track_data':['latitude','longitude']}
                 try:
                     D=pc.data().from_h5(filename, field_dict=field_dict)
                     D.get_xy(self.attrs['SRS_proj4'])
                     if D.x.shape[0] > 0:
                         temp.append(geoIndex(delta=self.attrs['delta'], \
-                                          SRS_proj4=self.attrs['SRS_proj4']).from_xy([D.x, D.y], '%s:pair%d' % (filename_out, beam_pair), 'ATL11', number=number))
+                                          SRS_proj4=self.attrs['SRS_proj4']).from_xy([D.x, D.y], '%s:pair%d' % (filename_out, beam_pair), file_type, number=number))
                 except Exception as e:
                     if self.DEBUG:
                         raise(e)
                     pass
-            self.from_list(temp)
+            self.from_list(temp)            
         if file_type in ['h5']:
             D=pc.data().from_h5(filename, field_dict={group:['x','y']})
             if D.x.size > 0:
@@ -558,7 +561,7 @@ class geoIndex(dict):
         return filename
 
     def get_data(self, query_results, fields=None,  data=None, dir_root='',
-                 bounds=None, error_action='warn'):
+                 bounds=None, function=None, error_action='warn'):
         """
         read the data from a set of query results
         Currently the function knows how to read:
@@ -597,7 +600,10 @@ class geoIndex(dict):
                 if not (os.path.isfile(this_file) or os.path.isfile(this_file.split(':')[0])):
                     print(f'geoIndex.get_data(): missing file {this_file}')
                     continue
-                if result['type'] == 'h5':
+                if function is not None:
+                    # user has provided a function to read the data
+                    D=[function(filename=this_file, index_range=temp, field_dict=field_dict, bounds=bounds) for temp in zip(result['offset_start'], result['offset_end'])]
+                elif result['type'] == 'h5':
                     D=[pc.data().from_h5(filename=this_file, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
                 elif result['type'] == 'h5_geoindex':
                     D=geoIndex().from_file(this_file).query_xy((result['x'], result['y']), fields=fields, get_data=True, dir_root=dir_root, error_action=error_action)
