@@ -5,7 +5,7 @@ Created on Mon Apr 29 08:36:04 2024
 
 @author: ben
 """
-import scipy.ndimage as snd
+import scipy
 import numpy as np
 
 
@@ -18,11 +18,11 @@ def smooth_corrected(z, mask, w_smooth, **filter_args):
         for arg, val in filter_args.items():
             filter_defaults[arg]=val
 
-    mask1=snd.gaussian_filter(mask.astype(float), w_smooth, **filter_defaults)
+    mask1=scipy.ndimage.gaussian_filter(mask.astype(float), w_smooth, **filter_defaults)
     ztemp=np.nan_to_num(z)
     ztemp[mask==0]=0.0
 
-    zs=snd.gaussian_filter(ztemp, w_smooth, **filter_defaults)
+    zs=scipy.ndimage.gaussian_filter(ztemp, w_smooth, **filter_defaults)
     zs[mask1>0]=zs[mask1>0]/mask1[mask1>0]
     return zs, mask1
 

@@ -1,5 +1,5 @@
 import numpy as np
-import scipy.linalg as sl
+import scipy
 import pointCollection as pc
 def calc_bias_and_R(D, i0, i1, R, min_sigma=0.5):
     x0=D.x[i0]
@@ -20,7 +20,7 @@ def calc_bias_and_R(D, i0, i1, R, min_sigma=0.5):
         count +=1
         G1=np.vstack((G[ii,:], constraint_eqs))
         d1=np.concatenate([dz[ii], constraints], axis=0)
-        m=sl.lstsq(G1, d1, lapack_driver='gelsy')[0]
+        m=scipy.linalg.lstsq(G1, d1, lapack_driver='gelsy')[0]
         r=dz-G.dot(m)
         sigma_hat=pc.RDE(r[ii])
         if count > 5:

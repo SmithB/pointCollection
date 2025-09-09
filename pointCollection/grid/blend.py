@@ -8,7 +8,7 @@ Created on Tue May  6 21:11:44 2025
 
 import numpy as np
 import pointCollection as pc
-import scipy.ndimage as snd
+import scipy
 def blend(inputs, dst=None, inplace=False, group=None, field='z', erode=[], feather=None):
 
     if dst is None:
@@ -41,10 +41,10 @@ def blend(inputs, dst=None, inplace=False, group=None, field='z', erode=[], feat
         mask=np.isfinite(this_z)
 
         if N_erode[count] > 0:
-            mask=snd.binary_erosion(mask, np.ones(np.array([N_erode[count], N_erode[count]]).astype(int)))
+            mask=scipy.ndimage.binary_erosion(mask, np.ones(np.array([N_erode[count], N_erode[count]]).astype(int)))
 
         if feather is not None:
-            wt = snd.distance_transform_edt(mask)
+            wt = scipy.ndimage.distance_transform_edt(mask)
             # check this!
             wt=0.5+0.5*np.cos(np.pi*(1-np.minimum(wt, N_feather)/N_feather))
         else:

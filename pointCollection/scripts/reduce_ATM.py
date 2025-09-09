@@ -3,13 +3,13 @@
 
 import numpy as np
 import pointCollection as pc
-import scipy.spatial as sps
+import scipy
 import argparse
 import os
 import sys
 
 def reduce_data(D, stats_radius=50, min_sigma=0.5):
-    kdt = sps.KDTree(np.c_[D.x, D.y])
+    kdt = scipy.spatial.KDTree(np.c_[D.x, D.y])
 
     D_out=pc.data().from_dict({
         'x':D.x,

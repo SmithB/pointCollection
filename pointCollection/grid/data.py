@@ -19,8 +19,9 @@ import h5py
 import pyproj
 import netCDF4
 import posixpath
-from scipy.interpolate import RegularGridInterpolator
-from scipy.stats import scoreatpercentile
+#from scipy.interpolate import RegularGridInterpolator
+#from scipy.stats import scoreatpercentile
+import scipy
 import pointCollection as pc
 from . import DEM_date
 from .fill_edges import fill_edges, smooth_corrected
@@ -1810,7 +1811,7 @@ class data(object):
                 kwargs['cmap']='gray'
 
         if stretch_pct is not None:
-            LH=scoreatpercentile(zz.ravel()[np.isfinite(zz.ravel())], stretch_pct)
+            LH=scipy.stats.scoreatpercentile(zz.ravel()[np.isfinite(zz.ravel())], stretch_pct)
             kwargs['vmin']=LH[0]
             kwargs['vmax']=LH[1]
 
@@ -1864,7 +1865,7 @@ class data(object):
                     grid_vars=(self.t, self.y, self.x)
                 else:
                     grid_vars=(self.y, self.x, self.t)
-            self.interpolator[field] = RegularGridInterpolator(
+            self.interpolator[field] = scipy.interpolate.RegularGridInterpolator(
                                                     grid_vars,
                                                     z0, bounds_error=False)
         if gridded:
