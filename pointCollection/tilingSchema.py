@@ -88,7 +88,7 @@ class tilingSchema(object):
         if np.isscalar(xy[0]):
             xy = [xy[0], xy[1]]
 
-        tile_xys = np.self.mapping_function( np.c_[xy[0], xy[1]] / self.tile_spacing ) * self.tile_spacing            
+        tile_xys = self.mapping_function( np.c_[xy[0], xy[1]] / self.tile_spacing ) * self.tile_spacing
         return pc.unique_by_rows(tile_xys, return_dict=return_dict) 
 
     def tile_filename(self, xy_t):
@@ -103,6 +103,6 @@ class tilingSchema(object):
 
 
     def filenames_for_box(self, xyr, resolution=1.e4):
-        xg, yg = np.meshgrid( np.arange(xyr[0][0], xyr[1][1] + resolution * 1.01, resolution),
-                              np.arange(xyr[0][0], xyr[1][1] + resolution * 1.01, resolution) )
+        xg, yg = np.meshgrid( np.arange(xyr[0][0], xyr[0][1] + resolution * 1.01, resolution),
+                              np.arange(xyr[1][0], xyr[1][1] + resolution * 1.01, resolution) )
         return self.filenames_for_xy([xg.ravel(), yg.ravel()])
