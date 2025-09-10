@@ -55,7 +55,12 @@ class mosaic(data):
         """
         # try automatically getting spacing of tile
         try:
-            self.spacing = (temp.x[1] - temp.x[0], temp.y[1] - temp.y[0])
+            dx = temp.x[1] - temp.x[0]
+            if not dx == 0:
+                self.spacing[0] = dx
+            dy = temp.x[1] - temp.x[0]
+            if not dy == 0:
+                self.spacing[1] = dy
         except:
             pass
         return self
@@ -117,8 +122,7 @@ class mosaic(data):
     def setup_bounds_from_list(self, in_list,
                 group=None,
                 fields=None,
-                bounds=None,
-                spacing=None):
+                bounds=None):
 
         for item in in_list.copy():
             if isinstance(item, str):
@@ -529,7 +533,8 @@ class mosaic(data):
                   pad=0,
                   feather=0,
                   by_band=True,
-                  verbose=False
+                  verbose=False,
+                  spacing=[None, None],
                   ):
         """
         Generate a mosaic from a list of inputs.

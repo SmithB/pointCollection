@@ -171,7 +171,7 @@ def main():
         args.pad=None
         args.feather=None
 
-    mosaic=pc.grid.mosaic().from_list(file_list,
+    mosaic=pc.grid.mosaic(spacing=args.spacing).from_list(file_list,
                                       fields=args.fields,
                                       group=args.in_group,
                                       pad=args.pad,
