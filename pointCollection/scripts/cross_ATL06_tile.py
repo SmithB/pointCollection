@@ -152,6 +152,7 @@ def calc_slope(xovers, mask_file, hemisphere=-1):
 
     mask=pc.grid.data().from_geotif(mask_file, \
                 bounds=[[np.min(xy[:,0].ravel())-dx, np.max(xy[:,0].ravel()+dx)], [np.min(xy[:,1].ravel())-dx, np.max(xy[:,1].ravel()+dx)]])
+    mask.z=np.nan_to_num(mask.z)
     try:
         grounded=np.abs(mask.interp(xy[:,0], xy[:,1])-1)<.01
     except AttributeError:
