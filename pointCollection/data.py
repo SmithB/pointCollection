@@ -759,7 +759,11 @@ class data(object):
         self.index((self.x >= bounds[0][0]) & (self.x <= bounds[0][1]) &\
               (self.y >= bounds[1][0]) & (self.y <= bounds[1][1]))
 
-    def to_h5(self, fileOut, replace=True,  group='/', extensible=True, meta_dict=None, DEBUG=False):
+    def to_h5(self, fileOut, replace=True,  group='/', extensible=True,
+              dimension_fields = None,
+              compression='gzip',
+              chunks=True,
+              meta_dict = None, DEBUG = False):
         """
         Write the contents of self to an hdf5 file.
 
@@ -801,25 +805,37 @@ class data(object):
         # append to existing files as default
         mode = 'w' if replace else 'a'
 
+
         h5f_out=h5py.File(fileOut,mode)
 
         if group is not None:
             if not group in h5f_out:
-                h5f_out.create_group(group)
+                h5f_out.create_group(group.encode('ascii'))
         field_dict={}
         if meta_dict is None:
             field_dict = {field:field for field in self.fields}
         else:
             field_dict = {}
-            for field, this_md in meta_dict.items():
-                if this_md['source_field'] is not None and this_md['source_field'] in self.fields:
-                    field_dict[field] = this_md['source_field']
-                elif field in self.fields:
-                    field_dict[field] = field
+            for out_field, this_md in meta_dict.items():
+                if 'source_field' in this_md and this_md['source_field'] is not None and this_md['source_field'] in self.fields:
+                    field_dict[out_field] = this_md['source_field']
+                elif out_field in self.fields:
+                    field_dict[out_field] = out_field
 
-        for out_field, field in field_dict.items():
+        if meta_dict is None:
+            meta_dict = {out_field:{} for out_field in field_dict.keys()}
 
-            this_data=getattr(self, field)
+        # establish the coordinate fields first
+        coordinate_fields=[]
+        non_coordinate_fields=[]
+        for out_field in field_dict.keys():
+            if 'coordinate' in meta_dict[out_field] and out_field==meta_dict[out_field]['coordinate']:
+                coordinate_fields += [out_field]
+            else:
+                non_coordinate_fields += [out_field]
+
+        for out_field in coordinate_fields + non_coordinate_fields:
+            this_data=getattr(self, field_dict[out_field])
             maxshape=this_data.shape
             if extensible:
                 maxshape=list(maxshape)
@@ -834,15 +850,41 @@ class data(object):
                 if DEBUG:
                     print(e)
             out_field_name = group + '/' +out_field
-            kwargs = dict( compression="gzip", maxshape=tuple(maxshape))
+            kwargs = dict( compression=compression,
+                          maxshape=tuple(maxshape))
             if meta_dict is not None and 'precision' in meta_dict[out_field] and meta_dict[out_field]['precision'] is not None:
                 kwargs['scaleoffset']=int(meta_dict[out_field]['precision'])
-            h5f_out.create_dataset(out_field_name, data=this_data,  \
-                                   **kwargs)
-            if meta_dict is not None and out_field in meta_dict:
+            if 'datatype' in meta_dict[out_field]:
+                dtype = meta_dict[out_field]['datatype'].lower()
+                kwargs['dtype']=dtype
+                if 'int' in dtype:
+                    kwargs['fillvalue'] = np.iinfo(np.dtype(dtype)).max
+                else:
+                    kwargs['fillvalue'] = np.finfo(np.dtype(dtype)).max
+
+            if 'fillvalue' in kwargs:
+                this_data = np.nan_to_num(this_data,nan=kwargs['fillvalue'])
+            if 'dtype' in kwargs:
+                this_data = this_data.astype(kwargs['dtype'])
+
+            # Create the dataset
+            dset = h5f_out.create_dataset(out_field_name.encode('ASCII'),
+                                data=this_data,  **kwargs)
+            if out_field in meta_dict:
                 for key, val in meta_dict[out_field].items():
                     if key.lower() not in ['group','source_field','precision','dimensions','coordinate']:
-                        h5f_out[out_field].attrs[key]=str(val).encode('utf-8')
+                        if isinstance(val, str):
+                            h5f_out[out_field_name.encode('ASCII')].attrs[key] = str(val).encode('utf-8')
+                        else:
+                            h5f_out[out_field_name.encode('ASCII')].attrs[key] = val
+            if 'coordinates' in meta_dict[out_field]:
+                coords = meta_dict[out_field]['coordinates']
+                if isinstance(coords, str):
+                    coords = coords.split(',')
+                for ind, coord in enumerate(coords):
+                    dset.dims[ind].label=coord
+            if 'fillvalue' in kwargs:
+                dset.attrs['_FillValue'.encode('ASCII')] = kwargs['fillvalue']
 
         for key, val in self.attrs.items():
             if val is not None:
