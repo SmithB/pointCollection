@@ -10,11 +10,11 @@ def calc_bias_and_R(D, i0, i1, R, min_sigma=0.5):
     dy=D.y[i1]-y0
     dz=D.z[i1]-z0
     ii=np.ones_like(i1, dtype=bool)
-    
+
     constraint_eqs=0.001*np.array([[1, 0, 0], [0, 1, 0]])
     constraints=np.array([0., 0.])
     G=np.c_[dx/1000, dy/1000, np.ones_like(dx)]
-    
+
     count=0
     while np.sum(ii)> 4:
         count +=1
@@ -29,11 +29,11 @@ def calc_bias_and_R(D, i0, i1, R, min_sigma=0.5):
         ii = np.abs(r) < 3*np.maximum(sigma_hat, min_sigma)
         if np.all(last_ii == ii):
             break
-    
+
     N=np.sum(ii)
     # the negative sign here is legacy of the Matlab version of the code.
     bias=-m[-1]
     noise=np.std(r[ii])
-    slope=[m[0]*1000, m[1]*1000]
-    
+    slope=[m[0]/1000, m[1]/1000]
+
     return bias, noise, slope, N
