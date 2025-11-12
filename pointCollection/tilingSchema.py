@@ -7,16 +7,19 @@ Created on Mon Sep  1 08:39:06 2025
 """
 
 import numpy as np
-import pointCollection as pc
 import os
 import json
 
 class tilingSchema(object):
-    def __init__(self, tile_spacing=1.e5, mapping_function_name='round',
-                 mapping_function=None, EPSG=None, coords=['x','y'],
+    def __init__(self, tile_spacing=1.e5, tol=None,
+                 mapping_function_name='round',
+                 mapping_function=np.round,
+                 EPSG=None, coords=['x','y'],
                  scale=1000, format_str='E%d_N%d', extension='.h5',
                  directory=None):
         self.tile_spacing = tile_spacing
+        if tol is None:
+            tol = 1.e-3*self.tile_spacing
         if mapping_function is not None:
             self.mapping_function = mapping_function
             mapping_function_name = self.mapping_function.__name__
@@ -27,6 +30,7 @@ class tilingSchema(object):
         self.extension = extension
         self.scale = scale
         self.directory = directory
+        self.tol = tol
         self.mapping_function = mapping_function
 
     def set_mapping_function(self, mapping_function_name=None):
@@ -43,7 +47,7 @@ class tilingSchema(object):
 
         scheme_dict={}
         for field in ['tile_spacing','mapping_function_name', 'EPSG', 'coords',
-                      'scale', 'format_str', 'extension','directory']:
+                      'scale', 'format_str', 'extension','directory','tol']:
             try:
                 scheme_dict[field] = float(getattr(self, field))
             except (ValueError, TypeError):
@@ -80,16 +84,30 @@ class tilingSchema(object):
         return self
 
     # TBD: implement latlon keyword
-    def tile_xy(self, xy=None, data=None, return_dict=False):
+    def tile_xy(self, xy=None, data=None, tol=0.):
         if self.mapping_function is None:
             self.set_mapping_function()
         if xy is None:
             xy = [data.x.ravel(), data.y.ravel()]
-        if np.isscalar(xy[0]):
-            xy = [xy[0], xy[1]]
+        if len(xy[0]) > 0 and not isinstance(xy, np.ndarray):
+            xy = [*map(np.array,xy)]
 
-        tile_xys = self.mapping_function( np.c_[xy[0], xy[1]] / self.tile_spacing ) * self.tile_spacing
-        return pc.unique_by_rows(tile_xys, return_dict=return_dict) 
+        if np.isscalar(xy[0]):
+            xy = [*map(np.atleast_1d, xy)]
+
+        if self.mapping_function_name=='round':
+            # need to check for xys that are on boundaries.  For those that are, add
+            # another point that is just on the other side of the boundary
+            for dim, other_dim in zip([0, 1], [1, 0]):
+                for sgn in [-1, 1]:
+                    ctrs = np.round(xy[dim]/self.tile_spacing)*self.tile_spacing
+                    delta =  xy[dim] - ctrs
+                    # check for points at the upper end of this bin
+                    bdry_ind = np.flatnonzero(sgn * delta >= 0.5*self.tile_spacing - self.tol)
+                    xy[dim] = np.append(xy[dim], ctrs[bdry_ind] + sgn*(self.tile_spacing/2 + self.tol), axis=0)
+                    xy[other_dim] = np.append(xy[other_dim], xy[other_dim][bdry_ind])
+            tile_xys = self.mapping_function( np.c_[xy[0], xy[1]] / self.tile_spacing ) * self.tile_spacing
+            return np.unique(tile_xys, axis=0)
 
     def tile_filename(self, xy_t):
         return os.path.join(self.directory, self.format_str % tuple([xy_t[0]/self.scale, xy_t[1]/self.scale]))+self.extension
@@ -99,7 +117,11 @@ class tilingSchema(object):
             xy0=[np.array([xy0[0]]).ravel(), np.array([xy0[1]]).ravel()]
         if not isinstance(xy0[0], np.ndarray):
             xy0=[*map(np.array, xy0)]
-        return [self.tile_filename(xyt) for xyt in self.tile_xy(xy0)]
+        tile_filenames = []
+        for xyt in self.tile_xy(xy0):
+            tile_filenames.append(self.tile_filename(xyt))
+
+        return tile_filenames
 
 
     def filenames_for_box(self, xyr, resolution=1.e4):
