@@ -154,12 +154,18 @@ class data(object):
             self.shape=self.dimensions.copy()
             self.size=np.prod(self.shape)
             return
-        if self.fields is None or len(self.fields)==0:
+        elif hasattr(self, 'x') and self.x is not None and hasattr(self,'y') and self.y is not None:
             self.shape=[len(self.y), len(self.x)]
-            if hasattr(self, 't') and self.t is not None and hasattr(self.t,'len'):
-                self.shape += [len(self.t)]
-            elif hasattr(self, 'time') and self.time is not None and hasattr(self.time,'len'):
-                self.shape += [len(self.time)]
+            if hasattr(self, 't') and self.t is not None:
+                try:
+                    self.shape += [len(self.t)]
+                except TypeError:
+                    pass
+            elif hasattr(self, 'time') and self.time is not None:
+                try:
+                    self.shape += [len(self.time)]
+                except TypeError:
+                    pass
             self.size =np.prod(self.shape)
             return
         for field in ['z']+self.fields:
@@ -799,7 +805,10 @@ class data(object):
             y=np.array(h5f[group][yname]).ravel()
             for time_var_name in set(['time','t', timename]):
                 if time_var_name in h5f[group].keys():
-                    t=h5f[group][time_var_name][:].copy()
+                    try:
+                        t=h5f[group][time_var_name][:].copy()
+                    except Exception:
+                        t=np.array(h5f[group][time_var_name])
                     timename=time_var_name
                     break
             if t is not None:
@@ -853,8 +862,10 @@ class data(object):
 
             nT=1
             if src_t is not None:
-                nT=len(src_t)
-
+                try:
+                    nT=len(src_t)
+                except TypeError:
+                    nT=1
             if t_axis==0:
                 default_shape_3d = [nT] + default_shape_2d
             else:
@@ -1044,6 +1055,7 @@ class data(object):
             ncf=fileID.groups[group] if group else fileID
             x=ncf.variables[xname][:].copy()
             y=ncf.variables[yname][:].copy()
+            # get the variable name for time in the file (if it exists)
             for this_time_var_name in set([timename, 'time','t']):
                 if this_time_var_name in ncf.variables.keys():
                     t=ncf.variables[this_time_var_name][:].copy()
@@ -1091,10 +1103,11 @@ class data(object):
                 if len(f_field.shape)==2:
                     out_dims=['y','x']
                 else:
+                    # N.B.  In the next lines, just changed timename to 'time'
                     if self.t_axis==2:
-                        out_dims=['y', 'x', timename]
+                        out_dims=['y', 'x', 'time']
                     else:
-                        out_dims=[timename,'y','x']
+                        out_dims=['time','y','x']
                 if f_field.dimensions is None:
                     f_dims = out_dims
                 else:

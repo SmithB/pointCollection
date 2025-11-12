@@ -41,10 +41,11 @@ def blend(inputs, dst=None, inplace=False, group=None, field='z', erode=[], feat
         mask=np.isfinite(this_z)
 
         if N_erode[count] > 0:
-            mask=scipy.ndimage.binary_erosion(mask, np.ones(np.array([N_erode[count], N_erode[count]]).astype(int)))
+            kernel=np.ones(np.array([N_erode[count], N_erode[count]]).astype(int))
+            mask=scipy.ndimage.binary_erosion(mask, kernel, border_value=1)
 
         if feather is not None:
-            wt = scipy.ndimage.distance_transform_edt(mask)
+            wt = scipy.ndimage.distance_transform_edt(np.pad(mask,1))[1:-1,:][:, 1:-1]
             # check this!
             wt=0.5+0.5*np.cos(np.pi*(1-np.minimum(wt, N_feather)/N_feather))
         else:
