@@ -16,7 +16,12 @@ class data(pc.data):
         self.bin_W=bin_W
         super().__init__(**kwargs)
 
-    def to_file(self, D, out_file, time_field='time', append=True, ind_fields=['x','y','time']):
+    def to_file(self, D, out_file, time_field='time', append=True, replace=False,
+                ind_fields=['x','y','time']):
+
+        if replace and os.path.isfile(out_file):
+            os.remove(out_file)
+
         y_bin_function=np.round(D.y/self.bin_W[0])
         x_bin_function=np.round(D.x/self.bin_W[1])
         # 6/23/21: added +1 to the scales (so that max(x_bin_fn)-min(x_bin_fn)<x_scale)
@@ -137,4 +142,3 @@ class data(pc.data):
                     print(f"\tfilename={self.filename}")
                     raise(e)
         return out_data
-
