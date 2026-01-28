@@ -956,7 +956,10 @@ class data(object):
         if len(kwargs) > 0:
             newdata |= kwargs
         for field in newdata.keys():
-            setattr(self, field, newdata[field])
+            if isinstance(newdata[field], (int, float)):
+                setattr(self, field, np.zeros(self.shape) + newdata[field])
+            else:
+                setattr(self, field, newdata[field])
             if field not in self.fields:
                 self.fields.append(field)
         return self
