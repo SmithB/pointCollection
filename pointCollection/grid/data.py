@@ -1374,7 +1374,9 @@ class data(object):
         if 'options' not in kwargs:
             options=["compress=LZW", "tiled=YES", "bigtiff=IF_SAFER"]
             kwargs['options'] = options
-        out_ds=self.to_gdal(out_file=out_file, driver='GTiff',**kwargs)
+        if 'driver' not in kwargs:
+            kwargs['driver'] = "GTiff"
+        out_ds=self.to_gdal(out_file=out_file,**kwargs)
         return out_ds
 
     def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None,
@@ -1406,7 +1408,7 @@ class data(object):
         """
 
         z=np.atleast_3d(getattr(self, field))
-        ny,nx,nband = z.shape
+        ny,nx,nband = [*map(int, z.shape)]
         dx=np.abs(np.diff(self.x[0:2]))[0]
         dy=np.abs(np.diff(self.y[0:2]))[0]
 
@@ -1446,6 +1448,7 @@ class data(object):
             except:
                 pass
         if driver not in ('MEM',):
+            out_ds.BuildOverviews("NEAREST", [2, 4, 8, 16, 32, 64])
             out_ds.FlushCache()
             out_ds = None
         return out_ds
