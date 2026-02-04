@@ -885,7 +885,8 @@ class data(object):
                 for key, val in meta_dict[out_field].items():
                     if key.lower() not in ['group','source_field','precision','dimensions']:
                         if isinstance(val, str):
-                            h5f_out[out_field_name.encode('ASCII')].attrs[key] = str(val).encode('utf-8')
+#                            h5f_out[out_field_name.encode('ASCII')].attrs[key] = str(val).encode('utf-8')
+                            h5f_out[out_field_name.encode('ASCII')].attrs.create(str(key), str(val).encode('utf-8'), None, dtype='<S'+str(len(str(val))))
                         else:
                             h5f_out[out_field_name.encode('ASCII')].attrs[key] = val
             if 'dimensions' in meta_dict[out_field]:
@@ -914,7 +915,10 @@ class data(object):
 
         for key, val in self.attrs.items():
             if val is not None:
-                h5f_out[group].attrs[key]=val
+                if isinstance(val, str):
+                    h5f_out[out_field_name.encode('ASCII')].attrs.create(str(key), str(val).encode('utf-8'), None, dtype='<S'+str(len(str(val))))
+                else:
+                    h5f_out[group].attrs[key]=val
 
         for key in ['EPSG','SRS_proj4']:
             val=getattr(self, key)
