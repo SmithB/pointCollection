@@ -132,7 +132,7 @@ class data(object):
         self.assign({args[0]:args[1]})
 
     def __add__(self, x):
-        return pc.data().from_list([self, x])
+        return type(self)().from_list([self, x])
 
     def choose_crs(self, *args, proj4_string=None, EPSG=None, SRS_proj4=None, SRS_EPSG=None):
         '''
@@ -185,7 +185,7 @@ class data(object):
         """
         copy attributes to a new data object
         """
-        out=data()
+        out = type(self)()
         for field in ['fields', 'SRS_proj4', 'EPSG', 'columns']:
             try:
                 temp=getattr(self, field)
