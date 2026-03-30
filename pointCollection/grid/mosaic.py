@@ -594,7 +594,7 @@ class mosaic(data):
                     try:
                         self.add(item, group=group, fields=fields, pad=pad, feather=feather)
                     except Exception as e:
-                        print(f"make_mosaic.py: problem with {item}")
+                        print(f"mosaic.from_list : problem with {item} for group={group} and fields={fields}")
                         print(e)
                 self.normalize()
         else:
