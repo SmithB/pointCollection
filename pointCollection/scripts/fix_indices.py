@@ -5,7 +5,7 @@ import sys
 import glob
 import re
 
-main():
+def main():
 
     file_re=re.compile('file_\d+')
 
