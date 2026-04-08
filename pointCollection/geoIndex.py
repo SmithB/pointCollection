@@ -154,8 +154,7 @@ class geoIndex(dict):
                 if 'dir_root' in index.attrs and index.attrs['dir_root'] is not None:
                     thisFileName=os.path.join(index.attrs['dir_root'],thisFileName)
                 if dir_root is not None:
-                    thisFileName=strip_double_slashes(thisFileName)
-                    thisFileName=thisFileName.replace(dir_root,'')
+                    thisFileName = os.path.relpath(thisFileName, dir_root)
                 thisFileType=index.attrs['type_%d' % fileNum]
                 if thisFileName not in fileListTo:
                     fileListTo.append(thisFileName)
@@ -224,8 +223,8 @@ class geoIndex(dict):
         file_re = re.compile(r'file_\d+')
         for key in self.attrs.keys():
             if file_re.match(key) is not None:
-                temp = os.path.join(old_root,self.attrs[key])
-                self.attrs[key] = temp.replace(new_root,'')
+                temp = os.path.join(old_root, self.attrs[key])
+                self.attrs[key] = os.path.relpath(temp, new_root)
         self.attrs['dir_root'] = new_root
         return self
 
