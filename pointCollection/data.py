@@ -97,7 +97,11 @@ class data(object):
     def __copy__(self):
         other=self.copy_attrs()
         for field in self.fields:
-            setattr(other, field, getattr(self, field).copy())
+            try:
+                setattr(other, field, getattr(self, field).copy())
+            except AttributeError:
+                if isinstance(getattr(self, field), (int, float)):
+                    setattr(other, field, getattr(self, field))
         return other
 
     def __update_size_and_shape__(self):
@@ -464,7 +468,6 @@ class data(object):
 
         """
 
-
         if fields is not None:
             self.fields=fields
         else:
@@ -473,7 +476,7 @@ class data(object):
         try:
             default_shape=dd[next(iter(dd))].shape
         except StopIteration:
-            print("HERE!")
+            raise ValueError("pointCollection.data.from_dict: empty dict")
         for field in self.fields:
             if field in dd:
                 setattr(self, field, dd[field])
@@ -649,9 +652,13 @@ class data(object):
 
         """
 
+        if self.shape is not None:
+            default_shape=self.shape
+        else:
+            default_shape=[0]
         for field in fields:
             if field not in self.fields:
-                self.assign({field:np.zeros(self.shape)+np.nan})
+                self.assign({field:np.zeros(default_shape)+np.nan})
 
     def copy_subset(self, index, by_row=False, datasets=None, fields=None):
         """
