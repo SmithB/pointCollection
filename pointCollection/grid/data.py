@@ -24,7 +24,7 @@ import posixpath
 import scipy
 import pointCollection as pc
 from . import DEM_date
-from .fill_edges import fill_edges, smooth_corrected
+from .fill_edges import fill_edges
 import shapely
 
 class data(object):
@@ -90,6 +90,13 @@ class data(object):
     @time.setter
     def time(self, value):
         self._time=value
+
+    @property
+    def im_kws(self):
+        # return a dictionary of kwargs for plt.imshow
+        return {'extent':self.img_extent,
+                'origin':'lower'}
+
     def __copy__(self, fields=None):
         """Return a copy of a grid, optionally with a subset of fields."""
         if fields is None:
