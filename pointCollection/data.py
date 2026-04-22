@@ -169,7 +169,7 @@ class data(object):
         elif EPSG is not None:
             crs=EPSG
         else:
-            if self.SRS_proj4 is None:
+            if self.SRS_proj4 is not None:
                 crs=self.SRS_proj4
             else:
                 crs=self.EPSG
@@ -278,7 +278,7 @@ class data(object):
         else:
             self.filename=filename
 
-        if fields is None and fields is not None:
+        if field is not None and fields is None:
             fields = [field]
         if fields is not None:
             field_dict = {group:fields}
@@ -625,9 +625,9 @@ class data(object):
             return self
         ind = pc.pt_blockmedian(self.x, self.y, np.float64(getattr(self, field)), scale, return_index=True)[3]
         try:
-            for field in self.fields:
-                temp_field=getattr(self, field)
-                setattr(self, field,  0.5*temp_field[ind[:,0]] + 0.5*temp_field[ind[:,1]])
+            for field_name in self.fields:
+                temp_field=getattr(self, field_name)
+                setattr(self, field_name,  0.5*temp_field[ind[:,0]] + 0.5*temp_field[ind[:,1]])
         except IndexError:
             pass
         self.__update_size_and_shape__()
@@ -815,117 +815,119 @@ class data(object):
         else:
             close_file = False
 
-        if group is not None:
-            if not group in h5f_out:
-                h5f_out.create_group(group.encode('ascii'))
-        field_dict={}
-        if meta_dict is None:
-            field_dict = {field:field for field in self.fields}
-        else:
-            field_dict = {}
-            for out_field, this_md in meta_dict.items():
-                if 'source_field' in this_md and this_md['source_field'] is not None and this_md['source_field'] in self.fields:
-                    field_dict[out_field] = this_md['source_field']
-                elif out_field in self.fields:
-                    field_dict[out_field] = out_field
-
-        if meta_dict is None:
-            meta_dict = {out_field:{} for out_field in field_dict.keys()}
-
-        # establish the coordinate fields first
-        dimension_fields=[]
-        non_dimension_fields=[]
-        for out_field in field_dict.keys():
-            if 'dimension' in meta_dict[out_field] and meta_dict[out_field]['dimension']:#(out_field==meta_dict[out_field]['dimensions'] or out_field in meta_dict[out_field]['dimensions']):
-                dimension_fields += [out_field]
+        try:
+            if group is not None:
+                if not group in h5f_out:
+                    h5f_out.create_group(group)
+            field_dict={}
+            if meta_dict is None:
+                field_dict = {field:field for field in self.fields}
             else:
-                non_dimension_fields += [out_field]
+                field_dict = {}
+                for out_field, this_md in meta_dict.items():
+                    if 'source_field' in this_md and this_md['source_field'] is not None and this_md['source_field'] in self.fields:
+                        field_dict[out_field] = this_md['source_field']
+                    elif out_field in self.fields:
+                        field_dict[out_field] = out_field
 
-        for out_field in dimension_fields + non_dimension_fields:
-            this_data=getattr(self, field_dict[out_field])
-            maxshape=this_data.shape
-            if extensible:
-                maxshape=list(maxshape)
-                maxshape[0]=None
-            # try prepending the 'group' entry of meta_dict to the output field.
-            # catch the exception thrown if meta_dict is None or if the 'group'
-            # entry is not there
-            out_field_name=out_field
-            try:
-                out_field_name = meta_dict[out_field]['group'] + out_field
-            except (TypeError, KeyError) as e:
-                if DEBUG:
-                    print(e)
-            out_field_name = group + '/' +out_field
-            kwargs = dict( compression=compression,
-                          maxshape=tuple(maxshape))
-            if meta_dict is not None and 'precision' in meta_dict[out_field] and meta_dict[out_field]['precision'] is not None:
-                kwargs['scaleoffset']=int(meta_dict[out_field]['precision'])
-            if 'datatype' in meta_dict[out_field]:
-                dtype = meta_dict[out_field]['datatype'].lower()
-                kwargs['dtype']=dtype
-                if 'int' in dtype:
-                    kwargs['fillvalue'] = np.iinfo(np.dtype(dtype)).max
+            if meta_dict is None:
+                meta_dict = {out_field:{} for out_field in field_dict.keys()}
+
+            # establish the coordinate fields first
+            dimension_fields=[]
+            non_dimension_fields=[]
+            for out_field in field_dict.keys():
+                if 'dimension' in meta_dict[out_field] and meta_dict[out_field]['dimension']:#(out_field==meta_dict[out_field]['dimensions'] or out_field in meta_dict[out_field]['dimensions']):
+                    dimension_fields += [out_field]
                 else:
-                    kwargs['fillvalue'] = np.finfo(np.dtype(dtype)).max
-            # use an explicit '_FillValue' for preference over an overall fillvalue
-            if '_FillValue' in meta_dict[out_field]:
-                this_data = np.nan_to_num(this_data,nan=meta_dict[out_field]['_FillValue'])
-            elif 'fillvalue' in kwargs:
-                this_data = np.nan_to_num(this_data,nan=kwargs['fillvalue'])
-            if 'dtype' in kwargs:
-                this_data = this_data.astype(kwargs['dtype'])
+                    non_dimension_fields += [out_field]
 
-            # Create the dataset
-            dset = h5f_out.create_dataset(out_field_name.encode('ASCII'),
-                                data=this_data,  **kwargs)
-            if 'dimension' in meta_dict[out_field] and meta_dict[out_field]['dimension']:
-                dset.make_scale()
-            if out_field in meta_dict:
-                for key, val in meta_dict[out_field].items():
-                    if key.lower() not in ['group','source_field','precision','dimensions']:
-                        if isinstance(val, str):
-#                            h5f_out[out_field_name.encode('ASCII')].attrs[key] = str(val).encode('utf-8')
-                            h5f_out[out_field_name.encode('ASCII')].attrs.create(str(key), str(val).encode('utf-8'), None, dtype='<S'+str(len(str(val))))
-                        else:
-                            h5f_out[out_field_name.encode('ASCII')].attrs[key] = val
-            if 'dimensions' in meta_dict[out_field]:
-                dims = meta_dict[out_field]['dimensions']
-                if isinstance(dims, str):
-                    dims = dims.split(',')
-                for ind, dim in enumerate(dims):
-                    dset.dims[ind].label=dim
-                    if '../' in dim:
-                        group_path = group.split('/')
-                        while '../' in dim:
-                            dim=dim.lstrip('../')
-                            group_path=group_path[:-1]
-                        try:
-                            dset.dims[ind].attach_scale("/"+h5f_out['/'.join(group_path+[dim])])
-                        except Exception as e:
-                            print("-----")
-                            print([group,out_field_name])
-                            print('/'.join(group_path+[dim]))
-                            print("------")
-                            raise e
+            for out_field in dimension_fields + non_dimension_fields:
+                this_data=getattr(self, field_dict[out_field])
+                maxshape=this_data.shape
+                if extensible:
+                    maxshape=list(maxshape)
+                    maxshape[0]=None
+                # try prepending the 'group' entry of meta_dict to the output field.
+                # catch the exception thrown if meta_dict is None or if the 'group'
+                # entry is not there
+                out_field_name=out_field
+                try:
+                    out_field_name = meta_dict[out_field]['group'] + out_field
+                except (TypeError, KeyError) as e:
+                    if DEBUG:
+                        print(e)
+                out_field_name = group + '/' +out_field
+                kwargs = dict( compression=compression,
+                              maxshape=tuple(maxshape))
+                if meta_dict is not None and 'precision' in meta_dict[out_field] and meta_dict[out_field]['precision'] is not None:
+                    kwargs['scaleoffset']=int(meta_dict[out_field]['precision'])
+                if 'datatype' in meta_dict[out_field]:
+                    dtype = meta_dict[out_field]['datatype'].lower()
+                    kwargs['dtype']=dtype
+                    if 'int' in dtype:
+                        kwargs['fillvalue'] = np.iinfo(np.dtype(dtype)).max
                     else:
-                        dset.dims[ind].attach_scale(h5f_out[dim])
-            if 'fillvalue' in kwargs and '_FillValue' not in meta_dict[out_field]:
-                dset.attrs['_FillValue'.encode('ASCII')] = kwargs['fillvalue']
+                        kwargs['fillvalue'] = np.finfo(np.dtype(dtype)).max
+                # use an explicit '_FillValue' for preference over an overall fillvalue
+                if '_FillValue' in meta_dict[out_field]:
+                    this_data = np.nan_to_num(this_data,nan=meta_dict[out_field]['_FillValue'])
+                elif 'fillvalue' in kwargs:
+                    this_data = np.nan_to_num(this_data,nan=kwargs['fillvalue'])
+                if 'dtype' in kwargs:
+                    this_data = this_data.astype(kwargs['dtype'])
 
-        for key, val in self.attrs.items():
-            if val is not None:
-                if isinstance(val, str):
-                    h5f_out[out_field_name.encode('ASCII')].attrs.create(str(key), str(val).encode('utf-8'), None, dtype='<S'+str(len(str(val))))
-                else:
-                    h5f_out[group].attrs[key]=val
+                # Create the dataset
+                dset = h5f_out.create_dataset(out_field_name,
+                                    data=this_data,  **kwargs)
+                if 'dimension' in meta_dict[out_field] and meta_dict[out_field]['dimension']:
+                    dset.make_scale()
+                if out_field in meta_dict:
+                    for key, val in meta_dict[out_field].items():
+                        if key.lower() not in ['group','source_field','precision','dimensions']:
+                            if isinstance(val, str):
+#                            h5f_out[out_field_name.encode('ASCII')].attrs[key] = str(val).encode('utf-8')
+                                h5f_out[out_field_name].attrs.create(str(key), str(val).encode('utf-8'), None, dtype='<S'+str(len(str(val))))
+                            else:
+                                h5f_out[out_field_name].attrs[key] = val
+                if 'dimensions' in meta_dict[out_field]:
+                    dims = meta_dict[out_field]['dimensions']
+                    if isinstance(dims, str):
+                        dims = dims.split(',')
+                    for ind, dim in enumerate(dims):
+                        dset.dims[ind].label=dim
+                        if '../' in dim:
+                            group_path = group.split('/')
+                            while '../' in dim:
+                                dim=dim.lstrip('../')
+                                group_path=group_path[:-1]
+                            try:
+                                dset.dims[ind].attach_scale("/"+h5f_out['/'.join(group_path+[dim])])
+                            except Exception as e:
+                                print("-----")
+                                print([group,out_field_name])
+                                print('/'.join(group_path+[dim]))
+                                print("------")
+                                raise e
+                        else:
+                            dset.dims[ind].attach_scale(h5f_out[dim])
+                if 'fillvalue' in kwargs and '_FillValue' not in meta_dict[out_field]:
+                    dset.attrs['_FillValue'] = kwargs['fillvalue']
 
-        for key in ['EPSG','SRS_proj4']:
-            val=getattr(self, key)
-            if val is not None:
-                h5f_out[group].attrs[key] = val
-        if close_file:
-            h5f_out.close()
+            for key, val in self.attrs.items():
+                if val is not None:
+                    if isinstance(val, str):
+                        h5f_out[out_field_name].attrs.create(str(key), str(val).encode('utf-8'), None, dtype='<S'+str(len(str(val))))
+                    else:
+                        h5f_out[group].attrs[key]=val
+
+            for key in ['EPSG','SRS_proj4']:
+                val=getattr(self, key)
+                if val is not None:
+                    h5f_out[group].attrs[key] = val
+        finally:
+            if close_file:
+                h5f_out.close()
 
     def append_to_h5(self, file, group='/', ind_fields=['x','y','time']):
 
