@@ -72,6 +72,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+Untitled*.ipynb
 
 # pyenv
 .python-version
@@ -103,3 +104,6 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# backup files
+\#*
