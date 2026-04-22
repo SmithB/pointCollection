@@ -636,15 +636,15 @@ class data(object):
         if (bounds is not None) and (yorient > 0):
             # indices to read
             xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-            slices['x'] = slice(xind[0],xind[-1],1)
+            slices['x'] = slice(xind[0],xind[-1]+1,1)
             yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-            slices['y'] = slice(yind[0],yind[-1],1)
+            slices['y'] = slice(yind[0],yind[-1]+1,1)
         elif (bounds is not None) and (yorient < 0):
             # indices to read with reversed y
             xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-            slices['x'] = slice(xind[0],xind[-1],1)
+            slices['x'] = slice(xind[0],xind[-1]+1,1)
             yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-            slices['y'] = slice(yind[-1],yind[0],-1)
+            slices['y'] = slice(yind[-1],yind[0]-1 if yind[0] > 0 else None,-1)
         elif (yorient < 0):
             # indices to read (all) with reversed y
             slices['x'] = slice(None,None,1)
@@ -854,9 +854,9 @@ class data(object):
             if bounds is not None:
                 # indices to read
                 xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-                cols = slice(xind[0],xind[-1], skip)
+                cols = slice(xind[0],xind[-1]+1, skip)
                 yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-                rows = slice(yind[0],yind[-1], skip)
+                rows = slice(yind[0],yind[-1]+1, skip)
             else:
                 # indices to read (all)
                 rows = slice(None,None, skip)
