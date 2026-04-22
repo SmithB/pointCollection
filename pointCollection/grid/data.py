@@ -122,7 +122,7 @@ class data(object):
 
     def copy(self, fields=None):
         """Return a copy of the current dataset."""
-        return self.__copy__()
+        return self.__copy__(fields=fields)
 
     def copy_meta(self):
         """Return an empty dataset matching the current dataset."""
@@ -282,7 +282,7 @@ class data(object):
                     if spacing[0] is None or spacing_from=='last':
                         spacing =this_spacing
                     elif spacing_from=='min':
-                        spacing = np.minumum(spacing, this_spacing)
+                        spacing = np.minimum(spacing, this_spacing)
                     elif spacing_from=='max':
                         spacing = np.maximum(spacing, this_spacing)
 
@@ -329,6 +329,8 @@ class data(object):
         # try to extract times
         time = np.zeros((nt))
         i = 0
+        # default time field name is 'time'
+        time_field='time'
         for D in D_list:
             try:
                 ntime = D.shape[D.t_axis]
@@ -680,6 +682,10 @@ class data(object):
             range of time values to be read.
 
         """
+
+        if t is None:
+            t=self.time
+
         bands=None
         if bounds is not None and len(bounds)==3:
             if self.t_axis==0:
@@ -689,7 +695,7 @@ class data(object):
                 t_range=bounds[2]
                 bounds=bounds[:2]
 
-        if t_range is not None:
+        if t_range is not None and t is not None:
             bands = np.flatnonzero((t>=t_range[0]) & (t<=t_range[1]))
 
         return bands, t_range
@@ -1564,7 +1570,7 @@ class data(object):
         if alpha is None:
             if nodata_vals is not None:
                 alpha=np.ones_like(getattr(self, field)[:,:,0])
-                if hasattr(nodata_vals, 'len') and len(nodata_vals)==3:
+                if hasattr(nodata_vals, '__len__') and len(nodata_vals)==3:
                     for ii in range(3):
                         alpha[~np.isfinite(getattr(self, field)[:,:,ii]) | (getattr(self, field)[:,:,ii]==nodata_vals[ii])]=0
                 elif nodata_vals is not None:
@@ -1983,7 +1989,7 @@ class data(object):
         if raster_epsg is None:
             if self.srs_epsg is not None:
                 raster_epsg = self.srs_epsg
-            if poly_epsg is not None:
+            elif poly_epsg is not None:
                 raster_epsg = poly_epsg
             else:
                 raster_epsg = epsg
