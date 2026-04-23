@@ -43,7 +43,11 @@ class data(object):
     as 'upside down' in some plotting routines.
     """
 
-    def __init__(self, fields=None, fill_value=np.nan, t_axis=2):
+    def __init__(self,
+                 fields=None,
+                 fill_value=np.nan,
+                 t_axis=2,
+                 coordinates=None):
         self.x=None
         self.y=None
         self.projection=None
@@ -59,6 +63,14 @@ class data(object):
         self.xform=None
         self.srs_epsg=None
         self.srs_proj4=None
+        if coordinates is not None:
+            self.coordinates = coordinates
+        elif self.t_axis==2:
+            self.coordinates = ['y','x','t']
+        elif self.t_axis==0:
+            self.coordinates = ['t', 'y', 'x']
+        else:
+            self.coordinates = None
         self._time=None
         self._spacing=[None, None]
         if fields is None:
@@ -78,12 +90,14 @@ class data(object):
     def spacing(self, val):
         self._spacing=val
         return
+
     @property
     def t(self):
         return self._time
     @t.setter
     def t(self, value):
         self._time = value
+
     @property
     def time(self):
         return self._time
@@ -157,31 +171,27 @@ class data(object):
 
     def __update_size_and_shape__(self):
         """Update the size and shape parameters of the object to match that of its data fields."""
-        if hasattr(self, 'dimensions') and self.dimensions is not None and self.dimensions[0] is not None:
-            self.shape=self.dimensions.copy()
-            self.size=np.prod(self.shape)
-            return
-        elif hasattr(self, 'x') and self.x is not None and hasattr(self,'y') and self.y is not None:
-            self.shape=[len(self.y), len(self.x)]
-            if hasattr(self, 't') and self.t is not None:
-                try:
-                    self.shape += [len(self.t)]
-                except TypeError:
-                    pass
-            elif hasattr(self, 'time') and self.time is not None:
-                try:
-                    self.shape += [len(self.time)]
-                except TypeError:
-                    pass
-            self.size =np.prod(self.shape)
-            return
-        for field in ['z']+self.fields:
+
+        if self.coordinates is not None and self.coordinates[0] is not None:
+            coords = self.coordinates.copy()
+        else:
+            coords = ['y', 'x', 'time']
+        self.shape = []
+        for coord in coords:
             try:
-                self.size=getattr(self, field).size
-                self.shape=getattr(self, field).shape
-                break
-            except Exception:
+                self.shape.append(len(getattr(self, coord)))
+            except (AttributeError, TypeError):
                 pass
+        if not self.shape:
+            # haven't found any coordinates.  Try to get shape from the fields
+            for field in ['z']+self.fields:
+                try:
+                    self.size=getattr(self, field).size
+                    self.shape=getattr(self, field).shape
+                    break
+                except Exception:
+                    pass
+        self.size=np.prod(self.shape)
 
     def summary(self, return_table=True, return_dict=False):
          """
@@ -261,7 +271,6 @@ class data(object):
                     self.fields.append(field)
         return self
 
-
     def bounds_and_spacing_for_list(self, D_list, spacing_from='last'):
         xmin,xmax,ymin,ymax = [np.inf,-np.inf,np.inf,-np.inf]
         spacing = [None]*2
@@ -340,7 +349,7 @@ class data(object):
             if hasattr(D,'time') and D.time is not None:
                 time[i:i+ntime] = D.time
                 time_field='time'
-            elif hasattr(D,'t'):
+            elif hasattr(D,'t') and D.t is not None:
                 time[i:i+ntime] = D.t
                 time_field='t'
             i += ntime
@@ -627,7 +636,7 @@ class data(object):
                 fid.seek(0)
                 return h5py.File(fid, 'r')
 
-    def select_slices(self, bounds, x, y, bands):
+    def select_slices(self, bounds, x, y, bands, skip=1):
         # get orientation of y-axis
         yorient = np.sign(y[1] - y[0])
 
@@ -636,23 +645,23 @@ class data(object):
         if (bounds is not None) and (yorient > 0):
             # indices to read
             xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-            slices['x'] = slice(xind[0],xind[-1]+1,1)
+            slices['x'] = slice(xind[0],xind[-1]+1,skip)
             yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-            slices['y'] = slice(yind[0],yind[-1]+1,1)
+            slices['y'] = slice(yind[0],yind[-1]+1,skip)
         elif (bounds is not None) and (yorient < 0):
             # indices to read with reversed y
             xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-            slices['x'] = slice(xind[0],xind[-1]+1,1)
+            slices['x'] = slice(xind[0],xind[-1]+1,skip)
             yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-            slices['y'] = slice(yind[-1],yind[0]-1 if yind[0] > 0 else None,-1)
+            slices['y'] = slice(yind[-1],yind[0]-1 if yind[0] > 0 else None,-skip)
         elif (yorient < 0):
             # indices to read (all) with reversed y
-            slices['x'] = slice(None,None,1)
-            slices['y'] = slice(None,None,-1)
+            slices['x'] = slice(None,None,skip)
+            slices['y'] = slice(None,None,-skip)
         else:
             # indices to read (all)
-            slices['x'] = slice(None,None,1)
-            slices['y'] = slice(None,None,1)
+            slices['x'] = slice(None,None,skip)
+            slices['y'] = slice(None,None,skip)
 
         if bands is None:
             slices['time'] = slice(None)
@@ -795,7 +804,7 @@ class data(object):
             pc.grid.data object containing the map data.
         """
         if t_axis is not None:
-            self.t_axis=t_axis
+            self.t_axis = t_axis
         if fill_value is not None:
             self.fill_value = fill_value
         if fields is None and field is not None:
@@ -803,7 +812,7 @@ class data(object):
         if field_mapping is None:
             field_mapping={}
         self.filename=h5_file
-        dims=[xname,yname,'t','time']
+        dims = [xname, yname, 't', 'time']
         if not group.startswith('/'):
             group='/'+group
         t=None
@@ -814,8 +823,8 @@ class data(object):
         #default
         yorient=1
         with self.h5_open(h5_file, mode='r', compression=compression) as h5f:
-            x=np.array(h5f[group][xname]).ravel()
-            y=np.array(h5f[group][yname]).ravel()
+            x = np.array(h5f[group][xname]).ravel()
+            y = np.array(h5f[group][yname]).ravel()
             for time_var_name in set(['time','t', timename]):
                 if time_var_name in h5f[group].keys():
                     try:
@@ -879,7 +888,7 @@ class data(object):
                     nT=len(src_t)
                 except TypeError:
                     nT=1
-            if t_axis==0:
+            if self.t_axis == 0:
                 default_shape_3d = [nT] + default_shape_2d
             else:
                 default_shape_3d = default_shape_2d + [nT]
@@ -895,9 +904,13 @@ class data(object):
                     if f_field.shape in [tuple(default_shape_3d), tuple(default_shape_2d) ]:
                         z=self.read_data(f_field, i0, i1, bands)
                     elif src_t is not None and len(f_field)==np.prod(default_shape_3d):
+                        # special case: 3d data have been raveled.
+                        # Read the whole dataset and reshape to 3d array
                         z=self.read_data(np.array(f_field).reshape(default_shape_3d), i0, i1, bands)
                     elif len(f_field)==np.prod(default_shape_2d):
-                        z=self.read_data(np.array(f_field).reshape(default_shape_3d), i0, i1, bands)
+                        # special case: 2d data have been raveled.
+                        # Read the whole dataset and reshape to 2d array
+                        z=self.read_data(np.array(f_field).reshape(default_shape_2d), i0, i1, bands)
                     else:
                         raise(IndexError(f'from filename {h5_file}, field {f_field_name} has shape:{f_field.shape} incompatible with data shape:{default_shape_3d}.'))
 
@@ -942,7 +955,7 @@ class data(object):
             self.x=x[cols]
             self.y=y[rows]
             if yorient==-1:
-                y=y[::-1]
+                self.y = self.y[::-1]
 
             if t is not None:
                 self.t=t
@@ -1098,7 +1111,7 @@ class data(object):
                         if hasattr(var,'shape') and var.shape:
                             field_mapping.update({key:key})
 
-            slices=self.select_slices(bounds, x, y, bands)[0]
+            slices=self.select_slices(bounds, x, y, bands, skip=skip)[0]
             # check that raster can be sliced
             if len(x[slices['x']]) == 0 or len(y[slices['y']]) == 0:
                 self.__update_extent__()
@@ -1255,11 +1268,12 @@ class data(object):
                             h5f[f_field_name].dims[i].attach_scale(h5f[dim])
                 except Exception as exc:
                     pass
-            # add crs attributes if applicable
+                # add crs attributes if applicable
+                if self.crs:
+                    # add grid mapping attribute
+                    if field not in ['x','y','time','t']:
+                        h5f[f_field_name].attrs['grid_mapping'] = kwargs['grid_mapping_name']
             if self.crs:
-                # add grid mapping attribute to each grid field
-                for field in fields:
-                    h5f[f_field_name].attrs['grid_mapping'] = kwargs['grid_mapping_name']
                 # add grid mapping variable with projection attributes
                 h5crs = h5f.create_dataset(kwargs['grid_mapping_name'], (), dtype=np.byte)
                 for att_name,att_val in self.crs.items():
@@ -1293,8 +1307,8 @@ class data(object):
             fields=self.fields
         # try getting the time variable name
         try:
-            t_name = [field for field in ('t','time') if hasattr(self, field)
-                and np.any(getattr(self,field))].pop()
+            t_name = [field for field in ('t', 'time')
+                      if getattr(self, field, None) is not None].pop()
         except Exception:
             t_name = None
 
