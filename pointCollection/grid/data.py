@@ -1168,13 +1168,20 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def to_h5(self, out_file, fields=None, group='/', replace=False, nocompression=False, attributes={}, fill_value=None, overwrite_coords=False,  **kwargs):
+    def to_h5(self, out_file, fields=None, group='/', replace=False,
+              nocompression=False,
+              attributes=None,
+              fill_value=None,
+              overwrite_coords=False,
+              **kwargs):
         """Write a grid data object to an hdf5 file."""
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
         kwargs.setdefault('srs_epsg', None)
         kwargs.setdefault('dimensions', {})
         kwargs.setdefault('grid_mapping_name', 'crs')
+        if attributes is None:
+            attributes={}
         # check whether overwriting existing files
         # append to existing files as default
         mode = 'w' if replace else 'a'
@@ -1263,8 +1270,10 @@ class data(object):
 
 
     def to_nc(self, out_file, fields=None, group='', replace=False, time_name='time',
-              nocompression=False,
-              attributes={}, fill_value=None, **kwargs):
+              nocompression = False,
+              attributes = None,
+              fill_value =None,
+              **kwargs):
         """Write a grid data object to a netCDF4 file."""
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
@@ -1272,6 +1281,9 @@ class data(object):
         kwargs.setdefault('grid_mapping_name', 'crs')
         kwargs.setdefault('xy_units', 'meter')
         kwargs.setdefault('t_units', None)
+
+        if attributes is None:
+            attributes = {}
 
         # check whether overwriting existing files
         # append to existing files as default
