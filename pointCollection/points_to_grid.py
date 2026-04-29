@@ -57,7 +57,9 @@ def apply_bin_fn(D_pt, res, fn=None, fields=['z'], xy0=[0, 0]):
     return result
 
 
-def points_to_grid(D_pt, res=None, grid=None, field='z', background=np.nan):
+def points_to_grid(D_pt, res=None, grid=None, field='z',
+                   out_field='z',
+                   background=np.nan):
     if grid is not None:
         res=np.abs(grid.x[1]-grid.x[0])
     x=np.round(D_pt.x/res)*res
@@ -75,13 +77,16 @@ def points_to_grid(D_pt, res=None, grid=None, field='z', background=np.nan):
     else:
         XR=grid.extent[0:2]
         YR=grid.extent[2:4]
-        zg=grid.z.copy()
+        if 'z' in grid.fields:
+            zg = grid.z.copy()
+        else:
+            zg = np.zeros(grid.shape) + background
     c=((x-XR[0])/res).astype(int)
     r=((y-YR[0])/res).astype(int)
     ii = (c>=0) & (c<zg.shape[1])
     ii &=  (r>=0) & (r<zg.shape[0])
     zg[tuple(np.c_[r[ii].ravel(), c[ii].ravel()].T)]=\
         getattr(D_pt, field)[ii].ravel()
-    grid.assign({'z':zg})
+    grid.assign({out_field:zg})
 
     return grid
