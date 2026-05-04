@@ -303,9 +303,10 @@ class data(object):
                     # build the field dict from the group
                     if not isinstance(group, (list, tuple)):
                         group=[group]
+                    field_dict={}
                     for this_group in group:
-                        field_dict={this_group: [key for key in h5_f[this_group].keys() \
-                                                 if isinstance(h5_f[this_group][key], h5py.Dataset)]}
+                        field_dict[this_group] = [key for key in h5_f[this_group].keys() \
+                                                  if isinstance(h5_f[this_group][key], h5py.Dataset)]
                 else:
                     if self.field_dict is not None:
                         field_dict=self.field_dict
@@ -448,9 +449,9 @@ class data(object):
                 lonlat=np.array(pyproj.proj.Proj(crs)(self.x, self.y, inverse=True))
             else:
                 if isinstance(crs, int):
-                    lonlat=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.x, self.y))
+                    lonlat=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.x, self.y, inverse=True))
                 else:
-                    lonlat=np.array(pyproj.Proj(crs)(self.x, self.y))
+                    lonlat=np.array(pyproj.Proj(crs)(self.x, self.y, inverse=True))
             self.assign({"longitude":lonlat[0,:].reshape(self.shape), \
                                  "latitude":lonlat[1,:].reshape(self.shape)})
         return self
@@ -614,31 +615,36 @@ class data(object):
         number of elements, the average of the elements spanning the median is
         returned.
 
+        The median index is computed from a 1-D field.  Other fields may be
+        1-D or multi-column: for a field of shape (N, M) the index selects
+        rows, returning shape (K, M).
+
         Parameters
         ----------
         scale : float
             Scale over which the blockmedian is calculated.
         field : str, optional
-            Points within the object are selected based on the values in this
-            field. The default is 'z'.
+            1-D field used to compute the median index. The default is 'z'.
+            A ValueError is raised if this field is multi-column.
 
         Returns
         -------
         pointCollection.data
-            Object containing the meidan values
+            Object containing the median values
 
         """
 
-
         if self.size<2:
             return self
-        ind = pc.pt_blockmedian(self.x, self.y, np.float64(getattr(self, field)), scale, return_index=True)[3]
-        try:
-            for field_name in self.fields:
-                temp_field=getattr(self, field_name)
-                setattr(self, field_name,  0.5*temp_field[ind[:,0]] + 0.5*temp_field[ind[:,1]])
-        except IndexError:
-            pass
+        ref = getattr(self, field)
+        if ref.ndim > 1:
+            raise ValueError(
+                f"blockmedian: field '{field}' must be 1-D (shape {ref.shape} given)")
+        ind = pc.pt_blockmedian(self.x, self.y, np.float64(ref), scale, return_index=True)[3]
+        new_fields = {name: 0.5*getattr(self, name)[ind[:,0]] + 0.5*getattr(self, name)[ind[:,1]]
+                      for name in self.fields}
+        for name, val in new_fields.items():
+            setattr(self, name, val)
         self.__update_size_and_shape__()
         return self
 
@@ -688,7 +694,7 @@ class data(object):
 
         """
         dd=dict()
-        if self.columns is not None and self.columns >=1 and by_row is not None or isinstance(index, slice):
+        if (self.columns is not None and self.columns >= 1) or isinstance(index, slice):
             by_row=True
         if fields is not None and datasets is None:
             datasets=fields
@@ -866,11 +872,11 @@ class data(object):
                 # entry is not there
                 out_field_name=out_field
                 try:
-                    out_field_name = meta_dict[out_field]['group'] + out_field
+                    out_field_name = meta_dict[out_field]['group'] + '/' + out_field
                 except (TypeError, KeyError) as e:
                     if DEBUG:
                         print(e)
-                out_field_name = group + '/' +out_field
+                    out_field_name = group + '/' + out_field
                 kwargs = dict( compression=compression,
                               maxshape=tuple(maxshape))
                 if meta_dict is not None and 'precision' in meta_dict[out_field] and meta_dict[out_field]['precision'] is not None:
@@ -912,10 +918,10 @@ class data(object):
                         if '../' in dim:
                             group_path = group.split('/')
                             while '../' in dim:
-                                dim=dim.lstrip('../')
+                                dim=dim[3:]
                                 group_path=group_path[:-1]
                             try:
-                                dset.dims[ind].attach_scale("/"+h5f_out['/'.join(group_path+[dim])])
+                                dset.dims[ind].attach_scale(h5f_out['/'+'/'.join(group_path+[dim])])
                             except Exception as e:
                                 print("-----")
                                 print([group,out_field_name])
@@ -930,7 +936,7 @@ class data(object):
             for key, val in self.attrs.items():
                 if val is not None:
                     if isinstance(val, str):
-                        h5f_out[out_field_name].attrs.create(str(key), str(val).encode('utf-8'), None, dtype='<S'+str(len(str(val))))
+                        h5f_out[group].attrs.create(str(key), str(val).encode('utf-8'), None, dtype='<S'+str(len(str(val))))
                     else:
                         h5f_out[group].attrs[key]=val
 
@@ -1000,7 +1006,7 @@ class data(object):
         else:
             newdata=dict()
         if len(kwargs) > 0:
-            newdata |= kwargs
+            newdata = newdata | kwargs
         if self.shape is None:
             shape=next((v.shape for v in newdata.values() if hasattr(v, 'shape')), None)
             if shape is None:
