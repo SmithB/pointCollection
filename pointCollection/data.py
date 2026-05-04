@@ -62,6 +62,8 @@ class data(object):
         else:
             self.field_dict=field_dict
 
+        self.shape=None
+        self.size=None
         if fields is None:
             fields=list()
             if field_dict is not None:
@@ -69,13 +71,13 @@ class data(object):
                     for field in self.field_dict[group]:
                         fields.append(field)
         if isinstance(fields, dict):
-            self.fields=list(fields)
-        self.fields=fields
+            self.fields=list()
+            self.assign(fields)
+        else:
+            self.fields=fields
         self.SRS_proj4=SRS_proj4
         self.EPSG=EPSG
         self.columns=columns
-        self.shape=None
-        self.size=None
         self.filename=filename
         if data_dict is not None:
             self.assign(data_dict)
@@ -104,10 +106,14 @@ class data(object):
                     setattr(other, field, getattr(self, field))
         return other
 
-    def __update_size_and_shape__(self):
+    def __update_size_and_shape__(self, shape=None):
         """
         When data size and shape may have changed, update the size and shape atttributes
         """
+        if shape is not None:
+            self.shape=shape
+            self.size=int(np.prod(shape))
+            return self
         self.size=0
         self.shape=[0]
         for field in self.fields:
@@ -995,6 +1001,11 @@ class data(object):
             newdata=dict()
         if len(kwargs) > 0:
             newdata |= kwargs
+        if self.shape is None:
+            shape=next((v.shape for v in newdata.values() if hasattr(v, 'shape')), None)
+            if shape is None:
+                raise ValueError("pointCollection.data.assign: cannot determine shape; no array-valued fields in input")
+            self.__update_size_and_shape__(shape=shape)
         for field in newdata.keys():
             if isinstance(newdata[field], (int, float)):
                 setattr(self, field, np.zeros(self.shape) + newdata[field])
