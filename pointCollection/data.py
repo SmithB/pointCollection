@@ -30,7 +30,7 @@ class data(object):
         -a copy of the object sliced by the index otherwise
     """
     np.seterr(invalid='ignore')
-    def __init__(self, data_dict=None, fields=None, SRS_proj4=None, EPSG=None, field_dict=None, columns=0, filename=None):
+    def __init__(self, data_dict=None, fields=None, SRS_proj4=None, EPSG=None, field_dict=None, columns=0, filename=None, coordinates=['x', 'y']):
         """
         Initialize a new pointCollection.data object
 
@@ -51,6 +51,9 @@ class data(object):
             of shape [Ndata, columns]. The default is 0, specifying a shape of [Ndata]
         filename : str, optional
             a filename indicating the source of the data. The default is None.
+        coordinates : list, optional
+            two-element list giving the names of the x and y coordinate fields.
+            The default is ['x', 'y'].
 
         Returns
         -------
@@ -79,6 +82,7 @@ class data(object):
         self.EPSG=EPSG
         self.columns=columns
         self.filename=filename
+        self.coordinates=list(coordinates)
         if data_dict is not None:
             self.assign(data_dict)
         self.attrs={}
@@ -126,6 +130,14 @@ class data(object):
             except AttributeError:
                 pass
         return self
+
+    @property
+    def _x_coord(self):
+        return self.coordinates[0]
+
+    @property
+    def _y_coord(self):
+        return self.coordinates[1]
 
     def __getitem__(self, *args, **kwargs):
         """
@@ -196,7 +208,7 @@ class data(object):
         copy attributes to a new data object
         """
         out = type(self)()
-        for field in ['fields', 'SRS_proj4', 'EPSG', 'columns']:
+        for field in ['fields', 'SRS_proj4', 'EPSG', 'columns', 'coordinates']:
             try:
                 temp=getattr(self, field)
             except AttributeError:
@@ -410,10 +422,10 @@ class data(object):
                     xy=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.longitude, self.latitude))
                 else:
                     xy=np.array(pyproj.Proj(crs)(self.longitude, self.latitude))
-        self.x=xy[0,:].reshape(self.shape)
-        self.y=xy[1,:].reshape(self.shape)
-        if 'x' not in self.fields:
-            self.fields += ['x','y']
+        setattr(self, self._x_coord, xy[0,:].reshape(self.shape))
+        setattr(self, self._y_coord, xy[1,:].reshape(self.shape))
+        if self._x_coord not in self.fields:
+            self.fields += [self._x_coord, self._y_coord]
         return self
 
     def get_latlon(self, *args, **kwargs):
@@ -437,21 +449,23 @@ class data(object):
 
         '''
         crs=self.choose_crs(*args,**kwargs)
+        _x=getattr(self, self._x_coord)
+        _y=getattr(self, self._y_coord)
         try:
             # Compatible with pyproj 3.7.0
             # Note that EPSG:4326 takes latitude first
             latlon = np.array(pyproj.Transformer.from_crs(pyproj.CRS(crs),
-                                                 pyproj.CRS(4326)).transform(self.x, self.y))
+                                                 pyproj.CRS(4326)).transform(_x, _y))
             self.assign({"longitude":latlon[1,:].reshape(self.shape),\
                          "latitude":latlon[0,:].reshape(self.shape)})
         except Exception:
             if hasattr(pyproj, 'proj'):
-                lonlat=np.array(pyproj.proj.Proj(crs)(self.x, self.y, inverse=True))
+                lonlat=np.array(pyproj.proj.Proj(crs)(_x, _y, inverse=True))
             else:
                 if isinstance(crs, int):
-                    lonlat=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.x, self.y, inverse=True))
+                    lonlat=np.array(pyproj.Proj("+init=epsg:"+str(crs))(_x, _y, inverse=True))
                 else:
-                    lonlat=np.array(pyproj.Proj(crs)(self.x, self.y, inverse=True))
+                    lonlat=np.array(pyproj.Proj(crs)(_x, _y, inverse=True))
             self.assign({"longitude":lonlat[0,:].reshape(self.shape), \
                                  "latitude":lonlat[1,:].reshape(self.shape)})
         return self
@@ -640,7 +654,7 @@ class data(object):
         if ref.ndim > 1:
             raise ValueError(
                 f"blockmedian: field '{field}' must be 1-D (shape {ref.shape} given)")
-        ind = pc.pt_blockmedian(self.x, self.y, np.float64(ref), scale, return_index=True)[3]
+        ind = pc.pt_blockmedian(getattr(self, self._x_coord), getattr(self, self._y_coord), np.float64(ref), scale, return_index=True)[3]
         new_fields = {name: 0.5*getattr(self, name)[ind[:,0]] + 0.5*getattr(self, name)[ind[:,1]]
                       for name in self.fields}
         for name, val in new_fields.items():
@@ -750,8 +764,10 @@ class data(object):
 
         """
 
-        ind = (self.x >= bounds[0][0]) & (self.x <= bounds[0][1]) &\
-              (self.y >= bounds[1][0]) & (self.y <= bounds[1][1])
+        _x=getattr(self, self._x_coord)
+        _y=getattr(self, self._y_coord)
+        ind = (_x >= bounds[0][0]) & (_x <= bounds[0][1]) &\
+              (_y >= bounds[1][0]) & (_y <= bounds[1][1])
         if return_index:
             return ind
         return self.copy_subset(ind, **kwargs)
@@ -775,8 +791,10 @@ class data(object):
 
         """
 
-        self.index((self.x >= bounds[0][0]) & (self.x <= bounds[0][1]) &\
-              (self.y >= bounds[1][0]) & (self.y <= bounds[1][1]))
+        _x=getattr(self, self._x_coord)
+        _y=getattr(self, self._y_coord)
+        self.index((_x >= bounds[0][0]) & (_x <= bounds[0][1]) &\
+              (_y >= bounds[1][0]) & (_y <= bounds[1][1]))
 
     def to_h5(self, fileOut=None,
               h5f_out=None,
@@ -1038,12 +1056,14 @@ class data(object):
         """
 
 
+        _x = getattr(self, self._x_coord)
+        _y = getattr(self, self._y_coord)
         if 'time' in self.fields:
-            return (self.y, self.x, self.time)
+            return (_y, _x, self.time)
         elif 't' in self.fields:
-            return (self.y, self.x, self.t)
+            return (_y, _x, self.t)
         else:
-            return self.y, self.x
+            return _y, _x
 
     def bounds(self, pad=0):
         """
@@ -1059,11 +1079,13 @@ class data(object):
         XR, YR: minimum and maximum of x and y
 
         """
-        if len(self.x)==0:
+        _x = getattr(self, self._x_coord)
+        _y = getattr(self, self._y_coord)
+        if len(_x) == 0:
             return None, None
 
-        return np.array([np.nanmin(self.x)-pad, np.nanmax(self.x)+pad]), \
-                np.array([np.nanmin(self.y)-pad, np.nanmax(self.y)+pad])
+        return np.array([np.nanmin(_x)-pad, np.nanmax(_x)+pad]), \
+                np.array([np.nanmin(_y)-pad, np.nanmax(_y)+pad])
 
     def ravel_fields(self):
         """
