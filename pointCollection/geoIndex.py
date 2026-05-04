@@ -294,7 +294,7 @@ class geoIndex(dict):
                     if self.DEBUG:
                         raise(e)
                     pass
-            self.from_list(temp)            
+            self.from_list(temp)
         if file_type in ['h5']:
             D=pc.data().from_h5(filename, field_dict={group:['x','y']})
             if D.x.size > 0:
@@ -398,7 +398,8 @@ class geoIndex(dict):
         yb=np.round(y/delta[1])*delta[1]
         return self.query_xy(xb, yb, get_data=get_data, fields=fields, error_action=error_action)
 
-    def query_xy_box(self, xr, yr, get_data=True, fields=None, dir_root='', error_action='warn'):
+    def query_xy_box(self, xr, yr, get_data=True, fields=None, dir_root='',
+                     full_path=False, error_action='warn'):
         """
         query the current geoIndex for all bins in the box specified by box [xr,yr]
         """
@@ -406,7 +407,11 @@ class geoIndex(dict):
         these=(xy_bin[0] >= xr[0]) & (xy_bin[0] <= xr[1]) &\
             (xy_bin[1] >= yr[0]) & (xy_bin[1] <= yr[1])
         return self.query_xy([xy_bin[0][these], xy_bin[1][these]], get_data=get_data, \
-                             fields=fields, dir_root=dir_root, bounds=[xr, yr], error_action=error_action)
+                             fields=fields,
+                             dir_root=dir_root,
+                             bounds=[xr, yr],
+                             full_path = full_path,
+                             error_action = error_action)
 
     def intersect(self, other, pad=[0, 0]):
         """
@@ -420,8 +425,15 @@ class geoIndex(dict):
         other_sub=other.copy_subset(xyBin=[xyB[:,0], xyB[:,1]], pad=pad[1])
         return self_sub, other_sub
 
-    def query_xy(self, xyb, cleanup=True, get_data=True, fields=None, pad=None,
-                 dir_root='', strict=False, bounds=None, error_action='warn'):
+    def query_xy(self, xyb, cleanup = True,
+                 get_data = True,
+                 full_path = True,
+                 fields=None,
+                 pad=None,
+                 dir_root='',
+                 strict=False,
+                 bounds=None,
+                 error_action='warn'):
         """
         check if data exist within the current geo index for bins in lists/arrays
             xb and yb.
@@ -489,12 +501,14 @@ class geoIndex(dict):
                 i1=i1[keep]
                 xy=xy[keep,:]
             # if the file_N attribute begins with ':', it's a group in the current file, so add the current filename
-            this_query_file=self.attrs['file_%d' % out_file_num]
+            this_query_file = self.attrs['file_%d' % out_file_num]
             if this_query_file is not None and this_query_file[0] == ':':
                 file_base=self.filename.replace(dir_root,'')
                 if 'dir_root' in self.attrs:
                     file_base=file_base.replace(self.attrs['dir_root'],'')
                 this_query_file = file_base + this_query_file
+            if full_path:
+                this_query_file = self.resolve_path(this_query_file, dir_root)
             query_results[this_query_file]={
             'type':self.attrs['type_%d' % out_file_num],
             'offset_start':i0,
