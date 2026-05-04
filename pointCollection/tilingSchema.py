@@ -21,8 +21,10 @@ class tilingSchema(object):
                  coords=['x','y'],
                  scale=1000,
                  format_str='E%d_N%d',
+                 format_variables=['x','y'],
                  extension='.h5',
                  bin_size=1.e4,
+                 tile_offset = [0,0],
                  directory=None):
         self.tile_spacing = tile_spacing
         self.bin_size=bin_size
@@ -35,9 +37,11 @@ class tilingSchema(object):
         self.coords = coords
         self.format_str = format_str
         self.format_re  = re.compile(self.format_str.replace(r'%d',r'(.*)')+self.extension)
+        self.format_variables = format_variables
         self.scale = scale
         self.data_format = 'indexedH5'
         self.directory = directory
+        self.tile_offset = tile_offset,
         self.mapping_function = mapping_function
 
     def set_mapping_function(self, mapping_function_name=None):
@@ -48,13 +52,16 @@ class tilingSchema(object):
             self.mapping_function = np.round
         elif mapping_function_name == 'floor':
             self.mapping_function = np.floor
+        else:
+            raise NotImplementedError(f'mapping function {mapping_function_name} not understood')
         self.mapping_function_name = self.mapping_function.__name__
 
     def _scheme_dict(self):
 
         scheme_dict={}
         for field in ['tile_spacing','mapping_function_name', 'EPSG', 'coords',
-                      'scale', 'format_str', 'extension','directory','bin_size']:
+                      'tile_offset', 'format_str','format_variables',
+                      'scale', 'extension','directory','bin_size']:
             try:
                 scheme_dict[field] = float(getattr(self, field))
             except (ValueError, TypeError):
@@ -101,6 +108,9 @@ class tilingSchema(object):
                 xy=None,
                 data=None, tol=None):
 
+        # break out the offset attribute to a numpy array
+        xy0 = np.array(self.tile_offset).ravel()
+
         if tol is None:
             tol=self.bin_size/2
 
@@ -118,7 +128,10 @@ class tilingSchema(object):
 
         if return_dict:
             # return one tile xy for each point:
-            tile_xys = self.mapping_function( np.c_[xy[0], xy[1]] / self.tile_spacing ) * self.tile_spacing
+            tile_xys = np.array(self.offset) + \
+                self.mapping_function(
+                    np.c_[xy[0]-self.tile_offset[0], xy[1] - self.tile_offset[1]]
+                        / self.tile_spacing ) * self.tile_spacing
             _, tile_dict = pc.unique_by_rows(tile_xys, return_dict=True)
             return tile_dict
 
@@ -129,20 +142,33 @@ class tilingSchema(object):
             # another point that is just on the other side of the boundary
             for dim, other_dim in zip([0, 1], [1, 0]):
                 for sgn in [-1, 1]:
-                    ctrs = np.round(xy[dim]/self.tile_spacing)*self.tile_spacing
+                    ctrs = np.round((xy[dim]-xy0[dim])/self.tile_spacing)*self.tile_spacing + xy0[dim]
                     delta =  xy[dim] - ctrs
                     # check for points at the upper end of this bin
                     bdry_ind = np.flatnonzero(sgn * delta >= 0.5*self.tile_spacing - tol)
                     xy[dim] = np.append(xy[dim], ctrs[bdry_ind] + sgn*(self.tile_spacing/2 + tol), axis=0)
                     xy[other_dim] = np.append(xy[other_dim], xy[other_dim][bdry_ind])
-        tile_xys = self.mapping_function( np.c_[xy[0], xy[1]] / self.tile_spacing ) * self.tile_spacing
+        tile_xys = self.mapping_function(
+                        (np.c_[xy[0], xy[1]]-xy0) / self.tile_spacing ) * self.tile_spacing + xy0
         if unique:
             return np.unique(tile_xys, axis=0)
         else:
             return tile_xys
 
     def tile_filename(self, xy_t):
-        return os.path.join(self.directory, self.format_str % tuple([xy_t[0]/self.scale, xy_t[1]/self.scale]))+self.extension
+        if set(['xmin','xmax','ymin','ymax']) == set(self.format_variables):
+            var_val = {var:val for var, val in zip(['xmin','xmax','ymin','ymax'],
+                                                np.concatenate(self.tile_bounds(xy_t)))}
+            vals_sorted  = [(var_val[var]/self.scale)
+                                for var in self.format_variables]
+            return os.path.join(self.directory,
+                                self.format_str % tuple(vals_sorted))\
+                                    +self.extension
+        elif  set(['x','y']) == set(self.format_variables):
+            xy0 = [xy_t[0]/self.scale, xy_t[1]/self.scale]
+            return os.path.join(self.directory,
+                                self.format_str
+                                    % tuple(xy0))+self.extension
 
     def filenames_for_xy(self, xy0):
         if np.isscalar(xy0[0]):
@@ -187,5 +213,13 @@ class tilingSchema(object):
         for filename in filenames:
             m = self.format_re.search(os.path.basename(filename))
             if m is not None:
-                xy.append(np.array([*map(float, m.groups())])*self.scale)
+                if set(['x','y']) == set(self.format_variables):
+                    xy.append(np.array([*map(float, m.groups())])*self.scale)
+                elif ['xmin','xmax','ymin','ymax'] == self.format_variables:
+                    this_xy =np.array([*map(float, m.groups())])*self.scale
+                    xy.append(np.array(np.mean(this_xy[0:2]),
+                                       np.mean(this_xy[2:4])))
         return xy
+
+# example:
+# ts = tilingSchema(format_str='z0%d_%d_%d_%d', format_variables=['xmin','xmax','ymin','ymax'], tile_spacing=2.e5, EPSG=3031, tile_offset=[1.e5, 1.e5])
