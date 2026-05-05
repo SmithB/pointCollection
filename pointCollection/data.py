@@ -9,6 +9,8 @@ import numpy as np
 import pointCollection as pc
 import pyproj
 
+#TBD: read/write additional formats (parquet?)
+
 class data(object):
     """
     pointCollection.data objects are container objects holding point-like data.
@@ -376,6 +378,27 @@ class data(object):
                 if self.shape is not None:
                     for field in nan_fields:
                         setattr(self, field, np.zeros(self.shape)+np.nan)
+            # infer coordinates from CF 'coordinates' attribute
+            coord_names = []
+            for grp_name in field_dict.keys():
+                if grp_name == '__calc_internal__':
+                    continue
+                for ds_name in field_dict[grp_name]:
+                    try:
+                        ds = h5_f[ds_name] if grp_name is None else h5_f[grp_name][ds_name]
+                    except KeyError:
+                        continue
+                    coords_attr = ds.attrs.get('coordinates', None)
+                    if coords_attr is not None:
+                        if isinstance(coords_attr, bytes):
+                            coords_attr = coords_attr.decode('utf-8')
+                        for name in coords_attr.split():
+                            if name not in coord_names:
+                                coord_names.append(name)
+                        break
+            inferred = [c for c in coord_names if c in self.fields]
+            if inferred:
+                self.coordinates = inferred
         if '__calc_internal__' in field_dict:
             try:
                 self.__internal_field_calc__(field_dict)
@@ -654,7 +677,9 @@ class data(object):
         if ref.ndim > 1:
             raise ValueError(
                 f"blockmedian: field '{field}' must be 1-D (shape {ref.shape} given)")
-        ind = pc.pt_blockmedian(getattr(self, self._x_coord), getattr(self, self._y_coord), np.float64(ref), scale, return_index=True)[3]
+        _x = getattr(self, self._x_coord)
+        _y = getattr(self, self._y_coord) if len(self.coordinates) >= 2 else np.zeros_like(_x)
+        ind = pc.pt_blockmedian(_x, _y, np.float64(ref), scale, return_index=True)[3]
         new_fields = {name: 0.5*getattr(self, name)[ind[:,0]] + 0.5*getattr(self, name)[ind[:,1]]
                       for name in self.fields}
         for name, val in new_fields.items():
@@ -765,9 +790,10 @@ class data(object):
         """
 
         _x=getattr(self, self._x_coord)
-        _y=getattr(self, self._y_coord)
-        ind = (_x >= bounds[0][0]) & (_x <= bounds[0][1]) &\
-              (_y >= bounds[1][0]) & (_y <= bounds[1][1])
+        ind = (_x >= bounds[0][0]) & (_x <= bounds[0][1])
+        if len(self.coordinates) >= 2:
+            _y=getattr(self, self._y_coord)
+            ind &= (_y >= bounds[1][0]) & (_y <= bounds[1][1])
         if return_index:
             return ind
         return self.copy_subset(ind, **kwargs)
@@ -792,9 +818,11 @@ class data(object):
         """
 
         _x=getattr(self, self._x_coord)
-        _y=getattr(self, self._y_coord)
-        self.index((_x >= bounds[0][0]) & (_x <= bounds[0][1]) &\
-              (_y >= bounds[1][0]) & (_y <= bounds[1][1]))
+        ind = (_x >= bounds[0][0]) & (_x <= bounds[0][1])
+        if len(self.coordinates) >= 2:
+            _y=getattr(self, self._y_coord)
+            ind &= (_y >= bounds[1][0]) & (_y <= bounds[1][1])
+        self.index(ind)
 
     def to_h5(self, fileOut=None,
               h5f_out=None,
@@ -919,6 +947,8 @@ class data(object):
                                     data=this_data,  **kwargs)
                 if 'dimension' in meta_dict[out_field] and meta_dict[out_field]['dimension']:
                     dset.make_scale()
+                if self.coordinates and out_field not in self.coordinates:
+                    dset.attrs['coordinates'] = ' '.join(self.coordinates)
                 if out_field in meta_dict:
                     for key, val in meta_dict[out_field].items():
                         if key.lower() not in ['group','source_field','precision','dimensions']:
@@ -1039,31 +1069,26 @@ class data(object):
                 self.fields.append(field)
         return self
 
-    def coords(self):
+    def coords(self, order=None):
         """
-        Return the coordinates of an object
+        Return the coordinate arrays of an object, in the order given by
+        self.coordinates.
 
-        Returns the object's coordinates, in (y, x, time) order, or (y, x)
-        if a 't' or 'time' field is not present.  Note that the coordinate
-        order for this method is not consistent with that in the bounds()
-        and crop() functions
+        Parameters
+        -----------
+        order: iterable, optional
+            order of arrays to return (defaults to self.coordinates)
 
         Returns
         -------
         tuple
-            tuple of object coordinates
+            tuple of coordinate arrays
 
         """
+        if order is None:
+            order = self.coordinates.copy()
 
-
-        _x = getattr(self, self._x_coord)
-        _y = getattr(self, self._y_coord)
-        if 'time' in self.fields:
-            return (_y, _x, self.time)
-        elif 't' in self.fields:
-            return (_y, _x, self.t)
-        else:
-            return _y, _x
+        return tuple(getattr(self, c) for c in order)
 
     def bounds(self, pad=0):
         """
@@ -1080,12 +1105,13 @@ class data(object):
 
         """
         _x = getattr(self, self._x_coord)
-        _y = getattr(self, self._y_coord)
         if len(_x) == 0:
-            return None, None
-
-        return np.array([np.nanmin(_x)-pad, np.nanmax(_x)+pad]), \
-                np.array([np.nanmin(_y)-pad, np.nanmax(_y)+pad])
+            return (None,) * len(self.coordinates)
+        result = []
+        for c in self.coordinates:
+            v = getattr(self, c)
+            result.append(np.array([np.nanmin(v)-pad, np.nanmax(v)+pad]))
+        return tuple(result)
 
     def ravel_fields(self):
         """
