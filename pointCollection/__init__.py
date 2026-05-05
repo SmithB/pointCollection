@@ -23,7 +23,6 @@ from pointCollection import ATM_WF
 from pointCollection import glah12
 from pointCollection import glah06
 from pointCollection import ATL11
-from pointCollection import ATL11_prerelease
 from pointCollection import grid
 
 # utilities
