@@ -11,7 +11,6 @@ Coordinates below are always provided as tuples or lists, the first member of wh
 """
 import numpy as np
 import re
-import h5py
 #from osgeo import osr
 #import matplotlib.pyplot as plt
 import pointCollection as pc
@@ -199,6 +198,7 @@ class geoIndex(dict):
         faster than reading the whole file.
         """
 
+        import h5py
         h5_f = h5py.File(os.path.expanduser(index_file),'r')
         h5_i = h5_f[group]
         if read_file:
@@ -232,6 +232,7 @@ class geoIndex(dict):
         """
         write the current geoindex to h5 file 'filename'
         """
+        import h5py
         indexF = h5py.File(os.path.expanduser(filename),'a', libver='latest')
         if 'index' in indexF:
             del indexF['index']
@@ -332,6 +333,7 @@ class geoIndex(dict):
             self.attrs['n_files']=1
             self.from_xy(xy_bin, filename=filename_out, file_type=file_type, number=number, fake_offset_val=-1)
         if file_type in ['indexed_h5']:
+            import h5py
             h5f=h5py.File(filename,'r')
             if 'INDEX' in h5f:
                 xy=[np.array(h5f['INDEX']['bin_x']), np.array(h5f['INDEX']['bin_y'])]
@@ -362,6 +364,7 @@ class geoIndex(dict):
                 self.attrs['dir_root']=dir_root
             h5f.close()
         if file_type in ['indexed_h5_from_matlab']:
+            import h5py
             h5f=h5py.File(filename,'r')
             xy=[np.array(h5f['INDEX']['bin_x']), np.array(h5f['INDEX']['bin_y'])]
             first_last=None

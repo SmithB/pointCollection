@@ -4,10 +4,8 @@ Created on Fri Sep 21 14:28:30 2018
 
 @author: ben
 """
-import h5py
 import numpy as np
 import pointCollection as pc
-import pyproj
 
 #TBD: read/write additional formats (parquet?)
 
@@ -297,6 +295,7 @@ class data(object):
                 called to fill in the missing fields.
 
         """
+        import h5py
         if filename is None:
             filename=self.filename
         else:
@@ -427,6 +426,7 @@ class data(object):
         self: pointCollection.data
             Current object with updated x and y fields
         '''
+        import pyproj
         crs=self.choose_crs(*args,**kwargs)
 
 
@@ -471,6 +471,7 @@ class data(object):
             Current object with updated latitude and longitude fields
 
         '''
+        import pyproj
         crs=self.choose_crs(*args,**kwargs)
         _x=getattr(self, self._x_coord)
         _y=getattr(self, self._y_coord)
@@ -871,6 +872,7 @@ class data(object):
         None.
 
         """
+        import h5py
         # check whether overwriting existing files
         # append to existing files as default
         mode = 'w' if replace else 'a'
@@ -1004,6 +1006,7 @@ class data(object):
         N.B.  NOT TESTED
         """
 
+        import h5py
         with h5py.File(file,'r+') as h5f:
             if group in h5f:
                 M_old = np.c_[tuple([np.array(h5f[group][field]).ravel() for field in ind_fields])]

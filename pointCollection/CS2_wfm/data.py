@@ -32,7 +32,6 @@ from __future__ import division
 
 import numpy as np
 import pointCollection as pc
-import netCDF4
 import re
 import os
 
@@ -1461,6 +1460,7 @@ class data(pc.data):
         """
         Read L1b MDS variables for CryoSat Baseline D (netCDF4)
         """
+        import netCDF4
         # open netCDF4 file for reading
         fid = netCDF4.Dataset(os.path.expanduser(full_filename),'r')
         # use original unscaled units unless unpack=True

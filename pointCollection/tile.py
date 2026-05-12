@@ -7,7 +7,6 @@ Created on Fri Oct 18 16:46:30 2019
 """
 import numpy as np
 import pointCollection as pc
-import h5py
 import os
 
 class tile(object):
@@ -63,6 +62,7 @@ class tile(object):
         return self
 
     def write(self, out_dir, fields=None, append=True, ind_fields=['x','y','time']):
+        import h5py
         if self.D is None:
             return
         out_file=out_dir+'/E%d_N%d.h5' %(self.xy0[0], self.xy0[1])

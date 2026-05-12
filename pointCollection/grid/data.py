@@ -8,7 +8,6 @@ Created on Sat Dec 22 15:35:13 2018
 
 
 
-from osgeo import gdal, gdalconst, osr, ogr
 import numpy as np
 
 import re
@@ -17,9 +16,6 @@ import os
 import bz2
 import gzip
 import uuid
-import h5py
-import pyproj
-import netCDF4
 import posixpath
 #from scipy.interpolate import RegularGridInterpolator
 #from scipy.stats import scoreatpercentile
@@ -532,6 +528,7 @@ class data(object):
             - ``'year'``: WorldView year from filename
             - ``'matlab'``: WorldView matlab date from filename
         """
+        from osgeo import gdal, gdalconst
         self.filename=file
         if date_format is not None:
             try:
@@ -696,6 +693,8 @@ class data(object):
             - ``'bzip'``
             - ``'gzip'``
         """
+        # lazy import of h5py
+        import h5py
         if (compression is None):
             return h5py.File(h5_file,mode=mode)
         elif (compression == 'bzip'):
@@ -1101,6 +1100,7 @@ class data(object):
             - ``'bzip'``
             - ``'gzip'``
         """
+        import netCDF4
         if (compression is None):
             return netCDF4.Dataset(nc_file, mode=mode)
         elif (compression == 'bzip'):
@@ -1303,6 +1303,8 @@ class data(object):
               overwrite_coords=False,
               VERBOSE=False,
               **kwargs):
+        # lazy import of h5py
+        import h5py
         """Write a grid data object to an hdf5 file."""
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
@@ -1441,6 +1443,7 @@ class data(object):
         if fill_value is not None:
             self.replace_invalid(fields=fields, fill_value=fill_value)
 
+        import netCDF4
         # get crs attributes
         self.crs_attributes(**kwargs)
         with netCDF4.Dataset(out_file,mode) as fileID:
@@ -1547,7 +1550,7 @@ class data(object):
         return out_ds
 
     def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None,
-                srs_wkt=None, srs_epsg=None, EPSG=None,dtype=gdal.GDT_Float32,
+                srs_wkt=None, srs_epsg=None, EPSG=None, dtype=None,
                 options=["compress=LZW"]):
         """
         Write a grid object to a gdal memory object.
@@ -1574,6 +1577,9 @@ class data(object):
             GDAL creation options for output raster
         """
 
+        from osgeo import gdal, gdalconst, osr, ogr
+        if dtype is None:
+            dtype = gdal.GDT_Float32
         z=np.atleast_3d(getattr(self, field))
         ny,nx,nband = [*map(int, z.shape)]
         col = getattr(self, self._col_coord)
@@ -1699,6 +1705,7 @@ class data(object):
         latitude: float
             latitude coordinates of grid cells
         """
+        import pyproj
         # set the spatial projection reference information
         if srs_proj4 is not None:
             source = pyproj.CRS.from_proj4(srs_proj4)
@@ -2166,7 +2173,7 @@ class data(object):
 
     def rasterize_poly(self, in_geom, field='z', burn_value=1, epsg=1024, raster_epsg=None, poly_epsg=None):
         """Rasterize a shapely polygon"""
-
+        from osgeo import gdal, osr, ogr
         # use whatever epsgs are specified, if none, use epsg 1024 (generic xy cartesian)
         if raster_epsg is None:
             if self.srs_epsg is not None:
@@ -2220,6 +2227,7 @@ class data(object):
         srs_epsg: int or NoneType, default None
             EPSG projection code
         """
+        from osgeo import osr
         # output projection attributes dictionary
         self.crs = {}
         # return early if no projection was specified (avoids touching osr)

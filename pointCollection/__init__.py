@@ -10,20 +10,21 @@ from .data import data
 from .tile import tile
 from .tilingSchema import tilingSchema
 from .geoIndex import geoIndex
-# data classes
-from pointCollection import ATM_Qfit
-from pointCollection import ATM_ICESSN
-from pointCollection import CS2_wfm
-from pointCollection import CS2
-from pointCollection import CS2_retracked_POCA
-from pointCollection import CS2_retracked_SW
-from pointCollection import ATL06
-from pointCollection import indexedH5
-from pointCollection import ATM_WF
-from pointCollection import glah12
-from pointCollection import glah06
-from pointCollection import ATL11
 from pointCollection import grid
+# data classes — loaded lazily on first access (e.g. pc.ATL06, pc.ATM_Qfit)
+_SUBPACKAGES = frozenset({
+    'ATM_Qfit', 'ATM_ICESSN', 'CS2_wfm', 'CS2', 'CS2_retracked_POCA',
+    'CS2_retracked_SW', 'ATL06', 'indexedH5', 'ATM_WF', 'glah12',
+    'glah06', 'ATL11', 'grid',
+})
+
+def __getattr__(name):
+    if name in _SUBPACKAGES:
+        import importlib
+        mod = importlib.import_module(f'pointCollection.{name}')
+        globals()[name] = mod
+        return mod
+    raise AttributeError(f"module 'pointCollection' has no attribute {name!r}")
 
 # utilities
 from .tools.bin_rows import bin_rows
