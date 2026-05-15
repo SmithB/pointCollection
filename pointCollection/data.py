@@ -452,8 +452,8 @@ class data(object):
 
         for coord_ind in [0, 1]:
             self.assign({ dst_coords[coord_ind] : xy[coord_ind,:].reshape(self.shape)})
-
-        self.coords = dst_coords
+        # this may be a problem for data that have one or three coordinates.
+        self.coordinates = dst_coords
         return self
 
     def get_latlon(self, *args, **kwargs):
