@@ -33,6 +33,7 @@ class data(pc.data):
             self.fields=list(fields)
         self.fields=fields
         self.SRS_proj4=SRS_proj4
+        self.coordinates=['longitude','latitude']
         self.columns=columns
         self.shape=(0,2)
         self.size=0

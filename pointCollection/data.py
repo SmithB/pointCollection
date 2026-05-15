@@ -408,17 +408,20 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def get_xy(self, *args, **kwargs):
+    def get_xy(self, *args, src_coords=None, dst_coords=None, **kwargs):
 
         '''
         Calculate projected coordinates from latitude and longitude fields
 
         x and y fields are calculated based on an object's latitude and
-        longitude fields.
+        longitude fields.  The object's coordinates will be set to ['x','y']
 
         Parametes
         *args: iterable
             list of arguments passed to self.choose_crs()
+        dst_coords: iterable of strings
+            these will be used as the names of the output coordinates.
+            default is 'x','y'
         **kwargs: dict
             keyword=pair arguments passed to self.choose_crs()
         Returns
@@ -428,7 +431,6 @@ class data(object):
         '''
         import pyproj
         crs=self.choose_crs(*args,**kwargs)
-
 
         try:
             # this is compatible with pyproj 3.7.0
@@ -445,10 +447,13 @@ class data(object):
                     xy=np.array(pyproj.Proj("+init=epsg:"+str(crs))(self.longitude, self.latitude))
                 else:
                     xy=np.array(pyproj.Proj(crs)(self.longitude, self.latitude))
-        setattr(self, self._x_coord, xy[0,:].reshape(self.shape))
-        setattr(self, self._y_coord, xy[1,:].reshape(self.shape))
-        if self._x_coord not in self.fields:
-            self.fields += [self._x_coord, self._y_coord]
+        if dst_coords is None:
+            dst_coords = ['x','y']
+
+        for coord_ind in [0, 1]:
+            self.assign({ dst_coords[coord_ind] : xy[coord_ind,:].reshape(self.shape)})
+
+        self.coords = dst_coords
         return self
 
     def get_latlon(self, *args, **kwargs):
