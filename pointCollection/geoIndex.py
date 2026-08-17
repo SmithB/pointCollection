@@ -244,7 +244,8 @@ class geoIndex(dict):
         if 'dir_root' in self.attrs and self.attrs['dir_root'] is not None:
             indexGrp.attrs['dir_root']=self.attrs['dir_root']
         indexGrp.attrs['delta'] = self.attrs['delta']
-        indexGrp.attrs['SRS_proj4'] = self.attrs['SRS_proj4']
+        if 'SRS_proj4' in self.attrs and self.attrs['SRS_proj4'] is not None:
+            indexGrp.attrs['SRS_proj4'] = self.attrs['SRS_proj4']
         for key in self.keys():
             indexGrp.create_group(key)
             for field in ['file_num','offset_start','offset_end']:
@@ -257,10 +258,48 @@ class geoIndex(dict):
         indexF.close()
         return
 
-    def for_file(self, filename, file_type, number=0, dir_root='', group=None):
+    def for_file(self, filename, file_type, number=0, dir_root='', group=None,
+                 self_contained=False):
         """
         make a geoIndex for file 'filename'
+
+        Parameters
+        ----------
+        filename : string
+            the file to index. For file_type='h5', reading goes through
+            pc.data.from_h5(), which opens files with h5py -- this works for
+            both '.h5' files and netCDF4-format '.nc' files (netCDF4 is an
+            HDF5 container format), but not for classic/netCDF3 '.nc' files.
+        file_type : string
+            the type of file being indexed (e.g. 'h5', 'ATL06', 'ATL11', ...)
+        number : int, optional
+            the file number to assign this source within the index.
+        dir_root : string, optional
+            a directory prefix common to indexed files, stripped from the
+            stored filename and re-applied at query time (see resolve_path()).
+        group : string, optional
+            for file_type='h5', the group within the file containing the
+            'x' and 'y' fields to index.
+        self_contained : bool, optional
+            for file_type='h5' only. If True, don't record `filename` as a
+            separate source; instead mark this source as living in group
+            `group` inside whatever file this geoIndex is itself eventually
+            written to via to_file(). This lets a single file hold both a
+            pc.data object (in group `group`) and the geoIndex for it (in
+            the 'index' group). Requires `group` to be set. Build order
+            matters: write the data first (e.g.
+            `D.to_h5(path, group=group)` -- its default `replace=True` would
+            wipe a previously-written index if called second), then save
+            the index into the *same* path with
+            `pc.geoIndex(...).for_file(path, 'h5', group=group, self_contained=True).to_file(path)`.
+            Sources built this way are meant to be read back directly via
+            `from_file(path)`/`query_xy(...)`; avoid merging them with
+            `for_files()`/`from_list()` into an index saved to a *different*
+            path, since the embedded reference is tied to whatever
+            `self.filename` is at query time.
         """
+        if self_contained and file_type != 'h5':
+            raise ValueError("for_file: self_contained=True is only supported for file_type='h5'.")
         dir_root=strip_double_slashes(dir_root)
         self.filename=filename
         if dir_root is not None:
@@ -297,9 +336,12 @@ class geoIndex(dict):
                     pass
             self.from_list(temp)
         if file_type in ['h5']:
+            if self_contained and not group:
+                raise ValueError("for_file: self_contained=True requires 'group' to be set.")
             D=pc.data().from_h5(filename, field_dict={group:['x','y']})
             if D.x.size > 0:
-                self.from_xy((D.x, D.y), filename=filename_out, file_type='h5', number=number)
+                index_filename = (':' + group) if self_contained else filename_out
+                self.from_xy((D.x, D.y), filename=index_filename, file_type='h5', number=number)
         if file_type in ['ATM_Qfit']:
             D=pc.ATM_Qfit.data().from_h5(filename)
             if D.latitude.shape[0] > 0:
@@ -462,7 +504,7 @@ class geoIndex(dict):
             xyb[ii]=np.round(xyb[ii]/self.attrs['delta'][ii])*self.attrs['delta'][ii]
         # make a temporary geoIndex to hold the subset of the current geoindex
         # corresponding to xb and yb
-        temp_gi=geoIndex(delta=self.attrs['delta'], SRS_proj4=self.attrs['SRS_proj4'])
+        temp_gi=geoIndex(delta=self.attrs['delta'], SRS_proj4=self.attrs.get('SRS_proj4'))
         for bin in set(zip(xyb[0], xyb[1])):
            bin_name='%d_%d' % bin
            if bin_name in self:
@@ -503,14 +545,14 @@ class geoIndex(dict):
                 i0=i0[keep]
                 i1=i1[keep]
                 xy=xy[keep,:]
-            # if the file_N attribute begins with ':', it's a group in the current file, so add the current filename
+            # if the file_N attribute begins with ':', it's a group in the current
+            # file (built by for_file(..., self_contained=True)); self.filename
+            # already refers to it exactly as opened, so no directory-joining
+            # is needed (see resolve_path()'s self-referential-filename guard)
             this_query_file = self.attrs['file_%d' % out_file_num]
             if this_query_file is not None and this_query_file[0] == ':':
-                file_base=self.filename.replace(dir_root,'')
-                if 'dir_root' in self.attrs:
-                    file_base=file_base.replace(self.attrs['dir_root'],'')
-                this_query_file = file_base + this_query_file
-            if full_path:
+                this_query_file = self.filename + this_query_file
+            elif full_path:
                 this_query_file = self.resolve_path(this_query_file, dir_root)
             query_results[this_query_file]={
             'type':self.attrs['type_%d' % out_file_num],
@@ -559,6 +601,11 @@ class geoIndex(dict):
             self_dir_root=self.attrs['dir_root']
         # if the filename begins with '/', it is absolute
         if filename is not None and filename[0]==os.path.sep:
+            return filename
+        # if filename already refers to this index's own file (e.g. built from
+        # self.filename for a ':group' self-contained-file entry), it's already
+        # fully resolved -- resolving it again would double any relative prefix
+        if self.filename is not None and filename is not None and filename.startswith(self.filename):
             return filename
         # if self.attrs['dir_root'] begins with '/', it is absolute, and overrides the dir_root argument
         if len(self_dir_root)>0 and self_dir_root==os.path.sep:
@@ -623,7 +670,13 @@ class geoIndex(dict):
                     # user has provided a function to read the data
                     D=[function(filename=this_file, index_range=temp, field_dict=field_dict, bounds=bounds) for temp in zip(result['offset_start'], result['offset_end'])]
                 elif result['type'] == 'h5':
-                    D=[pc.data().from_h5(filename=this_file, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
+                    # a ':group' suffix (from a self-contained-file entry) marks
+                    # a group inside this_file rather than a separate file
+                    if ':' in this_file:
+                        h5_filename, h5_group = this_file.split(':', 1)
+                    else:
+                        h5_filename, h5_group = this_file, None
+                    D=[pc.data().from_h5(filename=h5_filename, group=h5_group, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
                 elif result['type'] == 'h5_geoindex':
                     D=geoIndex().from_file(this_file).query_xy((result['x'], result['y']), fields=fields, get_data=True, dir_root=dir_root, error_action=error_action)
                 elif result['type'] == 'ATL06':
