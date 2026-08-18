@@ -7,15 +7,15 @@ import pytest
 import pointCollection as pc
 
 # NOTE: from_xy() stores each bin's offset_start/offset_end as *inclusive*
-# first/last row indices, but every from_h5()-based reader treats
-# index_range as an exclusive-end Python slice -- so the last point of any
-# multi-point bin is silently dropped on read. This is a pre-existing,
-# wide-reaching bug (affects the 'h5', 'ATL06', 'ATL11', 'ATM_Qfit',
-# 'ATM_waveform', 'glah06'/'glah12' geoIndex types -- anywhere offsets come
-# from from_xy()/from_latlon()), independent of the self-contained-file
-# feature under test here, and out of scope for this fix. Tests below use a
-# 3-point bin and assert only the first 2 points come back, to document the
-# current behavior rather than silently mask it.
+# first/last row indices, but readers (data.py, ATL06/data.py) treat
+# index_range as an exclusive-end Python slice. get_data()'s trim_last_point
+# parameter (default False) compensates by adding 1 to offset_end before
+# handing it to the 'h5', 'ATL06', 'ATL11', and 'ATM_Qfit' branches, so the
+# last point of a multi-point bin is included by default; trim_last_point=True
+# reproduces the old (last-point-dropped) behavior. Not applied to
+# 'indexed_h5'/'indexed_h5_from_matlab' (offsets there can be a -1 sentinel,
+# or come from an externally-built index of unverified convention) or a
+# user-supplied `function` (always gets the raw, unmodified offsets).
 
 
 def test_query_xy_relative_dir_root(tmp_path, monkeypatch):
@@ -44,7 +44,7 @@ def test_query_xy_relative_dir_root(tmp_path, monkeypatch):
                           get_data=True, fields=['x', 'y'])
 
     assert result
-    np.testing.assert_array_equal(result[0].x, [0.])
+    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1.])
     assert result[0].filename == os.path.join('..', 'data', 'subdir', 'file0.h5')
 
 
@@ -68,8 +68,7 @@ def test_self_contained_index_and_data(tmp_path):
                            get_data=True)
 
     assert result
-    # [0., 1.] not [0., 1., 2.] -- see the off-by-one note at the top of this file
-    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1.])
+    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1., 2.])
 
 
 def test_self_contained_relative_index_path(tmp_path, monkeypatch):
@@ -98,7 +97,7 @@ def test_self_contained_relative_index_path(tmp_path, monkeypatch):
     result = gi2.query_xy((np.array([0.]), np.array([0.])), full_path=True,
                            get_data=True)
     assert result
-    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1.])
+    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1., 2.])
 
     # full_path=False: get_data() calls resolve_path() on the raw entry
     # itself (already_resolved=False) -- this is what resolve_path()'s
@@ -106,7 +105,59 @@ def test_self_contained_relative_index_path(tmp_path, monkeypatch):
     result = gi2.query_xy((np.array([0.]), np.array([0.])), full_path=False,
                            get_data=True)
     assert result
+    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1., 2.])
+
+
+def test_trim_last_point_legacy_behavior(tmp_path):
+    x = np.array([0., 1., 2., 20.])
+    y = np.array([0., 0., 0., 0.])
+    D = pc.data(fields={'x': x, 'y': y})
+    path = str(tmp_path / 'combined.h5')
+    D.to_h5(path, group='mydata')
+
+    gi = pc.geoIndex(delta=[10, 10]).for_file(path, 'h5', group='mydata',
+                                               self_contained=True)
+    gi.to_file(path)
+
+    gi2 = pc.geoIndex().from_file(path)
+
+    # default (trim_last_point=False): the bin's last point is included
+    result = gi2.query_xy((np.array([0.]), np.array([0.])), full_path=True,
+                           get_data=True)
+    assert result
+    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1., 2.])
+
+    # trim_last_point=True: reproduces the old (last-point-dropped) behavior
+    result = gi2.query_xy((np.array([0.]), np.array([0.])), full_path=True,
+                           get_data=True, trim_last_point=True)
+    assert result
     np.testing.assert_array_equal(np.sort(result[0].x), [0., 1.])
+
+
+def test_adjacent_bins_no_gap_no_duplicate(tmp_path):
+    # points 0 and 1 fall in bin x=0 (rows 0-1), points 2 and 3 fall in the
+    # adjacent bin x=10 (rows 2-3) -- the two bins' offset ranges are
+    # touching (row 1's bin ends where row 2's bin starts), which is exactly
+    # the case query_xy()'s merge/cleanup step collapses into a single
+    # contiguous read. Querying both bins together should return all 4
+    # points exactly once each -- no gap at the boundary, no duplicate.
+    x = np.array([0., 3., 10., 13.])
+    y = np.array([0., 0., 0., 0.])
+    D = pc.data(fields={'x': x, 'y': y})
+    path = str(tmp_path / 'combined.h5')
+    D.to_h5(path, group='mydata')
+
+    gi = pc.geoIndex(delta=[10, 10]).for_file(path, 'h5', group='mydata',
+                                               self_contained=True)
+    gi.to_file(path)
+
+    gi2 = pc.geoIndex().from_file(path)
+    result = gi2.query_xy((np.array([0., 10.]), np.array([0., 0.])),
+                           full_path=True, get_data=True)
+
+    assert result
+    assert len(result) == 1  # touching bins merge into a single read
+    np.testing.assert_array_equal(np.sort(result[0].x), [0., 3., 10., 13.])
 
 
 def test_self_contained_requires_group(tmp_path):
@@ -146,7 +197,7 @@ def test_self_contained_nc_extension(tmp_path):
                            get_data=True)
 
     assert result
-    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1.])
+    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1., 2.])
 
 
 # ---------------------------------------------------------------------------
@@ -175,4 +226,4 @@ def test_read_netcdf_via_h5_type(tmp_path):
                           get_data=True, fields={'mydata': ['x', 'y']})
 
     assert result
-    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1.])
+    np.testing.assert_array_equal(np.sort(result[0].x), [0., 1., 2.])

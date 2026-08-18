@@ -6,10 +6,16 @@ Created on Wed May  6 12:07:54 2020
 @author: ben
 """
 
+import os
+import re
+import contextlib
 import numpy as np
 import pointCollection as pc
-import os
-import h5py
+
+# ATL11_ttttrr_c0c1_rrr_vv.h5 -- tttt is the reference ground track (RGT),
+# equal to /ancillary_data/start_rgt, so rgt can be read from the filename
+# with no file I/O at all.
+_ATL11_FILENAME_RE = re.compile(r'^ATL11_(\d{4})\d{2}_\d{4}_\d{3}_\d{2}\.h5$')
 
 
 class data(pc.data):
@@ -64,24 +70,32 @@ class data(pc.data):
         
         return self
 
-    def __internal_field_calc__(self, field_dict):
+    def __internal_field_calc__(self, field_dict, fs=None, h5_f=None):
         if 'rgt' in field_dict['__calc_internal__']:
             self.__update_size_and_shape__()
-            with h5py.File(self.filename,'r') as h5f:
-                self.rgt=h5f['/ancillary_data/start_rgt'][0]+np.zeros(self.shape)
+            m = _ATL11_FILENAME_RE.match(os.path.basename(self.filename)) if self.filename else None
+            if m is not None:
+                # no file access needed at all -- the RGT is encoded in the filename
+                self.rgt=int(m.group(1))+np.zeros(self.shape)
+            elif h5_f is not None:
+                self.rgt=h5_f['/ancillary_data/start_rgt'][0]+np.zeros(self.shape)
+            else:
+                with pc.io_utils.open_h5(self.filename, fs=fs) as h5f:
+                    self.rgt=h5f['/ancillary_data/start_rgt'][0]+np.zeros(self.shape)
 
-    def from_h5(self, filename, pair=None, field_weight='light', tile_fields=True, **kwargs):
+    def from_h5(self, filename, pair=None, field_weight='light', tile_fields=True, fs=None, h5_f=None, **kwargs):
         if pair is not None:
             self.pair=pair
             self.pair_name=f'pt{int(pair)}'
             self.field_dict=self.__default_field_dict__(field_weight=field_weight)
-        with h5py.File(filename,'r') as h5f:
+        _ctx = contextlib.nullcontext(h5_f) if h5_f is not None else pc.io_utils.open_h5(filename, fs=fs)
+        with _ctx as h5f:
             cycle_number = np.array(h5f[self.pair_name]['cycle_number'])
 
-        if 'field_dict' in kwargs and kwargs['field_dict'] is not None:
-            kwargs['field_dict']=self.__convert_field_dict__(kwargs['field_dict'].copy())
+            if 'field_dict' in kwargs and kwargs['field_dict'] is not None:
+                kwargs['field_dict']=self.__convert_field_dict__(kwargs['field_dict'].copy())
 
-        super().from_h5(filename, **kwargs)
+            super().from_h5(filename, h5_f=h5f, fs=fs, **kwargs)
         self.cycle_number=cycle_number
         self.columns=len(self.cycle_number)
         self.shape=(self.latitude.size, self.columns)

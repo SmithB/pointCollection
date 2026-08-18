@@ -57,6 +57,7 @@ Issues = "https://github.com/SmithB/pointCollection/issues"
 [project.optional-dependencies]
 all = ["gdal", "notebook", "shapely"]
 dev = ["flake8", "pytest>=4.6", "pytest-cov"]
+cloud = ["earthaccess", "s3fs", "fsspec"]
 
 [project.scripts]
 "cross_ATL06_tile.py" = "pointCollection.scripts.cross_ATL06_tile:main"
@@ -66,6 +67,7 @@ dev = ["flake8", "pytest>=4.6", "pytest-cov"]
 "indexPicker.py" = "pointCollection.scripts.indexPicker:main"
 "make_mosaic.py" = "pointCollection.scripts.make_mosaic:main"
 "make_tiles.py" = "pointCollection.scripts.make_tiles:main"
+"query_ATL11_cloud.py" = "pointCollection.scripts.query_ATL11_cloud:main"
 "reduce_ATM.py" = "pointCollection.scripts.reduce_ATM:main"
 "uproot_geoindex.py" = "pointCollection.scripts.uproot_geoindex:main"
 

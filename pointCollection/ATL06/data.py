@@ -150,7 +150,7 @@ class data(pc.data):
                                 np.array(h5_f[beam_names[1]]['land_ice_segments'][group][field][index_range[0]:index_range[1]]).transpose()]
                          except KeyError:
                              print("missing hdf field for land_ice_segments/%s/%s in %s" % (group, field, filename))
-                             data=np.zeros((index_range[1]+1-index_range[0], 2))+bad_val
+                             data=np.zeros((index_range[1]-index_range[0], 2))+bad_val
                     # identify the bad data elements before converting the field to double
                     bad=data==bad_val
                     if field != 'valid':

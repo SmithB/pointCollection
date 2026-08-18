@@ -6,6 +6,7 @@ Created on Wed Oct 16 13:36:21 2019
 @author: ben
 """
 # base classes
+from . import io_utils
 from .data import data
 from .tile import tile
 from .tilingSchema import tilingSchema
