@@ -25,7 +25,8 @@ class tilingSchema(object):
                  extension='.h5',
                  bin_size=1.e4,
                  tile_offset = [0,0],
-                 directory=None):
+                 directory=None,
+                 source=None):
         self.tile_spacing = tile_spacing
         self.bin_size=bin_size
         if mapping_function is not None:
@@ -43,6 +44,13 @@ class tilingSchema(object):
         self.directory = directory
         self.tile_offset = tile_offset
         self.mapping_function = mapping_function
+        # optional dict describing a remote source for the tiles, e.g.
+        # {'type': 'EarthAccess', 'short_name': 'ATL11XO', 'daac': 'NSIDC'}.
+        # When set, tile_filename() returns bare granule-name strings
+        # instead of joining them to a local `directory`, and
+        # resolve_files_for_box() resolves those names to real URLs via a
+        # single batched earthaccess.search_data(granule_name=[...]) call.
+        self.source = source
 
     def set_mapping_function(self, mapping_function_name=None):
 
@@ -61,7 +69,7 @@ class tilingSchema(object):
         scheme_dict={}
         for field in ['tile_spacing','mapping_function_name', 'EPSG', 'coords',
                       'tile_offset', 'format_str','format_variables',
-                      'scale', 'extension','directory','bin_size']:
+                      'scale', 'extension','directory','bin_size','source']:
             try:
                 scheme_dict[field] = float(getattr(self, field))
             except (ValueError, TypeError):
@@ -97,7 +105,7 @@ class tilingSchema(object):
         for key, val in scheme_dict.items():
             if hasattr(self, key):
                 setattr(self, key, val)
-        if self.directory is None:
+        if self.directory is None and self.source is None:
             self.directory = os.path.dirname(scheme_file)
         return self
 
@@ -161,14 +169,17 @@ class tilingSchema(object):
                                                 np.concatenate(self.tile_bounds(xy_t)))}
             vals_sorted  = [(var_val[var]/self.scale)
                                 for var in self.format_variables]
-            return os.path.join(self.directory,
-                                self.format_str % tuple(vals_sorted))\
-                                    +self.extension
+            name = self.format_str % tuple(vals_sorted) + self.extension
         elif  set(['x','y']) == set(self.format_variables):
             xy0 = [xy_t[0]/self.scale, xy_t[1]/self.scale]
-            return os.path.join(self.directory,
-                                self.format_str
-                                    % tuple(xy0))+self.extension
+            name = self.format_str % tuple(xy0) + self.extension
+        else:
+            return None
+        if self.source is not None:
+            # remote source: return the bare granule/file name to search
+            # for, not a local path (there is no `directory` to join)
+            return name
+        return os.path.join(self.directory, name)
 
     def filenames_for_xy(self, xy0):
         if np.isscalar(xy0[0]):
@@ -184,6 +195,62 @@ class tilingSchema(object):
         xg, yg = np.meshgrid( np.arange(xyr[0][0], xyr[0][1] + resolution * 1.01, resolution),
                               np.arange(xyr[1][0], xyr[1][1] + resolution * 1.01, resolution) )
         return self.filenames_for_xy([xg.ravel(), yg.ravel()])
+
+    def resolve_files_for_box(self, xyr, fs=None, resolution=1.e4, verbose=False):
+        """
+        Find the tiles overlapping a box, and resolve each to a location
+        that can actually be opened -- a local path, an S3 URI already
+        confirmed to exist, or (if self.source specifies a remote source)
+        a URL resolved via a search against that source. Tiles that can't
+        be found are silently dropped (reported if verbose=True).
+
+        Parameters
+        ----------
+        xyr : 2-element iterable of 2-element iterables
+            [[xmin, xmax], [ymin, ymax]] box bounds.
+        fs : s3fs.S3FileSystem, optional
+            filesystem to use / reuse for remote existence checks and reads.
+            If None and self.source specifies EarthAccess, one is obtained
+            via pc.io_utils.get_s3fs() and returned for the caller to reuse.
+        resolution : float, optional
+            grid spacing used to enumerate candidate tile centers within
+            the box (passed to filenames_for_box()).
+        verbose : bool, optional
+            print a message for each candidate tile that isn't found.
+
+        Returns
+        -------
+        resolved : dict
+            {tile_basename: resolved_location}, for tiles that were found.
+        fs : s3fs.S3FileSystem or None
+            the filesystem used (for the caller to reuse on subsequent calls).
+        """
+        candidates = self.filenames_for_box(xyr, resolution=resolution)
+        if self.source is not None and self.source.get('type') == 'EarthAccess':
+            import earthaccess
+            search_kwargs = {k: v for k, v in self.source.items()
+                              if k not in ('type', 'daac')}
+            earthaccess.login(strategy='netrc')
+            granules = earthaccess.search_data(granule_name=candidates, **search_kwargs)
+            found = {}
+            for g in granules:
+                url = g.data_links(access='direct')[0]
+                found[os.path.basename(url)] = url
+            resolved = {name: found[name] for name in candidates if name in found}
+            if verbose:
+                for name in candidates:
+                    if name not in found:
+                        print(f'tilingSchema: {name} not found via earthaccess')
+            if fs is None:
+                fs = pc.io_utils.get_s3fs(daac=self.source.get('daac', 'NSIDC'))
+        else:
+            resolved = {}
+            for name in candidates:
+                if pc.io_utils.path_exists(name, fs=fs):
+                    resolved[os.path.basename(name)] = name
+                elif verbose:
+                    print(f'tilingSchema: {name} not found')
+        return resolved, fs
 
     def tile_bounds(self, xy = [0.,0.]):
         if self.mapping_function==np.round:
