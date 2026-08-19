@@ -136,7 +136,7 @@ class tilingSchema(object):
 
         if return_dict:
             # return one tile xy for each point:
-            tile_xys = np.array(self.offset) + \
+            tile_xys = xy0 + \
                 self.mapping_function(
                     np.c_[xy[0]-self.tile_offset[0], xy[1] - self.tile_offset[1]]
                         / self.tile_spacing ) * self.tile_spacing
