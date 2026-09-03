@@ -69,10 +69,16 @@ def index_path_for_granule(granule_basename, index_root):
     return os.path.join(index_root, subdir, granule_basename)
 
 
-def read_ATL11_granule_cloud(s3_url, index_file, xr, yr, fields=None, fs=None, version_mismatch='error'):
+def read_ATL11_granule_cloud_items(s3_url, index_file, xr, yr, fields=None, fs=None, version_mismatch='error'):
     """
-    Read the rows of a cloud ATL11 granule falling within [xr, yr], using a
-    pre-built per-granule geoIndex to locate them.
+    Find the rows of a cloud ATL11 granule falling within [xr, yr], using a
+    pre-built per-granule geoIndex to locate them, and return them as the
+    raw list of pointCollection.data objects geoIndex.query_xy_box() itself
+    returns (one item per matched beam pair/offset segment) -- i.e. without
+    merging them into a single object. Callers that need per-pair
+    granularity (e.g. ATL1415.read_ATL11_at(), which computes per-pair
+    slope-derived sigma_corr) should use this directly; callers that just
+    want the concatenated data should use read_ATL11_granule_cloud().
 
     Parameters
     ----------
@@ -93,7 +99,8 @@ def read_ATL11_granule_cloud(s3_url, index_file, xr, yr, fields=None, fs=None, v
 
     Returns
     -------
-    pointCollection.data, or None if the granule was skipped
+    list of pointCollection.data, or None if the granule was skipped or
+    had no data within [xr, yr]
 
     Raises
     ------
@@ -123,6 +130,25 @@ def read_ATL11_granule_cloud(s3_url, index_file, xr, yr, fields=None, fs=None, v
 
     D = gI.query_xy_box(xr, yr, remote_file=s3_url, fs=fs, fields=fields)
     if D is None or len(D) == 0:
+        return None
+    return D
+
+
+def read_ATL11_granule_cloud(s3_url, index_file, xr, yr, fields=None, fs=None, version_mismatch='error'):
+    """
+    Read the rows of a cloud ATL11 granule falling within [xr, yr], using a
+    pre-built per-granule geoIndex to locate them, concatenated into a
+    single pointCollection.data object. See read_ATL11_granule_cloud_items()
+    for the parameters (identical) and for a version that returns the
+    unmerged per-pair list instead.
+
+    Returns
+    -------
+    pointCollection.data, or None if the granule was skipped
+    """
+    D = read_ATL11_granule_cloud_items(s3_url, index_file, xr, yr, fields=fields,
+                                        fs=fs, version_mismatch=version_mismatch)
+    if D is None:
         return None
     return pc.data().from_list(D)
 

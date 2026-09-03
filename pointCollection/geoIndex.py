@@ -571,9 +571,15 @@ class geoIndex(dict):
             elif full_path:
                 this_query_file = self.resolve_path(this_query_file, dir_root)
             if remote_file is not None:
+                # take the suffix after the *last* colon, not the first --
+                # a stored path built directly against a URI (e.g. a
+                # per-granule geoIndex made with for_file('s3://...')) has
+                # an earlier colon of its own (the 's3:' scheme), and a
+                # first-colon split would wrongly capture everything after
+                # that as the "suffix", corrupting the substituted path
                 suffix = ''
                 if this_query_file is not None and ':' in this_query_file:
-                    suffix = ':' + this_query_file.split(':', 1)[1]
+                    suffix = ':' + this_query_file.rsplit(':', 1)[1]
                 this_query_file = remote_file + suffix
             query_results[this_query_file]={
             'type':self.attrs['type_%d' % out_file_num],
