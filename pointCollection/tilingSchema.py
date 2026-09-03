@@ -13,6 +13,14 @@ import json
 import re
 import glob
 
+# the mapping functions a schema may use, and where the value tile_xy()
+# returns sits within its tile, as a fraction of tile_spacing: np.round
+# labels a tile by its center, np.floor by its lower-left corner.  A new
+# convention needs an entry in both.
+MAPPING_FUNCTIONS = {'round': np.round, 'floor': np.floor}
+LABEL_OFFSET = {'round': 0., 'floor': 0.5}
+
+
 class tilingSchema(object):
     def __init__(self, tile_spacing=1.e5, tol=None,
                  mapping_function_name='round',
@@ -32,6 +40,8 @@ class tilingSchema(object):
         if mapping_function is not None:
             self.mapping_function = mapping_function
             mapping_function_name = self.mapping_function.__name__
+        if mapping_function_name not in MAPPING_FUNCTIONS:
+            raise NotImplementedError(f'mapping function {mapping_function_name} not understood')
         self.mapping_function_name=mapping_function_name
         self.extension = extension
         self.EPSG = EPSG
@@ -56,12 +66,9 @@ class tilingSchema(object):
 
         if mapping_function_name is None:
             mapping_function_name = self.mapping_function_name
-        if mapping_function_name == 'round':
-            self.mapping_function = np.round
-        elif mapping_function_name == 'floor':
-            self.mapping_function = np.floor
-        else:
+        if mapping_function_name not in MAPPING_FUNCTIONS:
             raise NotImplementedError(f'mapping function {mapping_function_name} not understood')
+        self.mapping_function = MAPPING_FUNCTIONS[mapping_function_name]
         self.mapping_function_name = self.mapping_function.__name__
 
     def _scheme_dict(self):
@@ -255,10 +262,11 @@ class tilingSchema(object):
     def tile_bounds(self, xy = [0.,0.]):
         if self.mapping_function is None:
             self.set_mapping_function()
-        if self.mapping_function==np.round:
-            offset = [0,0]
-        elif self.mapping_function == np.floor:
-            offset = [self.tile_spacing/2, self.tile_spacing/2]
+        if self.mapping_function_name not in LABEL_OFFSET:
+            raise NotImplementedError(f'mapping function {self.mapping_function_name} not understood')
+        # shift the value tile_xy() returns to the tile center, so the same
+        # +/- tile_spacing/2 gives the bounds under either convention
+        offset = [LABEL_OFFSET[self.mapping_function_name]*self.tile_spacing]*2
         # all_tiles=True would also return the neighboring tiles for a point
         # within tol of a tile edge, and np.unique() sorts those ascending, so
         # [0] could be a tile that does not contain xy

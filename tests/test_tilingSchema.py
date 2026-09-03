@@ -343,3 +343,49 @@ def test_tile_filenames_unchanged_by_bounds_fix(tmp_path):
     for xy_t in tS.tile_xy(xy=[np.array([0., 2.e5]), np.array([0., 2.e5])]):
         bounds = tS.tile_bounds(xy_t)
         assert np.diff(bounds[0])[0] == tS.tile_spacing
+
+
+# ---------------------------------------------------------------------------
+# only the conventions tile_bounds() knows how to describe are accepted.
+# __init__ took any callable, deriving mapping_function_name from __name__
+# without checking it, and tile_bounds() then chose its center-vs-corner
+# correction with an if/elif on the function object and no else -- so a third
+# function left `offset` unbound and surfaced as an UnboundLocalError naming
+# a local variable, from tile_bounds/tile_boundary/tile_filename, long after
+# the schema was built.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('kwargs', [
+    {'mapping_function': np.trunc},
+    {'mapping_function_name': 'trunc'},
+    {'mapping_function': lambda x: x},
+])
+def test_unsupported_mapping_function_refused_at_construction(kwargs):
+    with pytest.raises(NotImplementedError, match='not understood'):
+        pc.tilingSchema(tile_spacing=2.e5, **kwargs)
+
+
+def test_tile_bounds_reports_unsupported_mapping_function():
+    # reachable only by assigning the name after construction; the error must
+    # name the mapping function, not an unbound local
+    tS = pc.tilingSchema(tile_spacing=2.e5)
+    # set both, so the resolved-but-unsupported state is reached: with only
+    # the name changed, tile_bounds() would call set_mapping_function() and
+    # be turned back by its own check
+    tS.mapping_function = np.trunc
+    tS.mapping_function_name = 'trunc'
+    for call in [tS.tile_bounds, tS.tile_boundary]:
+        with pytest.raises(NotImplementedError, match='trunc'):
+            call(xy=[3.e5, 3.e5])
+
+
+@pytest.mark.parametrize('name,function', [('round', np.round), ('floor', np.floor)])
+def test_tile_bounds_same_by_name_and_by_function(name, function):
+    # tile_bounds() now dispatches on mapping_function_name, as tile_xy()'s
+    # boundary widening already did; the two ways of specifying a convention
+    # must still agree
+    by_name = pc.tilingSchema(tile_spacing=2.e5, mapping_function_name=name)
+    by_object = pc.tilingSchema(tile_spacing=2.e5, mapping_function=function)
+    for a, b in zip(by_name.tile_bounds(xy=[3.e5, 3.e5]),
+                    by_object.tile_bounds(xy=[3.e5, 3.e5])):
+        np.testing.assert_array_equal(a, b)
