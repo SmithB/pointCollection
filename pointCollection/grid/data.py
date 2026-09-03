@@ -598,6 +598,12 @@ class data(object):
         if fill_value is not None:
             self.fill_value = fill_value
 
+        if bands is not None:
+            # bands may arrive as a scalar, list, tuple or array; the band
+            # numbers are used both to index self.t (t[bands-1]) and to
+            # iterate over, so make them a 1-d integer array
+            bands = np.atleast_1d(bands).astype(int)
+
         # check if there is time information
         bb=ds.GetRasterBand(1)
         if 'time' in bb.GetMetadata():
