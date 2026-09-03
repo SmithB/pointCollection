@@ -34,6 +34,7 @@ class tilingSchema(object):
                  bin_size=1.e4,
                  tile_offset = [0,0],
                  directory=None,
+                 align_tiles=False,
                  source=None):
         self.tile_spacing = tile_spacing
         self.bin_size=bin_size
@@ -61,6 +62,89 @@ class tilingSchema(object):
         # resolve_files_for_box() resolves those names to real URLs via a
         # single batched earthaccess.search_data(granule_name=[...]) call.
         self.source = source
+        self.check_bin_size()
+        if align_tiles:
+            self.align_to_bins()
+
+    def check_bin_size(self):
+        """
+        check that the bins tile the tiles
+
+        The sub-tile bins of an indexedH5 tile are defined by their centers,
+        at multiples of bin_size, so a tile that is not a whole number of
+        bins across cannot have its edges on bin edges no matter where the
+        tile lattice is placed.
+
+        Returns
+        -------
+        int or None
+            the number of bins per tile, or None if either value is unset
+
+        Raises
+        ------
+        ValueError
+            if tile_spacing is not an integer multiple of bin_size
+        """
+        if self.tile_spacing is None or self.bin_size is None:
+            return None
+        n_bins = self.tile_spacing/self.bin_size
+        if np.abs(n_bins - np.round(n_bins)) > 1.e-9*np.maximum(1., np.abs(n_bins)):
+            raise ValueError(f'tilingSchema: bin_size {self.bin_size} does not tile '
+                             f'tile_spacing {self.tile_spacing} ({n_bins} bins per tile)')
+        return int(np.round(n_bins))
+
+    def aligned_tile_offset(self):
+        """
+        the tile_offset that puts the tile edges on bin edges
+
+        Bins are centered on multiples of bin_size, so their edges fall at
+        half-bin offsets.  Tile edges sit half a tile_spacing from each tile
+        label under the 'round' convention and on the label itself under
+        'floor', so the offset that lines the two up depends on the mapping
+        function and on whether a tile is an even or odd number of bins
+        across.
+
+        Returns
+        -------
+        float
+            offset to apply to both axes
+        """
+        # raises if a tile is not a whole number of bins across
+        self.check_bin_size()
+        if self.mapping_function_name == 'floor':
+            return self.bin_size/2
+        return (self.bin_size/2 - self.tile_spacing/2) % self.bin_size
+
+    def align_to_bins(self):
+        """
+        shift the tile lattice so that no bin is split between two tiles
+
+        Without this a tile edge can fall on a bin center, leaving half-full
+        bins along each tile edge and forcing a query that spans an edge to
+        read the same bin from two tiles (four at a corner).
+
+        Returns
+        -------
+        tilingSchema
+            self, so the call can be chained onto the constructor
+        """
+        offset = self.aligned_tile_offset()
+        self.tile_offset = [offset, offset]
+        return self
+
+    def bins_are_aligned(self):
+        """
+        True if the current tile_offset puts the tile edges on bin edges
+        """
+        try:
+            offset = self.aligned_tile_offset()
+        except ValueError:
+            return False
+        for value in np.array(self.tile_offset, dtype=float).ravel()[0:2]:
+            delta = (value - offset) % self.bin_size
+            if np.minimum(delta, self.bin_size-delta) > 1.e-6*self.bin_size:
+                return False
+        return True
 
     def set_mapping_function(self, mapping_function_name=None):
 
@@ -114,6 +198,7 @@ class tilingSchema(object):
                 setattr(self, key, val)
         if self.directory is None and self.source is None:
             self.directory = os.path.dirname(scheme_file)
+        self.check_bin_size()
         return self
 
     # TBD: implement latlon keyword

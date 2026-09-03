@@ -389,3 +389,90 @@ def test_tile_bounds_same_by_name_and_by_function(name, function):
     for a, b in zip(by_name.tile_bounds(xy=[3.e5, 3.e5]),
                     by_object.tile_bounds(xy=[3.e5, 3.e5])):
         np.testing.assert_array_equal(a, b)
+
+
+# ---------------------------------------------------------------------------
+# bin alignment.  An indexedH5 tile stores its points in bins defined by their
+# centers, at multiples of bin_size, so a tile edge that lands on a bin center
+# splits that bin between two tiles -- leaving half-full bins along every tile
+# edge, and forcing a query that spans an edge to read the same bin twice (or
+# four times at a corner).  Shifting the tile lattice by the right fraction of
+# a bin puts the tile edges on bin edges instead.
+# ---------------------------------------------------------------------------
+
+def _split_bins(tS, x_range=6.e5):
+    """bin centers (as indexedH5 defines them) that fall in more than one tile"""
+    x = np.arange(-x_range, x_range, tS.bin_size/20) + tS.bin_size/40
+    y = np.zeros_like(x)
+    tile = tS.tile_xy(xy=[x.copy(), y.copy()], all_tiles=False, unique=False)[:, 0]
+    bin_center = np.round(x/tS.bin_size)*tS.bin_size     # indexedH5/data.py
+    return [bc for bc in np.unique(bin_center)
+            if len(np.unique(tile[bin_center == bc])) > 1]
+
+
+def test_bin_size_must_tile_the_tile_spacing():
+    with pytest.raises(ValueError, match='does not tile'):
+        pc.tilingSchema(tile_spacing=5.e4, bin_size=2.e4)
+    # 2.5 bins per tile cannot be aligned by any offset, whole numbers can
+    assert pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4).check_bin_size() == 20
+    assert pc.tilingSchema(tile_spacing=1.e5, bin_size=1.e4).check_bin_size() == 10
+
+
+def test_bin_size_checked_when_loading_a_scheme(tmp_path):
+    # from_file() sets attributes directly, bypassing __init__
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4)
+    json_file = str(tmp_path / 'scheme.json')
+    tS.to_json(json_file)
+    with open(json_file, 'r') as fh:
+        scheme = json.load(fh)
+    scheme['bin_size'] = 3.e4                    # 6.67 bins per tile
+    with open(json_file, 'w') as fh:
+        json.dump(scheme, fh)
+    with pytest.raises(ValueError, match='does not tile'):
+        pc.tilingSchema().from_file(json_file)
+
+
+@pytest.mark.parametrize('tile_spacing,bin_size,name,expected_offset', [
+    (1.e5, 1.e4, 'round', 5.e3),      # 10 bins per tile: edges land on a bin center
+    (2.e5, 1.e4, 'round', 5.e3),      # 20 bins
+    (3.e4, 1.e4, 'round', 0.),        # 3 bins: edges already fall on bin edges
+    (1.e5, 1.e4, 'floor', 5.e3),      # floor labels the corner, so always half a bin
+    (3.e4, 1.e4, 'floor', 5.e3),
+])
+def test_aligned_tile_offset(tile_spacing, bin_size, name, expected_offset):
+    tS = pc.tilingSchema(tile_spacing=tile_spacing, bin_size=bin_size,
+                         mapping_function_name=name)
+    assert tS.aligned_tile_offset() == expected_offset
+
+
+@pytest.mark.parametrize('tile_spacing,bin_size', [(1.e5, 1.e4), (2.e5, 1.e4), (3.e4, 1.e4)])
+@pytest.mark.parametrize('name', ['round', 'floor'])
+def test_align_to_bins_splits_no_bins(tile_spacing, bin_size, name):
+    # checked against indexedH5's own binning, not against the offset formula
+    tS = pc.tilingSchema(tile_spacing=tile_spacing, bin_size=bin_size,
+                         mapping_function_name=name)
+    tS.align_to_bins()
+    assert tS.bins_are_aligned()
+    assert _split_bins(tS) == []
+
+
+def test_default_schema_splits_bins():
+    # the layout tilingSchema has always produced: tile_offset=[0,0] with an
+    # even number of bins per tile puts every tile edge on a bin center
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4)
+    assert not tS.bins_are_aligned()
+    assert len(_split_bins(tS)) > 0
+
+
+def test_align_tiles_kwarg_and_chaining():
+    assert pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4,
+                           align_tiles=True).tile_offset == [5.e3, 5.e3]
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4).align_to_bins()
+    assert isinstance(tS, pc.tilingSchema) and tS.bins_are_aligned()
+
+
+def test_alignment_survives_a_json_round_trip(tmp_path):
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, align_tiles=True)
+    json_file = str(tmp_path / 'scheme.json')
+    tS.to_json(json_file)
+    assert pc.tilingSchema().from_file(json_file).bins_are_aligned()
