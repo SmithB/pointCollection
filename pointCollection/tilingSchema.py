@@ -20,6 +20,11 @@ import glob
 MAPPING_FUNCTIONS = {'round': np.round, 'floor': np.floor}
 LABEL_OFFSET = {'round': 0., 'floor': 0.5}
 
+# the formats write_tiles() can write a tile in.  These are spelled as
+# geoIndex spells its file types, so schema.data_format can be handed
+# straight to geoIndex.for_file() when a tile collection is indexed.
+DATA_FORMATS = ('h5', 'indexedH5')
+
 
 class tilingSchema(object):
     def __init__(self, tile_spacing=1.e5, tol=None,
@@ -32,6 +37,7 @@ class tilingSchema(object):
                  format_variables=['x','y'],
                  extension='.h5',
                  bin_size=1.e4,
+                 data_format='indexedH5',
                  tile_offset = [0,0],
                  directory=None,
                  align_tiles=False,
@@ -51,7 +57,7 @@ class tilingSchema(object):
         self.format_re  = re.compile(self.format_str.replace(r'%d',r'(.*)')+self.extension)
         self.format_variables = format_variables
         self.scale = scale
-        self.data_format = 'indexedH5'
+        self.data_format = self.check_data_format(data_format)
         self.directory = directory
         self.tile_offset = tile_offset
         self.mapping_function = mapping_function
@@ -92,6 +98,27 @@ class tilingSchema(object):
             raise ValueError(f'tilingSchema: bin_size {self.bin_size} does not tile '
                              f'tile_spacing {self.tile_spacing} ({n_bins} bins per tile)')
         return int(np.round(n_bins))
+
+    @staticmethod
+    def check_data_format(data_format):
+        """
+        normalize a data-format name and check that write_tiles() knows it
+
+        Parameters
+        ----------
+        data_format : str
+            'indexedH5' or 'h5'; alternate spellings of 'indexedH5' are
+            accepted (see io_utils.canonical_file_type)
+
+        Returns
+        -------
+        str
+            the canonical spelling
+        """
+        data_format = pc.io_utils.canonical_file_type(data_format)
+        if data_format not in DATA_FORMATS:
+            raise ValueError(f'tilingSchema: data_format {data_format} not understood')
+        return data_format
 
     def aligned_tile_offset(self):
         """
@@ -160,7 +187,8 @@ class tilingSchema(object):
         scheme_dict={}
         for field in ['tile_spacing','mapping_function_name', 'EPSG', 'coords',
                       'tile_offset', 'format_str','format_variables',
-                      'scale', 'extension','directory','bin_size','source']:
+                      'scale', 'extension','directory','bin_size',
+                      'data_format','source']:
             try:
                 scheme_dict[field] = float(getattr(self, field))
             except (ValueError, TypeError):
@@ -199,6 +227,7 @@ class tilingSchema(object):
         if self.directory is None and self.source is None:
             self.directory = os.path.dirname(scheme_file)
         self.check_bin_size()
+        self.data_format = self.check_data_format(self.data_format)
         return self
 
     # TBD: implement latlon keyword
@@ -390,7 +419,7 @@ class tilingSchema(object):
         if bin_size is None:
             bin_size = self.bin_size
         # accept the geoIndex spelling ('indexed_h5') of the format name
-        data_format = pc.io_utils.canonical_file_type(self.data_format)
+        data_format = self.check_data_format(self.data_format)
         tile_dict = self.tile_xy(data=D, return_dict=True)
         for xy0, ii in tile_dict.items():
             out_file = self.tile_filename(xy0)
@@ -399,7 +428,8 @@ class tilingSchema(object):
             elif data_format == 'indexedH5':
                 pc.indexedH5.data( bin_W = (bin_size, bin_size) ).to_file(D[ii], out_file, replace=replace)
             else:
-                raise ValueError(f'write_tiles: data_format {self.data_format}'
+                # DATA_FORMATS holds a name write_tiles() cannot write
+                raise ValueError(f'write_tiles: data_format {data_format}'
                                  ' not understood')
 
     def file_xy(self, filenames=None):

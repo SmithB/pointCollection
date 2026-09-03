@@ -512,3 +512,80 @@ def test_filenames_for_xy_follows_alignment(tmp_path):
                               align_tiles=True)
     assert len(unaligned.filenames_for_xy([a.copy() for a in xy])) == 2
     assert len(aligned.filenames_for_xy([a.copy() for a in xy])) == 1
+
+
+# ---------------------------------------------------------------------------
+# data_format: which class write_tiles() hands each tile to.  It was hardcoded
+# in __init__ (so the 'h5' branch of write_tiles was unreachable) and left out
+# of the scheme file, so a reader could not tell an indexedH5 collection from
+# a plain h5 one.  The names are spelled as geoIndex spells its file types.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('given,expected', [
+    ('indexedH5', 'indexedH5'),
+    ('indexed_h5', 'indexedH5'),
+    ('indexedh5', 'indexedH5'),
+    ('h5', 'h5'),
+])
+def test_data_format_canonicalized(given, expected):
+    assert pc.tilingSchema(data_format=given).data_format == expected
+
+
+def test_unknown_data_format_refused():
+    with pytest.raises(ValueError, match='not understood'):
+        pc.tilingSchema(data_format='netcdf')
+
+
+def test_data_format_round_trips_through_json(tmp_path):
+    json_file = str(tmp_path / 'scheme.json')
+    pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, data_format='h5',
+                    directory=str(tmp_path)).to_json(json_file)
+    with open(json_file, 'r') as fh:
+        assert json.load(fh)['data_format'] == 'h5'
+    assert pc.tilingSchema().from_file(json_file).data_format == 'h5'
+
+
+def test_scheme_without_data_format_keeps_the_default(tmp_path):
+    # schemes written before data_format was recorded must still load
+    json_file = str(tmp_path / 'scheme.json')
+    pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, directory=str(tmp_path)).to_json(json_file)
+    with open(json_file, 'r') as fh:
+        scheme = json.load(fh)
+    del scheme['data_format']
+    with open(json_file, 'w') as fh:
+        json.dump(scheme, fh)
+    assert pc.tilingSchema().from_file(json_file).data_format == 'indexedH5'
+
+
+def test_write_tiles_plain_h5_format(tmp_path):
+    # the 'h5' branch of write_tiles was unreachable while data_format was
+    # hardcoded to 'indexedH5'
+    D = _test_data()
+    tS = pc.tilingSchema(tile_spacing=1.e5, bin_size=1.e4, directory=str(tmp_path),
+                         data_format='h5')
+    tS.write_tiles(D)
+    files = sorted(os.listdir(str(tmp_path)))
+    assert len(files) > 1
+    n_points = 0
+    for f in files:
+        Di = pc.data().from_h5(os.path.join(str(tmp_path), f))
+        n_points += Di.size
+    assert n_points == D.size
+
+
+@pytest.mark.parametrize('data_format', ['indexedH5', 'h5'])
+def test_data_format_is_a_geoIndex_file_type(tmp_path, data_format):
+    # the schema's format name must be usable as a geoIndex file_type, so the
+    # two namespaces cannot drift apart again
+    D = _test_data()
+    tS = pc.tilingSchema(tile_spacing=1.e5, bin_size=1.e4, directory=str(tmp_path),
+                         data_format=data_format)
+    tS.write_tiles(D)
+    tile = os.path.join(str(tmp_path), sorted(os.listdir(str(tmp_path)))[0])
+    gi = pc.geoIndex(delta=[1.e4, 1.e4]).for_file(tile, tS.data_format)
+    index_file = str(tmp_path / 'index.h5')
+    gi.to_file(index_file)
+    D_read = pc.geoIndex().from_file(index_file)\
+        .query_xy(pc.geoIndex().from_file(index_file).bins_as_array(),
+                  get_data=True, fields=['x', 'y', 'z', 'time'])
+    assert sum(Di.size for Di in D_read) > 0
