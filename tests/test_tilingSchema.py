@@ -476,3 +476,39 @@ def test_alignment_survives_a_json_round_trip(tmp_path):
     json_file = str(tmp_path / 'scheme.json')
     tS.to_json(json_file)
     assert pc.tilingSchema().from_file(json_file).bins_are_aligned()
+
+
+# ---------------------------------------------------------------------------
+# tile_xy(all_tiles=True) widens a query to the neighboring tiles for points
+# within tol of an edge, so a straddling bin gets read from both tiles.  On an
+# aligned schema no bin straddles an edge, so the neighbors hold nothing
+# relevant and the extra reads are pure cost.
+# ---------------------------------------------------------------------------
+
+def test_all_tiles_widens_on_an_unaligned_schema():
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4)
+    tiles = tS.tile_xy(xy=[np.array([1.01e5]), np.array([0.])], all_tiles=True)
+    np.testing.assert_array_equal(tiles, [[0., 0.], [2.e5, 0.]])
+
+
+def test_all_tiles_does_not_widen_on_an_aligned_schema():
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, align_tiles=True)
+    for x in [1.01e5, 1.04e5]:
+        tiles = tS.tile_xy(xy=[np.array([x]), np.array([0.])], all_tiles=True)
+        np.testing.assert_array_equal(tiles, [[5.e3, 5.e3]])
+
+
+def test_explicit_tol_still_widens_on_an_aligned_schema():
+    # naming a tol is a request for a halo, whatever the alignment
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, align_tiles=True)
+    tiles = tS.tile_xy(xy=[np.array([1.05e5]), np.array([0.])], all_tiles=True, tol=5.e3)
+    assert len(tiles) == 2
+
+
+def test_filenames_for_xy_follows_alignment(tmp_path):
+    xy = [np.array([1.01e5]), np.array([0.])]
+    unaligned = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, directory=str(tmp_path))
+    aligned = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, directory=str(tmp_path),
+                              align_tiles=True)
+    assert len(unaligned.filenames_for_xy([a.copy() for a in xy])) == 2
+    assert len(aligned.filenames_for_xy([a.copy() for a in xy])) == 1

@@ -211,6 +211,9 @@ class tilingSchema(object):
         # break out the offset attribute to a numpy array
         xy0 = np.array(self.tile_offset).ravel()
 
+        # a caller who names a tol is asking for a halo, whether or not the
+        # schema's bins can straddle a tile edge
+        halo_requested = tol is not None
         if tol is None:
             tol=self.bin_size/2
 
@@ -237,7 +240,11 @@ class tilingSchema(object):
 
         # return the unique tile centers that could
         # contribute to the points specified by xy0
-        if all_tiles and self.mapping_function_name=='round':
+        # widening a query to its neighbors only buys anything when a bin can
+        # straddle a tile edge; on an aligned schema every bin lies wholly
+        # within one tile, so the neighbors hold nothing relevant
+        if all_tiles and self.mapping_function_name=='round' \
+                and (halo_requested or not self.bins_are_aligned()):
             # need to check for xys that are on boundaries.  For those that are, add
             # another point that is just on the other side of the boundary
             for dim, other_dim in zip([0, 1], [1, 0]):
