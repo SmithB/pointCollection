@@ -270,7 +270,7 @@ class data(object):
         else:
             return tuple(out)
 
-    def from_h5(self, filename, group=None, fields=None, field=None, field_dict=None, index_range=None):
+    def from_h5(self, filename, group=None, fields=None, field=None, field_dict=None, index_range=None, h5_f=None, fs=None):
         """
         read a data object from an HDF5 file
 
@@ -293,8 +293,14 @@ class data(object):
                 numpy.NaN values.  If a group is specifled as __calc_internal__, after the rest
                 of the file has been read, the data object's __calc_internal__ function will be
                 called to fill in the missing fields.
+        h5_f: h5py.File, optional
+            an already-open file handle to read from, instead of opening filename. The
+            caller retains ownership of the handle (it is not closed here).
+        fs: s3fs.S3FileSystem, optional
+            filesystem to use if filename needs to be opened remotely (e.g. s3://...).
 
         """
+        import contextlib
         import h5py
         if filename is None:
             filename=self.filename
@@ -306,7 +312,8 @@ class data(object):
         if fields is not None:
             field_dict = {group:fields}
 
-        with h5py.File(filename, 'r') as h5_f:
+        _ctx = contextlib.nullcontext(h5_f) if h5_f is not None else pc.io_utils.open_h5(filename, fs=fs)
+        with _ctx as h5_f:
             nan_fields=list()
             if field_dict is None:
                 if group is None:
@@ -398,13 +405,16 @@ class data(object):
             inferred = [c for c in coord_names if c in self.fields]
             if inferred:
                 self.coordinates = inferred
-        if '__calc_internal__' in field_dict:
-            try:
-                self.__internal_field_calc__(field_dict)
-            except Exception as e:
-                print(f"pointCollection.data(): problem with __internal_field_calc__ for file {self.filename}, exception follows:")
-                print(e)
-                return None
+            if '__calc_internal__' in field_dict:
+                try:
+                    # h5_f is still open here (whether caller-supplied or opened
+                    # above), so pass it down instead of making subclasses reopen
+                    # the file (which, for remote files, is a full extra S3 open).
+                    self.__internal_field_calc__(field_dict, h5_f=h5_f)
+                except Exception as e:
+                    print(f"pointCollection.data(): problem with __internal_field_calc__ for file {self.filename}, exception follows:")
+                    print(e)
+                    return None
         self.__update_size_and_shape__()
         return self
 

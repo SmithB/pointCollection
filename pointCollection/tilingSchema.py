@@ -13,10 +13,23 @@ import json
 import re
 import glob
 
+# the mapping functions a schema may use, and where the value tile_xy()
+# returns sits within its tile, as a fraction of tile_spacing: np.round
+# labels a tile by its center, np.floor by its lower-left corner.  A new
+# convention needs an entry in both.
+MAPPING_FUNCTIONS = {'round': np.round, 'floor': np.floor}
+LABEL_OFFSET = {'round': 0., 'floor': 0.5}
+
+# the formats write_tiles() can write a tile in.  These are spelled as
+# geoIndex spells its file types, so schema.data_format can be handed
+# straight to geoIndex.for_file() when a tile collection is indexed.
+DATA_FORMATS = ('h5', 'indexedH5')
+
+
 class tilingSchema(object):
     def __init__(self, tile_spacing=1.e5, tol=None,
                  mapping_function_name='round',
-                 mapping_function=np.round,
+                 mapping_function=None,
                  EPSG=None,
                  coords=['x','y'],
                  scale=1000,
@@ -24,13 +37,18 @@ class tilingSchema(object):
                  format_variables=['x','y'],
                  extension='.h5',
                  bin_size=1.e4,
+                 data_format='indexedH5',
                  tile_offset = [0,0],
-                 directory=None):
+                 directory=None,
+                 align_tiles=False,
+                 source=None):
         self.tile_spacing = tile_spacing
         self.bin_size=bin_size
         if mapping_function is not None:
             self.mapping_function = mapping_function
             mapping_function_name = self.mapping_function.__name__
+        if mapping_function_name not in MAPPING_FUNCTIONS:
+            raise NotImplementedError(f'mapping function {mapping_function_name} not understood')
         self.mapping_function_name=mapping_function_name
         self.extension = extension
         self.EPSG = EPSG
@@ -39,21 +57,141 @@ class tilingSchema(object):
         self.format_re  = re.compile(self.format_str.replace(r'%d',r'(.*)')+self.extension)
         self.format_variables = format_variables
         self.scale = scale
-        self.data_format = 'indexedH5'
+        self.data_format = self.check_data_format(data_format)
         self.directory = directory
         self.tile_offset = tile_offset
         self.mapping_function = mapping_function
+        # optional dict describing a remote source for the tiles, e.g.
+        # {'type': 'EarthAccess', 'short_name': 'ATL11XO', 'daac': 'NSIDC'}.
+        # When set, tile_filename() returns bare granule-name strings
+        # instead of joining them to a local `directory`, and
+        # resolve_files_for_box() resolves those names to real URLs via a
+        # single batched earthaccess.search_data(granule_name=[...]) call.
+        self.source = source
+        self.check_bin_size()
+        if align_tiles:
+            self.align_to_bins()
+
+    def check_bin_size(self):
+        """
+        check that the bins tile the tiles
+
+        The sub-tile bins of an indexedH5 tile are defined by their centers,
+        at multiples of bin_size, so a tile that is not a whole number of
+        bins across cannot have its edges on bin edges no matter where the
+        tile lattice is placed.
+
+        Returns
+        -------
+        int or None
+            the number of bins per tile, or None if either value is unset
+
+        Raises
+        ------
+        ValueError
+            if tile_spacing is not an integer multiple of bin_size
+        """
+        if self.tile_spacing is None or self.bin_size is None:
+            return None
+        n_bins = self.tile_spacing/self.bin_size
+        if np.abs(n_bins - np.round(n_bins)) > 1.e-9*np.maximum(1., np.abs(n_bins)):
+            raise ValueError(f'tilingSchema: bin_size {self.bin_size} does not tile '
+                             f'tile_spacing {self.tile_spacing} ({n_bins} bins per tile)')
+        return int(np.round(n_bins))
+
+    @staticmethod
+    def check_data_format(data_format):
+        """
+        normalize a data-format name and check that write_tiles() knows it
+
+        Parameters
+        ----------
+        data_format : str
+            'indexedH5' or 'h5'; alternate spellings of 'indexedH5' are
+            accepted (see io_utils.canonical_file_type)
+
+        Returns
+        -------
+        str
+            the canonical spelling
+        """
+        data_format = pc.io_utils.canonical_file_type(data_format)
+        if data_format not in DATA_FORMATS:
+            raise ValueError(f'tilingSchema: data_format {data_format} not understood')
+        return data_format
+
+    def aligned_tile_offset(self):
+        """
+        the tile_offset that puts the tile edges on bin edges
+
+        Bins are centered on multiples of bin_size, so their edges fall at
+        half-bin offsets.  Tile edges sit half a tile_spacing from each tile
+        label under the 'round' convention and on the label itself under
+        'floor', so the offset that lines the two up depends on the mapping
+        function and on whether a tile is an even or odd number of bins
+        across.
+
+        Returns
+        -------
+        float
+            offset to apply to both axes
+
+        Raises
+        ------
+        ValueError
+            if the schema has no bin_size, or a tile is not a whole number
+            of bins across
+        """
+        if self.bin_size is None:
+            raise ValueError('tilingSchema: this schema has no bin_size, so '
+                             'there are no bin edges to align the tiles to')
+        # raises if a tile is not a whole number of bins across
+        self.check_bin_size()
+        if self.mapping_function_name == 'floor':
+            return self.bin_size/2
+        return (self.bin_size/2 - self.tile_spacing/2) % self.bin_size
+
+    def align_to_bins(self):
+        """
+        shift the tile lattice so that no bin is split between two tiles
+
+        Without this a tile edge can fall on a bin center, leaving half-full
+        bins along each tile edge and forcing a query that spans an edge to
+        read the same bin from two tiles (four at a corner).
+
+        Returns
+        -------
+        tilingSchema
+            self, so the call can be chained onto the constructor
+        """
+        offset = self.aligned_tile_offset()
+        self.tile_offset = [offset, offset]
+        return self
+
+    def bins_are_aligned(self):
+        """
+        True if the current tile_offset puts the tile edges on bin edges
+
+        False if the schema has no bins, or has bins that cannot be aligned
+        by any offset -- in neither case can a tiling be said to be aligned.
+        """
+        try:
+            offset = self.aligned_tile_offset()
+        except ValueError:
+            return False
+        for value in np.array(self.tile_offset, dtype=float).ravel()[0:2]:
+            delta = (value - offset) % self.bin_size
+            if np.minimum(delta, self.bin_size-delta) > 1.e-6*self.bin_size:
+                return False
+        return True
 
     def set_mapping_function(self, mapping_function_name=None):
 
         if mapping_function_name is None:
             mapping_function_name = self.mapping_function_name
-        if mapping_function_name == 'round':
-            self.mapping_function = np.round
-        elif mapping_function_name == 'floor':
-            self.mapping_function = np.floor
-        else:
+        if mapping_function_name not in MAPPING_FUNCTIONS:
             raise NotImplementedError(f'mapping function {mapping_function_name} not understood')
+        self.mapping_function = MAPPING_FUNCTIONS[mapping_function_name]
         self.mapping_function_name = self.mapping_function.__name__
 
     def _scheme_dict(self):
@@ -61,7 +199,8 @@ class tilingSchema(object):
         scheme_dict={}
         for field in ['tile_spacing','mapping_function_name', 'EPSG', 'coords',
                       'tile_offset', 'format_str','format_variables',
-                      'scale', 'extension','directory','bin_size']:
+                      'scale', 'extension','directory','bin_size',
+                      'data_format','source']:
             try:
                 scheme_dict[field] = float(getattr(self, field))
             except (ValueError, TypeError):
@@ -97,8 +236,10 @@ class tilingSchema(object):
         for key, val in scheme_dict.items():
             if hasattr(self, key):
                 setattr(self, key, val)
-        if self.directory is None:
+        if self.directory is None and self.source is None:
             self.directory = os.path.dirname(scheme_file)
+        self.check_bin_size()
+        self.data_format = self.check_data_format(self.data_format)
         return self
 
     # TBD: implement latlon keyword
@@ -111,8 +252,13 @@ class tilingSchema(object):
         # break out the offset attribute to a numpy array
         xy0 = np.array(self.tile_offset).ravel()
 
+        # a caller who names a tol is asking for a halo, whether or not the
+        # schema's bins can straddle a tile edge
+        halo_requested = tol is not None
         if tol is None:
-            tol=self.bin_size/2
+            # tol only drives the widening below, which a schema with no bins
+            # does not do
+            tol = 0. if self.bin_size is None else self.bin_size/2
 
         if self.mapping_function is None:
             self.set_mapping_function()
@@ -137,12 +283,23 @@ class tilingSchema(object):
 
         # return the unique tile centers that could
         # contribute to the points specified by xy0
-        if all_tiles and self.mapping_function_name=='round':
+        # widening a query to its neighbors only buys anything when a bin can
+        # straddle a tile edge: an aligned schema keeps every bin wholly
+        # within one tile, and a schema with no bin_size has no bins at all,
+        # so in both cases the neighbors hold nothing relevant
+        bins_straddle_edges = self.bin_size is not None and not self.bins_are_aligned()
+        if all_tiles and (halo_requested or bins_straddle_edges):
             # need to check for xys that are on boundaries.  For those that are, add
-            # another point that is just on the other side of the boundary
+            # another point that is just on the other side of the boundary.
+            # A tile is always tile_spacing wide and centered on its label plus
+            # the convention's LABEL_OFFSET, so the same test works for a
+            # 'floor' schema, whose label is the lower-left corner, as for a
+            # 'round' schema, whose label is the center.
+            label_to_center = LABEL_OFFSET[self.mapping_function_name]*self.tile_spacing
             for dim, other_dim in zip([0, 1], [1, 0]):
                 for sgn in [-1, 1]:
-                    ctrs = np.round((xy[dim]-xy0[dim])/self.tile_spacing)*self.tile_spacing + xy0[dim]
+                    ctrs = self.mapping_function((xy[dim]-xy0[dim])/self.tile_spacing)\
+                        *self.tile_spacing + xy0[dim] + label_to_center
                     delta =  xy[dim] - ctrs
                     # check for points at the upper end of this bin
                     bdry_ind = np.flatnonzero(sgn * delta >= 0.5*self.tile_spacing - tol)
@@ -161,14 +318,17 @@ class tilingSchema(object):
                                                 np.concatenate(self.tile_bounds(xy_t)))}
             vals_sorted  = [(var_val[var]/self.scale)
                                 for var in self.format_variables]
-            return os.path.join(self.directory,
-                                self.format_str % tuple(vals_sorted))\
-                                    +self.extension
+            name = self.format_str % tuple(vals_sorted) + self.extension
         elif  set(['x','y']) == set(self.format_variables):
             xy0 = [xy_t[0]/self.scale, xy_t[1]/self.scale]
-            return os.path.join(self.directory,
-                                self.format_str
-                                    % tuple(xy0))+self.extension
+            name = self.format_str % tuple(xy0) + self.extension
+        else:
+            return None
+        if self.source is not None:
+            # remote source: return the bare granule/file name to search
+            # for, not a local path (there is no `directory` to join)
+            return name
+        return os.path.join(self.directory, name)
 
     def filenames_for_xy(self, xy0):
         if np.isscalar(xy0[0]):
@@ -185,12 +345,74 @@ class tilingSchema(object):
                               np.arange(xyr[1][0], xyr[1][1] + resolution * 1.01, resolution) )
         return self.filenames_for_xy([xg.ravel(), yg.ravel()])
 
+    def resolve_files_for_box(self, xyr, fs=None, resolution=1.e4, verbose=False):
+        """
+        Find the tiles overlapping a box, and resolve each to a location
+        that can actually be opened -- a local path, an S3 URI already
+        confirmed to exist, or (if self.source specifies a remote source)
+        a URL resolved via a search against that source. Tiles that can't
+        be found are silently dropped (reported if verbose=True).
+
+        Parameters
+        ----------
+        xyr : 2-element iterable of 2-element iterables
+            [[xmin, xmax], [ymin, ymax]] box bounds.
+        fs : s3fs.S3FileSystem, optional
+            filesystem to use / reuse for remote existence checks and reads.
+            If None and self.source specifies EarthAccess, one is obtained
+            via pc.io_utils.get_s3fs() and returned for the caller to reuse.
+        resolution : float, optional
+            grid spacing used to enumerate candidate tile centers within
+            the box (passed to filenames_for_box()).
+        verbose : bool, optional
+            print a message for each candidate tile that isn't found.
+
+        Returns
+        -------
+        resolved : dict
+            {tile_basename: resolved_location}, for tiles that were found.
+        fs : s3fs.S3FileSystem or None
+            the filesystem used (for the caller to reuse on subsequent calls).
+        """
+        candidates = self.filenames_for_box(xyr, resolution=resolution)
+        if self.source is not None and self.source.get('type') == 'EarthAccess':
+            import earthaccess
+            search_kwargs = {k: v for k, v in self.source.items()
+                              if k not in ('type', 'daac')}
+            earthaccess.login(strategy='netrc')
+            granules = earthaccess.search_data(granule_name=candidates, **search_kwargs)
+            found = {}
+            for g in granules:
+                url = g.data_links(access='direct')[0]
+                found[os.path.basename(url)] = url
+            resolved = {name: found[name] for name in candidates if name in found}
+            if verbose:
+                for name in candidates:
+                    if name not in found:
+                        print(f'tilingSchema: {name} not found via earthaccess')
+            if fs is None:
+                fs = pc.io_utils.get_s3fs(daac=self.source.get('daac', 'NSIDC'))
+        else:
+            resolved = {}
+            for name in candidates:
+                if pc.io_utils.path_exists(name, fs=fs):
+                    resolved[os.path.basename(name)] = name
+                elif verbose:
+                    print(f'tilingSchema: {name} not found')
+        return resolved, fs
+
     def tile_bounds(self, xy = [0.,0.]):
-        if self.mapping_function==np.round:
-            offset = [0,0]
-        elif self.mapping_function == np.floor:
-            offset = [self.tile_spacing/2, self.tile_spacing/2]
-        xyT = self.tile_xy(xy=xy)[0]
+        if self.mapping_function is None:
+            self.set_mapping_function()
+        if self.mapping_function_name not in LABEL_OFFSET:
+            raise NotImplementedError(f'mapping function {self.mapping_function_name} not understood')
+        # shift the value tile_xy() returns to the tile center, so the same
+        # +/- tile_spacing/2 gives the bounds under either convention
+        offset = [LABEL_OFFSET[self.mapping_function_name]*self.tile_spacing]*2
+        # all_tiles=True would also return the neighboring tiles for a point
+        # within tol of a tile edge, and np.unique() sorts those ascending, so
+        # [0] could be a tile that does not contain xy
+        xyT = self.tile_xy(xy=xy, all_tiles=False)[0]
         return [xy_i + off_i + np.array([-1, 1])*self.tile_spacing/2 for xy_i, off_i in zip(xyT, offset)]
 
     def tile_boundary(self, xy = [0., 0.]):
@@ -198,13 +420,41 @@ class tilingSchema(object):
         return (bds[0][[0, 0, 1, 1, 0]], bds[1][[0, 1, 1, 0, 0]])
 
     def write_tiles(self, D, bin_size=None, replace=True):
+        """
+        write the data in D to the tiles of this schema
+
+        Parameters
+        ----------
+        D : pc.data
+            data to be written.  Each point is assigned to the tile it falls
+            in by tile_xy(return_dict=True).
+        bin_size : numeric, optional
+            width of the sub-tile bins used by the 'indexedH5' data format.
+            The default is None, meaning use self.bin_size.
+        replace : bool, optional
+            if True, overwrite any existing tile files. The default is True.
+        """
+        if self.source is not None:
+            raise ValueError('write_tiles: this schema points at a remote '
+                             'source, which cannot be written to')
+        if bin_size is None:
+            bin_size = self.bin_size
+        # accept the geoIndex spelling ('indexed_h5') of the format name
+        data_format = self.check_data_format(self.data_format)
+        if data_format == 'indexedH5' and bin_size is None:
+            raise ValueError("write_tiles: data_format 'indexedH5' writes "
+                             'binned tiles, so it needs a bin_size')
         tile_dict = self.tile_xy(data=D, return_dict=True)
         for xy0, ii in tile_dict.items():
             out_file = self.tile_filename(xy0)
-            if self.data_format == 'h5':
+            if data_format == 'h5':
                 D[ii].to_h5(out_file, replace=True)
-            elif self.data_format == 'indexed_h5':
+            elif data_format == 'indexedH5':
                 pc.indexedH5.data( bin_W = (bin_size, bin_size) ).to_file(D[ii], out_file, replace=replace)
+            else:
+                # DATA_FORMATS holds a name write_tiles() cannot write
+                raise ValueError(f'write_tiles: data_format {data_format}'
+                                 ' not understood')
 
     def file_xy(self, filenames=None):
         if filenames is None:

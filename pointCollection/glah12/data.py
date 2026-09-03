@@ -27,7 +27,7 @@ class data(pc.data):
         temp= {'Data_40HZ/'+key:fd[key] for key in fd}
         temp.update({'derived':['campaign']})
         return temp
-    def __internal_field_calc__(self, field_dict):
+    def __internal_field_calc__(self, field_dict, h5_f=None):
         if 'derived' in field_dict and 'campaign' in field_dict['derived']:
             with h5py.File(self.filename,'r') as h5f:
                 campaign=h5f['ANCILLARY_DATA'].attrs['Campaign'].decode('ascii')

@@ -21,7 +21,7 @@ class data(pc.data):
                 'time':['seconds_of_day'],
                 '__calc_internal__':['days_J2k']}
 
-    def __internal_field_calc__(self, field_dict):
+    def __internal_field_calc__(self, field_dict, h5_f=None):
         # find the date and time number in filename
         if 'days_J2k' in field_dict['__calc_internal__']:
             m=re.search(r"\D*_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2}).*.h5",self.filename)

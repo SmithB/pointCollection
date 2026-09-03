@@ -80,6 +80,7 @@ class geoIndex(dict):
         and file_type.  If the file_type is 'geoIndex', optionally specify a
         value for 'fake_offset_val'
         """
+        file_type=pc.io_utils.canonical_file_type(file_type)
         delta=self.attrs['delta']
         self.filename=filename
         xy_bin = bin_function(np.c_[xy[0].ravel(), xy[1].ravel()]/delta).astype(int)
@@ -168,7 +169,7 @@ class geoIndex(dict):
                 # number is in alreadIn, and we'll skip it for this bin so we don't
                 # end up with duplicate data
                 newFileNums=index[bin]['file_num'].copy()
-                keep=np.logical_not(np.in1d(newFileNums, alreadyIn))
+                keep=np.logical_not(np.isin(newFileNums, alreadyIn))
                 if not np.any(keep):
                     continue
                 newFileNums=newFileNums[keep]
@@ -244,7 +245,8 @@ class geoIndex(dict):
         if 'dir_root' in self.attrs and self.attrs['dir_root'] is not None:
             indexGrp.attrs['dir_root']=self.attrs['dir_root']
         indexGrp.attrs['delta'] = self.attrs['delta']
-        indexGrp.attrs['SRS_proj4'] = self.attrs['SRS_proj4']
+        if 'SRS_proj4' in self.attrs and self.attrs['SRS_proj4'] is not None:
+            indexGrp.attrs['SRS_proj4'] = self.attrs['SRS_proj4']
         for key in self.keys():
             indexGrp.create_group(key)
             for field in ['file_num','offset_start','offset_end']:
@@ -257,10 +259,52 @@ class geoIndex(dict):
         indexF.close()
         return
 
-    def for_file(self, filename, file_type, number=0, dir_root='', group=None):
+    def for_file(self, filename, file_type, number=0, dir_root='', group=None,
+                 self_contained=False):
         """
         make a geoIndex for file 'filename'
+
+        Parameters
+        ----------
+        filename : string
+            the file to index. For file_type='h5', reading goes through
+            pc.data.from_h5(), which opens files with h5py -- this works for
+            both '.h5' files and netCDF4-format '.nc' files (netCDF4 is an
+            HDF5 container format), but not for classic/netCDF3 '.nc' files.
+        file_type : string
+            the type of file being indexed (e.g. 'h5', 'ATL06', 'ATL11', ...).
+            Alternate spellings of a format's name are accepted and stored in
+            canonical form -- 'indexed_h5' and 'indexedh5' are both recorded
+            as 'indexedH5' (see io_utils.canonical_file_type).
+        number : int, optional
+            the file number to assign this source within the index.
+        dir_root : string, optional
+            a directory prefix common to indexed files, stripped from the
+            stored filename and re-applied at query time (see resolve_path()).
+        group : string, optional
+            for file_type='h5', the group within the file containing the
+            'x' and 'y' fields to index.
+        self_contained : bool, optional
+            for file_type='h5' only. If True, don't record `filename` as a
+            separate source; instead mark this source as living in group
+            `group` inside whatever file this geoIndex is itself eventually
+            written to via to_file(). This lets a single file hold both a
+            pc.data object (in group `group`) and the geoIndex for it (in
+            the 'index' group). Requires `group` to be set. Build order
+            matters: write the data first (e.g.
+            `D.to_h5(path, group=group)` -- its default `replace=True` would
+            wipe a previously-written index if called second), then save
+            the index into the *same* path with
+            `pc.geoIndex(...).for_file(path, 'h5', group=group, self_contained=True).to_file(path)`.
+            Sources built this way are meant to be read back directly via
+            `from_file(path)`/`query_xy(...)`; avoid merging them with
+            `for_files()`/`from_list()` into an index saved to a *different*
+            path, since the embedded reference is tied to whatever
+            `self.filename` is at query time.
         """
+        file_type=pc.io_utils.canonical_file_type(file_type)
+        if self_contained and file_type != 'h5':
+            raise ValueError("for_file: self_contained=True is only supported for file_type='h5'.")
         dir_root=strip_double_slashes(dir_root)
         self.filename=filename
         if dir_root is not None:
@@ -297,9 +341,12 @@ class geoIndex(dict):
                     pass
             self.from_list(temp)
         if file_type in ['h5']:
+            if self_contained and not group:
+                raise ValueError("for_file: self_contained=True requires 'group' to be set.")
             D=pc.data().from_h5(filename, field_dict={group:['x','y']})
             if D.x.size > 0:
-                self.from_xy((D.x, D.y), filename=filename_out, file_type='h5', number=number)
+                index_filename = (':' + group) if self_contained else filename_out
+                self.from_xy((D.x, D.y), filename=index_filename, file_type='h5', number=number)
         if file_type in ['ATM_Qfit']:
             D=pc.ATM_Qfit.data().from_h5(filename)
             if D.latitude.shape[0] > 0:
@@ -332,7 +379,7 @@ class geoIndex(dict):
                 self.attrs['dir_root']=dir_root
             self.attrs['n_files']=1
             self.from_xy(xy_bin, filename=filename_out, file_type=file_type, number=number, fake_offset_val=-1)
-        if file_type in ['indexed_h5']:
+        if file_type in ['indexedH5']:
             import h5py
             h5f=h5py.File(filename,'r')
             if 'INDEX' in h5f:
@@ -402,9 +449,13 @@ class geoIndex(dict):
         return self.query_xy([xb, yb], get_data=get_data, fields=fields, error_action=error_action)
 
     def query_xy_box(self, xr, yr, get_data=True, fields=None, dir_root='',
-                     full_path=False, error_action='warn'):
+                     full_path=False, error_action='warn', remote_file=None, fs=None,
+                     trim_last_point=False):
         """
         query the current geoIndex for all bins in the box specified by box [xr,yr]
+
+        remote_file, fs, and trim_last_point are passed through to query_xy();
+        see its docstring.
         """
         xy_bin=self.bins_as_array()
         these=(xy_bin[0] >= xr[0]) & (xy_bin[0] <= xr[1]) &\
@@ -414,7 +465,10 @@ class geoIndex(dict):
                              dir_root=dir_root,
                              bounds=[xr, yr],
                              full_path = full_path,
-                             error_action = error_action)
+                             error_action = error_action,
+                             remote_file = remote_file,
+                             fs = fs,
+                             trim_last_point = trim_last_point)
 
     def intersect(self, other, pad=[0, 0]):
         """
@@ -436,7 +490,10 @@ class geoIndex(dict):
                  dir_root='',
                  strict=False,
                  bounds=None,
-                 error_action='warn'):
+                 error_action='warn',
+                 remote_file=None,
+                 fs=None,
+                 trim_last_point=False):
         """
         check if data exist within the current geo index for bins in lists/arrays
             xb and yb.
@@ -448,6 +505,12 @@ class geoIndex(dict):
             and the offsets in the file corresponding to each.
         If 'pad' is provided, include bins between xb-pad*delta and xp+pad*delta (inclusive)
             in the query (likewise for y)
+        If 'remote_file' is provided, it overrides the resolved file identity (e.g. with
+            a real s3:// URI) for every bin in this query, preserving any ':pairN' suffix.
+            This only makes sense against an index that indexes a single physical file
+            (e.g. a per-granule ATL11 index) -- it is not meant for indices spanning
+            multiple distinct source files.
+        trim_last_point is passed through to get_data(); see its docstring.
         """
         delta=self.attrs['delta']
         if isinstance(xyb[0], np.ndarray):
@@ -462,7 +525,7 @@ class geoIndex(dict):
             xyb[ii]=np.round(xyb[ii]/self.attrs['delta'][ii])*self.attrs['delta'][ii]
         # make a temporary geoIndex to hold the subset of the current geoindex
         # corresponding to xb and yb
-        temp_gi=geoIndex(delta=self.attrs['delta'], SRS_proj4=self.attrs['SRS_proj4'])
+        temp_gi=geoIndex(delta=self.attrs['delta'], SRS_proj4=self.attrs.get('SRS_proj4'))
         for bin in set(zip(xyb[0], xyb[1])):
            bin_name='%d_%d' % bin
            if bin_name in self:
@@ -503,23 +566,34 @@ class geoIndex(dict):
                 i0=i0[keep]
                 i1=i1[keep]
                 xy=xy[keep,:]
-            # if the file_N attribute begins with ':', it's a group in the current file, so add the current filename
+            # if the file_N attribute begins with ':', it's a group in the current
+            # file (built by for_file(..., self_contained=True)); self.filename
+            # already refers to it exactly as opened, so no directory-joining
+            # is needed (see resolve_path()'s self-referential-filename guard)
             this_query_file = self.attrs['file_%d' % out_file_num]
             if this_query_file is not None and this_query_file[0] == ':':
-                file_base=self.filename.replace(dir_root,'')
-                if 'dir_root' in self.attrs:
-                    file_base=file_base.replace(self.attrs['dir_root'],'')
-                this_query_file = file_base + this_query_file
-            if full_path:
+                this_query_file = self.filename + this_query_file
+            elif full_path:
                 this_query_file = self.resolve_path(this_query_file, dir_root)
+            if remote_file is not None:
+                # take the suffix after the *last* colon, not the first --
+                # a stored path built directly against a URI (e.g. a
+                # per-granule geoIndex made with for_file('s3://...')) has
+                # an earlier colon of its own (the 's3:' scheme), and a
+                # first-colon split would wrongly capture everything after
+                # that as the "suffix", corrupting the substituted path
+                suffix = ''
+                if this_query_file is not None and ':' in this_query_file:
+                    suffix = ':' + this_query_file.rsplit(':', 1)[1]
+                this_query_file = remote_file + suffix
             query_results[this_query_file]={
-            'type':self.attrs['type_%d' % out_file_num],
+            'type':pc.io_utils.canonical_file_type(self.attrs['type_%d' % out_file_num]),
             'offset_start':i0,
             'offset_end':i1,
             'x':xy[:,0],
             'y':xy[:,1]}
         if get_data:
-            query_results=self.get_data(query_results, fields=fields, dir_root=dir_root, bounds=bounds, error_action=error_action, already_resolved=full_path)
+            query_results=self.get_data(query_results, fields=fields, dir_root=dir_root, bounds=bounds, error_action=error_action, already_resolved=full_path, fs=fs, trim_last_point=trim_last_point)
             if strict is True:
                 # take the subset of data that rounds exactly to the query (OTW, may get data that extend outside)
                 if not isinstance(query_results, list):
@@ -552,6 +626,8 @@ class geoIndex(dict):
         string
             absolute path for the file to read
         """
+        if pc.io_utils.is_remote_path(filename):
+            return filename
         if dir_root is None:
             dir_root=''
         self_dir_root=''
@@ -559,6 +635,11 @@ class geoIndex(dict):
             self_dir_root=self.attrs['dir_root']
         # if the filename begins with '/', it is absolute
         if filename is not None and filename[0]==os.path.sep:
+            return filename
+        # if filename already refers to this index's own file (e.g. built from
+        # self.filename for a ':group' self-contained-file entry), it's already
+        # fully resolved -- resolving it again would double any relative prefix
+        if self.filename is not None and filename is not None and filename.startswith(self.filename):
             return filename
         # if self.attrs['dir_root'] begins with '/', it is absolute, and overrides the dir_root argument
         if len(self_dir_root)>0 and self_dir_root==os.path.sep:
@@ -577,7 +658,8 @@ class geoIndex(dict):
         return filename
 
     def get_data(self, query_results, fields=None,  data=None, dir_root='',
-                 bounds=None, function=None, error_action='warn', already_resolved=False):
+                 bounds=None, function=None, error_action='warn', already_resolved=False, fs=None,
+                 trim_last_point=False):
         """
         read the data from a set of query results
         Currently the function knows how to read:
@@ -587,6 +669,19 @@ class geoIndex(dict):
         DEM data (filtered and not)
         ATL06 data.
         Append more cases as needed
+
+        trim_last_point : bool, optional
+            offset_start/offset_end (as built by from_xy()) are an *inclusive*
+            (first, last) row-index pair, but readers (data.py, ATL06/data.py)
+            slice with an *exclusive* stop -- so by default (False) this
+            passes index_range=(offset_start, offset_end+1) to readers for
+            the 'h5', 'ATL11', 'ATL06', and 'ATM_Qfit' types, so the last row
+            of each segment is included. Set True to reproduce the old
+            behavior (silently dropping that last row) for legacy
+            comparisons. Does not affect 'indexedH5'/'indexed_h5_from_matlab'
+            (their offsets can be a -1 sentinel or come from an externally-
+            built, unverified index) or a user-supplied `function` (which
+            always receives the raw, unmodified offsets).
         """
         out_data=list()
 
@@ -610,20 +705,116 @@ class geoIndex(dict):
             bounds=[[np.min(all_x)-delta[0]/2, np.max(all_x)+delta[0]/2], \
                     [np.min(all_y)-delta[1]/2, np.max(all_y)+delta[1]/2]]
 
-        for file_key, result in query_results.items():
+        # Types that route through pc.data.from_h5()-family readers, which
+        # accept an externally-supplied, already-open h5_f handle. For these,
+        # group all reads that target the same physical file -- e.g. ATL11's
+        # up to 3 beam pairs, or multiple disjoint offset segments -- so a
+        # single handle can be opened once, reused for every read against
+        # that file, and then closed, before moving on to the next physical
+        # file (at most one handle open at a time). Without this, each
+        # pair/segment reopened the same remote file independently -- a full
+        # extra round trip per read, for a file we'd already opened moments
+        # before. Other types (rasters, indexedH5's external/sentinel
+        # offsets, a user-supplied `function`, etc.) are read exactly as
+        # before, one query_results entry at a time.
+        SHAREABLE_TYPES = ('h5', 'ATL11', 'ATM_Qfit')
+        file_groups = {}
+        other_items = []
+        if function is None:
+            for file_key, result in query_results.items():
+                if result['type'] not in SHAREABLE_TYPES:
+                    other_items.append((file_key, result))
+                    continue
+                this_file = file_key if already_resolved else self.resolve_path(file_key, dir_root)
+                # offset_end is stored inclusive; readers expect an exclusive
+                # stop, so add 1 here unless legacy (last-row-dropped)
+                # behavior was requested -- see trim_last_point in the docstring.
+                read_offset_end = result['offset_end'] if trim_last_point else result['offset_end'] + 1
+                if result['type'] == 'h5':
+                    # a ':group' suffix (from a self-contained-file entry) marks
+                    # a group inside this_file rather than a separate file
+                    if ':' in this_file:
+                        physical_file, h5_group = this_file.split(':', 1)
+                    else:
+                        physical_file, h5_group = this_file, None
+                    pair_num = 0
+                elif result['type'] == 'ATL11':
+                    physical_file, pair = this_file.split(':pair')
+                    pair_num = int(pair)
+                    h5_group = None
+                else:  # 'ATM_Qfit'
+                    physical_file, pair_num, h5_group = this_file, 0, None
+                for i0, i1 in zip(result['offset_start'], read_offset_end):
+                    file_groups.setdefault(physical_file, []).append({
+                        'type': result['type'], 'pair_num': pair_num, 'group': h5_group,
+                        'index_range': np.array([i0, i1]),
+                    })
+        else:
+            other_items = list(query_results.items())
+
+        for physical_file, tasks in file_groups.items():
+            try:
+                if not (pc.io_utils.path_exists(physical_file, fs=fs) or pc.io_utils.path_exists(physical_file.split(':')[0], fs=fs)):
+                    print(f'geoIndex.get_data(): missing file {physical_file}')
+                    continue
+                # Read pt1 before pt2 before pt3 (etc.), and in ascending row
+                # order within a pair, as a cheap proxy for the file's actual
+                # on-disk layout -- ATL11 files are chunked and compressed, so
+                # there's no single byte offset to sort by directly, but a
+                # standard ATL11 file is written pt1, then pt2, then pt3, so
+                # this keeps the shared handle's access pattern close to
+                # monotonic rather than jumping around arbitrarily.
+                tasks.sort(key=lambda t: (t['pair_num'], int(t['index_range'][0])))
+                with pc.io_utils.open_h5(physical_file, fs=fs) as h5f:
+                    for task in tasks:
+                        try:
+                            if task['type'] == 'h5':
+                                Di = pc.data().from_h5(filename=physical_file, group=task['group'],
+                                                        index_range=task['index_range'],
+                                                        field_dict=field_dict, h5_f=h5f, fs=fs)
+                            elif task['type'] == 'ATL11':
+                                Di = pc.ATL11.data().from_h5(filename=physical_file,
+                                                              index_range=task['index_range'],
+                                                              pair=task['pair_num'], field_dict=field_dict,
+                                                              h5_f=h5f, fs=fs)
+                            else:  # 'ATM_Qfit'
+                                Di = pc.ATM_Qfit.data().from_h5(physical_file, index_range=task['index_range'],
+                                                                 h5_f=h5f, fs=fs)
+                            if Di.filename is None:
+                                Di.filename = physical_file
+                            out_data.append(Di)
+                        except Exception as e:
+                            if error_action == 'warn':
+                                warn(f'geoIndex.py: caught exception reading {physical_file} '
+                                     f'(type={task["type"]}, pair={task["pair_num"]}): {e}')
+                            else:
+                                print(f'geoindex.py: exception for file:{physical_file}')
+                                raise(e)
+            except Exception as e:
+                if error_action == 'warn':
+                    warn(f'geoIndex.py: caught exception attempting to read file: {physical_file}')
+                    print(e)
+                else:
+                    print(f'geoindex.py: exception for file:{physical_file}')
+                    raise(e)
+
+        for file_key, result in other_items:
             if already_resolved:
                 this_file = file_key
             else:
                 this_file = self.resolve_path(file_key, dir_root)
             try:
-                if not (os.path.isfile(this_file) or os.path.isfile(this_file.split(':')[0])):
+                if not (pc.io_utils.path_exists(this_file, fs=fs) or pc.io_utils.path_exists(this_file.split(':')[0], fs=fs)):
                     print(f'geoIndex.get_data(): missing file {this_file}')
                     continue
+                # offset_end is stored inclusive; readers expect an exclusive
+                # stop, so add 1 here unless legacy (last-row-dropped) behavior
+                # was requested. Only used by the 'ATL06' branch below -- see
+                # trim_last_point in the docstring.
+                read_offset_end = result['offset_end'] if trim_last_point else result['offset_end'] + 1
                 if function is not None:
                     # user has provided a function to read the data
                     D=[function(filename=this_file, index_range=temp, field_dict=field_dict, bounds=bounds) for temp in zip(result['offset_start'], result['offset_end'])]
-                elif result['type'] == 'h5':
-                    D=[pc.data().from_h5(filename=this_file, index_range=temp, field_dict=field_dict) for temp in zip(result['offset_start'], result['offset_end'])]
                 elif result['type'] == 'h5_geoindex':
                     D=geoIndex().from_file(this_file).query_xy((result['x'], result['y']), fields=fields, get_data=True, dir_root=dir_root, error_action=error_action)
                 elif result['type'] == 'ATL06':
@@ -632,24 +823,7 @@ class geoIndex(dict):
                         fields={None:(u'latitude',u'longitude',u'h_li',u'delta_time')}
                     D=[pc.ATL06.data(beam_pair=int(pair), fields=field_list, field_dict=field_dict).from_h5(\
                         filename=this_file, index_range=np.array(temp)) \
-                        for temp in zip(result['offset_start'], result['offset_end'])]
-                elif result['type'] == 'ATL11':
-                    this_file, pair = this_file.split(':pair')
-                    try:
-                        D=[pc.ATL11.data().from_h5(\
-                                filename=this_file, index_range=np.array(temp), \
-                                pair=int(pair), field_dict=field_dict) \
-                                for temp in zip(result['offset_start'], result['offset_end'])]
-                    except Exception as e:
-                        print(f"pointCollection.geoIndex: problem with ATL11 file:{this_file} for beam pair {pair}.")
-                        print("        Indexing information:")
-                        print(result)
-                        print("         Exception:")
-                        print(e)
-                        D=[]
-                        continue
-                elif result['type'] == 'ATM_Qfit':
-                    D=[pc.ATM_Qfit.data().from_h5(this_file, index_range=np.array(temp)) for temp in zip(result['offset_start'], result['offset_end'])]
+                        for temp in zip(result['offset_start'], read_offset_end)]
                 elif result['type'] == 'ATM_waveform':
                     D=[pc.atmWaveform(filename=this_file, index_range=np.array(temp), waveform_format=True) for temp in zip(result['offset_start'], result['offset_end'])]
                 elif result['type'] == 'geotif':
@@ -682,7 +856,7 @@ class geoIndex(dict):
                     except IndexError as e:
                         warn(f"pointCollection.geoIndex: failed to read {this_file}:"+str(e))
                         continue
-                elif result['type'] == 'indexed_h5':
+                elif result['type'] == 'indexedH5':
                     D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
                 elif result['type'] == 'indexed_h5_from_matlab':
                     D = [ pc.indexedH5.data(filename=this_file).read([result['x']/1000, result['y']/1000],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
@@ -690,6 +864,9 @@ class geoIndex(dict):
                     D = [data[np.arange(temp[0], temp[1])] for temp in zip(result['offset_start'], result['offset_end'])]
                 # add data to list of results.  May be a list or a single result
                 if isinstance(D,list):
+                    # a reader that found nothing for a segment can return
+                    # None; drop those rather than failing the whole file
+                    D = [Di for Di in D if Di is not None]
                     for Di in D:
                         if Di.filename is None:
                             Di.filename=this_file
