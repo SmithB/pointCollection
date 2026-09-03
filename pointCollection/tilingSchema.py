@@ -288,13 +288,18 @@ class tilingSchema(object):
         # within one tile, and a schema with no bin_size has no bins at all,
         # so in both cases the neighbors hold nothing relevant
         bins_straddle_edges = self.bin_size is not None and not self.bins_are_aligned()
-        if all_tiles and self.mapping_function_name=='round' \
-                and (halo_requested or bins_straddle_edges):
+        if all_tiles and (halo_requested or bins_straddle_edges):
             # need to check for xys that are on boundaries.  For those that are, add
-            # another point that is just on the other side of the boundary
+            # another point that is just on the other side of the boundary.
+            # A tile is always tile_spacing wide and centered on its label plus
+            # the convention's LABEL_OFFSET, so the same test works for a
+            # 'floor' schema, whose label is the lower-left corner, as for a
+            # 'round' schema, whose label is the center.
+            label_to_center = LABEL_OFFSET[self.mapping_function_name]*self.tile_spacing
             for dim, other_dim in zip([0, 1], [1, 0]):
                 for sgn in [-1, 1]:
-                    ctrs = np.round((xy[dim]-xy0[dim])/self.tile_spacing)*self.tile_spacing + xy0[dim]
+                    ctrs = self.mapping_function((xy[dim]-xy0[dim])/self.tile_spacing)\
+                        *self.tile_spacing + xy0[dim] + label_to_center
                     delta =  xy[dim] - ctrs
                     # check for points at the upper end of this bin
                     bdry_ind = np.flatnonzero(sgn * delta >= 0.5*self.tile_spacing - tol)

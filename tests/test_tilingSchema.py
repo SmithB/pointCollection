@@ -651,3 +651,59 @@ def test_no_bin_size_round_trips_through_json(tmp_path):
     json_file = str(tmp_path / 'scheme.json')
     pc.tilingSchema(tile_spacing=2.e5, bin_size=None, directory=str(tmp_path)).to_json(json_file)
     assert pc.tilingSchema().from_file(json_file).bin_size is None
+
+
+# ---------------------------------------------------------------------------
+# the neighbor-tile widening applies to both conventions.  It was guarded by
+# mapping_function_name=='round' and computed tile centers with np.round(),
+# so an unaligned 'floor' schema -- whose bins straddle its edges just as a
+# round one's do -- silently returned only the tile a point falls in.  A tile
+# is tile_spacing wide and centered on its label plus LABEL_OFFSET, so the
+# same edge test serves both conventions.
+# ---------------------------------------------------------------------------
+
+def _first_edge_above_origin(tS):
+    """the x coordinate of the first tile edge above 0"""
+    return tS.tile_bounds(xy=[tS.tile_spacing/4, 0.])[0][1]
+
+
+@pytest.mark.parametrize('name', ['round', 'floor'])
+def test_widening_applies_to_both_conventions(name):
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, mapping_function_name=name)
+    assert not tS.bins_are_aligned()
+    x = _first_edge_above_origin(tS) + 1.e3      # just inside the upper tile
+    # y is placed mid-tile so only the x edge is in play
+    y = tS.tile_bounds(xy=[0., 0.])[1].mean()
+    tiles = tS.tile_xy(xy=[np.array([x]), np.array([y])], all_tiles=True)
+    assert len(tiles) == 2
+    own = tS.tile_xy(xy=[np.array([x]), np.array([y])], all_tiles=False)[0]
+    assert any(np.array_equal(own, t) for t in tiles)
+
+
+@pytest.mark.parametrize('name', ['round', 'floor'])
+def test_aligned_schema_does_not_widen_either_way(name):
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, mapping_function_name=name,
+                         align_tiles=True)
+    x = _first_edge_above_origin(tS) + 1.e3
+    y = tS.tile_bounds(xy=[0., 0.])[1].mean()
+    assert len(tS.tile_xy(xy=[np.array([x]), np.array([y])], all_tiles=True)) == 1
+
+
+@pytest.mark.parametrize('name', ['round', 'floor'])
+def test_widening_near_a_corner_gives_four_tiles(name):
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, mapping_function_name=name)
+    corner = _first_edge_above_origin(tS) + 1.e3
+    tiles = tS.tile_xy(xy=[np.array([corner]), np.array([corner])], all_tiles=True)
+    assert len(tiles) == 4
+
+
+@pytest.mark.parametrize('name', ['round', 'floor'])
+def test_widened_tiles_are_adjacent_and_include_the_point(name):
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, mapping_function_name=name)
+    rng = np.random.default_rng(0)
+    for x, y in rng.uniform(-6.e5, 6.e5, (40, 2)):
+        own = tS.tile_xy(xy=[np.array([x]), np.array([y])], all_tiles=False)[0]
+        tiles = tS.tile_xy(xy=[np.array([x]), np.array([y])], all_tiles=True)
+        assert any(np.array_equal(own, t) for t in tiles)
+        # nothing further away than the immediate neighbors
+        assert np.max(np.abs(np.array(tiles) - own)) <= tS.tile_spacing*1.001
