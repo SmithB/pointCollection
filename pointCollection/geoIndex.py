@@ -864,6 +864,9 @@ class geoIndex(dict):
                     D = [data[np.arange(temp[0], temp[1])] for temp in zip(result['offset_start'], result['offset_end'])]
                 # add data to list of results.  May be a list or a single result
                 if isinstance(D,list):
+                    # a reader that found nothing for a segment can return
+                    # None; drop those rather than failing the whole file
+                    D = [Di for Di in D if Di is not None]
                     for Di in D:
                         if Di.filename is None:
                             Di.filename=this_file

@@ -299,3 +299,37 @@ def test_canonical_file_type_passes_other_types_through():
         assert canonical_file_type(other) == other
     assert canonical_file_type(None) is None
 
+
+def test_indexedH5_query_without_explicit_fields(tmp_path):
+    # get_data() passes fields=None by default; indexedH5.read() used to
+    # raise AttributeError on that, and the exception handler turned the
+    # failure into an empty result.
+    data_file = tmp_path / 'tile.h5'
+    D_in = _write_indexedH5(data_file)
+    index_file = tmp_path / 'index.h5'
+    pc.geoIndex(delta=[1.e4, 1.e4]).for_file(str(data_file), 'indexedH5')\
+        .to_file(str(index_file))
+
+    D = pc.geoIndex().from_file(str(index_file))\
+        .query_xy([np.array([0.]), np.array([0.])], get_data=True)
+    assert sum(Di.size for Di in D) > 0
+    # with no fields specified, everything in the file comes back
+    assert sorted(D[0].fields) == sorted(D_in.fields)
+
+
+def test_get_data_drops_none_from_reader(tmp_path, monkeypatch):
+    # a reader that finds nothing may return None; get_data() indexes into
+    # each element of the list it gets back, so a None used to raise
+    # (AttributeError on .filename) and lose the whole file
+    data_file = tmp_path / 'tile.h5'
+    _write_indexedH5(data_file)
+    index_file = tmp_path / 'index.h5'
+    pc.geoIndex(delta=[1.e4, 1.e4]).for_file(str(data_file), 'indexedH5')\
+        .to_file(str(index_file))
+
+    monkeypatch.setattr(pc.indexedH5.data, 'read',
+                        lambda self, xy_bin, **kwargs: None)
+    D = pc.geoIndex().from_file(str(index_file))\
+        .query_xy([np.array([0.]), np.array([0.])], get_data=True,
+                  error_action='raise')
+    assert D == []

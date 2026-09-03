@@ -52,15 +52,60 @@ class data(pc.data):
                 D.copy_subset(bin_dict[tuple(key)]).to_h5(out_file, \
                              replace=False, group=this_group)
 
+    @staticmethod
+    def fields_in_file(h5f):
+        """
+        list the fields stored in an open indexedH5 file
+
+        Covers the layouts read() understands: datasets at the top level
+        (alongside an 'INDEX' group), top-level groups named for the fields
+        (each holding one dataset per bin), and top-level groups named for
+        the bins, '<x>E_<y>N' (each holding one dataset per field, which is
+        what to_file() writes).
+
+        Parameters
+        ----------
+        h5f : h5py.File
+            open indexedH5 file
+
+        Returns
+        -------
+        list of str
+            the field names found in the file
+        """
+        fields=[]
+        bin_groups=[]
+        for key in h5f.keys():
+            if key == 'INDEX':
+                continue
+            if 'E_' in key and key.endswith('N'):
+                bin_groups.append(key)
+            else:
+                fields.append(key)
+        if len(fields) > 0:
+            return fields
+        # no top-level fields: the bins are the top-level groups, and each
+        # holds its own copy of the fields
+        for key in bin_groups:
+            for field in h5f[key].keys():
+                if field not in fields:
+                    fields.append(field)
+        return fields
+
     def read(self, xy_bin, fields=['x','y','time'], index_range=[[-1],[-1]]):
-        if isinstance(fields, dict):
-            field_list=[]
-            for key in fields:
-                field_list += fields[key]
-        else:
-            field_list=fields.copy()
-        out_data={field:list() for field in field_list}
         with h5py.File(self.filename,'r') as h5f:
+            if fields is None:
+                # None means 'whatever the file contains', matching
+                # pc.data().from_h5(field_dict=None) and the default that
+                # geoIndex.get_data() passes down
+                field_list=self.fields_in_file(h5f)
+            elif isinstance(fields, dict):
+                field_list=[]
+                for key in fields:
+                    field_list += fields[key]
+            else:
+                field_list=fields.copy()
+            out_data={field:list() for field in field_list}
             blank_fields=list()
 
             if xy_bin is None:
