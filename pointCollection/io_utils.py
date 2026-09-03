@@ -1,12 +1,48 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Cloud-aware I/O helpers, letting geoIndex and data.from_h5() read HDF5 files
-from either local disk or a remote (e.g. s3://) location.
+I/O helpers shared by geoIndex, tilingSchema and data.from_h5(): cloud-aware
+access, letting HDF5 files be read from either local disk or a remote (e.g.
+s3://) location, and normalization of the data-format names used to tag the
+sources in an index or a tiling schema.
 """
 import re
 
 _S3FS_CACHE = {}
+
+# pc.indexedH5 is the class that reads and writes this format, so 'indexedH5'
+# is its canonical name.  geoIndex files written before that spelling was
+# settled on, and calling code following the geoIndex file_type convention,
+# spell the same format 'indexed_h5' (and 'indexedh5' turns up by hand), so
+# accept any of them wherever a file_type / data_format is given.  Keys are
+# lowercased with underscores removed; values are the canonical spelling.
+FILE_TYPE_ALIASES = {'indexedh5': 'indexedH5'}
+
+
+def canonical_file_type(file_type):
+    """
+    Map alternate spellings of a data-format name onto the canonical one.
+
+    Parameters
+    ----------
+    file_type : str, bytes, or None
+        Format name, as passed to geoIndex.for_file() or stored in a
+        geoIndex 'type_N' attribute.  bytes (as older HDF5 files may
+        return) are decoded to str.
+
+    Returns
+    -------
+    str or None
+        The canonical name if `file_type` is a recognized alias (e.g.
+        'indexed_h5' -> 'indexedH5'), otherwise `file_type` unchanged.
+        Names that are not aliases keep their case, so unrelated types
+        ('ATL06', 'indexed_h5_from_matlab', ...) pass through untouched.
+    """
+    if isinstance(file_type, bytes):
+        file_type = file_type.decode('utf-8')
+    if not isinstance(file_type, str):
+        return file_type
+    return FILE_TYPE_ALIASES.get(file_type.lower().replace('_', ''), file_type)
 
 def is_remote_path(filename):
     """

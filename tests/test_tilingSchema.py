@@ -3,11 +3,13 @@ Tests for pointCollection.tilingSchema.
 
 Covers the 'source' addition that lets a schema point at a remote (e.g.
 EarthAccess) collection instead of a local directory (no network access is
-required), and the mapping_function / mapping_function_name resolution.
+required), the mapping_function / mapping_function_name resolution, and
+write_tiles().
 """
 import os
 import json
 import numpy as np
+import pytest
 import pointCollection as pc
 
 
@@ -197,3 +199,83 @@ def test_scheme_json_roundtrip_preserves_floor(tmp_path):
     assert tS2.mapping_function_name == 'floor'
     tS2.tile_xy(xy=[np.array([0.]), np.array([0.])])
     assert tS2.mapping_function is np.floor
+
+
+# ---------------------------------------------------------------------------
+# write_tiles(): __init__ sets data_format='indexedH5' (the pc.indexedH5 class
+# name), but write_tiles used to test for 'indexed_h5', so neither branch ever
+# matched and the call silently wrote nothing.  Both spellings now work, and
+# bin_size falls back to the schema's own value instead of defaulting to None.
+# ---------------------------------------------------------------------------
+
+def _test_data(n=400):
+    rng = np.random.default_rng(1)
+    return pc.data().from_dict({'x': rng.uniform(-1.5e5, 1.5e5, n),
+                                'y': rng.uniform(-1.5e5, 1.5e5, n),
+                                'z': np.arange(n, dtype=float),
+                                'time': np.zeros(n)})
+
+
+def _tile_contents(directory):
+    """(n_files, n_points, n_bins) over the indexedH5 tiles in a directory"""
+    import h5py
+    n_points = 0
+    n_bins = 0
+    files = sorted(os.listdir(directory))
+    for f in files:
+        with h5py.File(os.path.join(directory, f), 'r') as h5f:
+            n_bins += len(h5f.keys())
+            n_points += sum(h5f[g]['x'].size for g in h5f.keys())
+    return len(files), n_points, n_bins
+
+
+@pytest.mark.parametrize('data_format', ['indexedH5', 'indexed_h5', 'indexedh5'])
+def test_write_tiles_writes_data(tmp_path, data_format):
+    D = _test_data()
+    tS = pc.tilingSchema(tile_spacing=1.e5, bin_size=1.e4, directory=str(tmp_path))
+    tS.data_format = data_format
+    tS.write_tiles(D)
+    n_files, n_points, n_bins = _tile_contents(str(tmp_path))
+    assert n_files > 1
+    assert n_points == D.size      # every point landed in exactly one tile
+
+
+def test_write_tiles_bin_size_defaults_to_schema(tmp_path):
+    # write_tiles() took bin_size=None and passed it straight to
+    # indexedH5.data(bin_W=(None, None)); it now falls back to self.bin_size.
+    D = _test_data()
+    fine, coarse = tmp_path / 'fine', tmp_path / 'coarse'
+    for d, b in [(fine, 1.e4), (coarse, 5.e4)]:
+        d.mkdir()
+        pc.tilingSchema(tile_spacing=1.e5, bin_size=b, directory=str(d)).write_tiles(D)
+    assert _tile_contents(str(fine))[2] > _tile_contents(str(coarse))[2]
+    assert _tile_contents(str(fine))[1] == _tile_contents(str(coarse))[1] == D.size
+
+
+def test_write_tiles_explicit_bin_size_overrides(tmp_path):
+    D = _test_data()
+    override_dir, coarse_dir = tmp_path / 'override', tmp_path / 'coarse'
+    override_dir.mkdir()
+    coarse_dir.mkdir()
+    # a fine-binned schema told to write at 5e4 must match a 5e4 schema
+    pc.tilingSchema(tile_spacing=1.e5, bin_size=1.e4,
+                    directory=str(override_dir)).write_tiles(D, bin_size=5.e4)
+    pc.tilingSchema(tile_spacing=1.e5, bin_size=5.e4,
+                    directory=str(coarse_dir)).write_tiles(D)
+    assert _tile_contents(str(override_dir))[2] == _tile_contents(str(coarse_dir))[2]
+
+
+def test_write_tiles_rejects_unknown_data_format(tmp_path):
+    tS = pc.tilingSchema(tile_spacing=1.e5, bin_size=1.e4, directory=str(tmp_path))
+    tS.data_format = 'netcdf'
+    with pytest.raises(ValueError, match='not understood'):
+        tS.write_tiles(_test_data())
+
+
+def test_write_tiles_rejects_remote_source(tmp_path):
+    # tile_filename() returns bare granule names for a remote schema, so
+    # writing would scatter files into the working directory
+    tS = pc.tilingSchema(tile_spacing=1.e5, bin_size=1.e4,
+                         source={'type': 'EarthAccess', 'short_name': 'ATL11XO'})
+    with pytest.raises(ValueError, match='remote source'):
+        tS.write_tiles(_test_data())

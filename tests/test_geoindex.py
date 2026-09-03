@@ -13,7 +13,7 @@ import pointCollection as pc
 # handing it to the 'h5', 'ATL06', 'ATL11', and 'ATM_Qfit' branches, so the
 # last point of a multi-point bin is included by default; trim_last_point=True
 # reproduces the old (last-point-dropped) behavior. Not applied to
-# 'indexed_h5'/'indexed_h5_from_matlab' (offsets there can be a -1 sentinel,
+# 'indexedH5'/'indexed_h5_from_matlab' (offsets there can be a -1 sentinel,
 # or come from an externally-built index of unverified convention) or a
 # user-supplied `function` (always gets the raw, unmodified offsets).
 
@@ -227,3 +227,75 @@ def test_read_netcdf_via_h5_type(tmp_path):
 
     assert result
     np.testing.assert_array_equal(np.sort(result[0].x), [0., 1., 2.])
+
+
+# ---------------------------------------------------------------------------
+# data-format name aliases.  pc.indexedH5 is the class that reads and writes
+# this format, so 'indexedH5' is its canonical name; 'indexed_h5' (the tag
+# older index files carry) and 'indexedh5' name the same thing and are
+# normalized by io_utils.canonical_file_type() on the way in and on the way
+# back out of an index file.
+# ---------------------------------------------------------------------------
+
+def _write_indexedH5(path, n=60, bin_W=1.e4):
+    """write an indexedH5 file covering a few bins, and return its data"""
+    rng = np.random.default_rng(0)
+    D = pc.data().from_dict({'x': rng.uniform(-2.e4, 2.e4, n),
+                             'y': rng.uniform(-2.e4, 2.e4, n),
+                             'z': np.arange(n, dtype=float),
+                             'time': np.zeros(n)})
+    pc.indexedH5.data(bin_W=(bin_W, bin_W)).to_file(D, str(path))
+    return D
+
+
+@pytest.mark.parametrize('file_type', ['indexedH5', 'indexed_h5', 'indexedh5'])
+def test_indexedH5_type_aliases(tmp_path, file_type):
+    import h5py
+    data_file = tmp_path / 'tile.h5'
+    _write_indexedH5(data_file)
+
+    index_file = tmp_path / f'index_{file_type}.h5'
+    pc.geoIndex(delta=[1.e4, 1.e4]).for_file(str(data_file), file_type)\
+        .to_file(str(index_file))
+
+    # whichever spelling was passed, the index records the canonical one
+    with h5py.File(str(index_file), 'r') as h5f:
+        assert h5f['index'].attrs['type_0'] == 'indexedH5'
+
+    D = pc.geoIndex().from_file(str(index_file))\
+        .query_xy([np.array([0.]), np.array([0.])], get_data=True,
+                  fields=['x', 'y', 'z', 'time'])
+    assert sum(Di.size for Di in D) > 0
+
+
+def test_legacy_indexed_h5_type_attr_still_reads(tmp_path):
+    # an index written by an older pointCollection stores type_0='indexed_h5';
+    # it must still dispatch to the indexedH5 reader rather than falling
+    # through the type checks and silently returning nothing.
+    import h5py
+    data_file = tmp_path / 'tile.h5'
+    _write_indexedH5(data_file)
+    index_file = tmp_path / 'legacy_index.h5'
+    pc.geoIndex(delta=[1.e4, 1.e4]).for_file(str(data_file), 'indexedH5')\
+        .to_file(str(index_file))
+    with h5py.File(str(index_file), 'r+') as h5f:
+        del h5f['index'].attrs['type_0']
+        h5f['index'].attrs['type_0'] = 'indexed_h5'
+
+    D = pc.geoIndex().from_file(str(index_file))\
+        .query_xy([np.array([0.]), np.array([0.])], get_data=True,
+                  fields=['x', 'y', 'z', 'time'])
+    assert sum(Di.size for Di in D) > 0
+
+
+def test_canonical_file_type_passes_other_types_through():
+    from pointCollection.io_utils import canonical_file_type
+    assert canonical_file_type('indexed_h5') == 'indexedH5'
+    assert canonical_file_type('INDEXED_H5') == 'indexedH5'
+    assert canonical_file_type(b'indexed_h5') == 'indexedH5'
+    # a different format that merely starts the same way is left alone
+    assert canonical_file_type('indexed_h5_from_matlab') == 'indexed_h5_from_matlab'
+    for other in ['h5', 'ATL06', 'ATL11', 'DEM', 'h5_geoindex']:
+        assert canonical_file_type(other) == other
+    assert canonical_file_type(None) is None
+

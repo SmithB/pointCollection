@@ -80,6 +80,7 @@ class geoIndex(dict):
         and file_type.  If the file_type is 'geoIndex', optionally specify a
         value for 'fake_offset_val'
         """
+        file_type=pc.io_utils.canonical_file_type(file_type)
         delta=self.attrs['delta']
         self.filename=filename
         xy_bin = bin_function(np.c_[xy[0].ravel(), xy[1].ravel()]/delta).astype(int)
@@ -271,7 +272,10 @@ class geoIndex(dict):
             both '.h5' files and netCDF4-format '.nc' files (netCDF4 is an
             HDF5 container format), but not for classic/netCDF3 '.nc' files.
         file_type : string
-            the type of file being indexed (e.g. 'h5', 'ATL06', 'ATL11', ...)
+            the type of file being indexed (e.g. 'h5', 'ATL06', 'ATL11', ...).
+            Alternate spellings of a format's name are accepted and stored in
+            canonical form -- 'indexed_h5' and 'indexedh5' are both recorded
+            as 'indexedH5' (see io_utils.canonical_file_type).
         number : int, optional
             the file number to assign this source within the index.
         dir_root : string, optional
@@ -298,6 +302,7 @@ class geoIndex(dict):
             path, since the embedded reference is tied to whatever
             `self.filename` is at query time.
         """
+        file_type=pc.io_utils.canonical_file_type(file_type)
         if self_contained and file_type != 'h5':
             raise ValueError("for_file: self_contained=True is only supported for file_type='h5'.")
         dir_root=strip_double_slashes(dir_root)
@@ -374,7 +379,7 @@ class geoIndex(dict):
                 self.attrs['dir_root']=dir_root
             self.attrs['n_files']=1
             self.from_xy(xy_bin, filename=filename_out, file_type=file_type, number=number, fake_offset_val=-1)
-        if file_type in ['indexed_h5']:
+        if file_type in ['indexedH5']:
             import h5py
             h5f=h5py.File(filename,'r')
             if 'INDEX' in h5f:
@@ -582,7 +587,7 @@ class geoIndex(dict):
                     suffix = ':' + this_query_file.rsplit(':', 1)[1]
                 this_query_file = remote_file + suffix
             query_results[this_query_file]={
-            'type':self.attrs['type_%d' % out_file_num],
+            'type':pc.io_utils.canonical_file_type(self.attrs['type_%d' % out_file_num]),
             'offset_start':i0,
             'offset_end':i1,
             'x':xy[:,0],
@@ -673,7 +678,7 @@ class geoIndex(dict):
             the 'h5', 'ATL11', 'ATL06', and 'ATM_Qfit' types, so the last row
             of each segment is included. Set True to reproduce the old
             behavior (silently dropping that last row) for legacy
-            comparisons. Does not affect 'indexed_h5'/'indexed_h5_from_matlab'
+            comparisons. Does not affect 'indexedH5'/'indexed_h5_from_matlab'
             (their offsets can be a -1 sentinel or come from an externally-
             built, unverified index) or a user-supplied `function` (which
             always receives the raw, unmodified offsets).
@@ -709,7 +714,7 @@ class geoIndex(dict):
         # file (at most one handle open at a time). Without this, each
         # pair/segment reopened the same remote file independently -- a full
         # extra round trip per read, for a file we'd already opened moments
-        # before. Other types (rasters, indexed_h5's external/sentinel
+        # before. Other types (rasters, indexedH5's external/sentinel
         # offsets, a user-supplied `function`, etc.) are read exactly as
         # before, one query_results entry at a time.
         SHAREABLE_TYPES = ('h5', 'ATL11', 'ATM_Qfit')
@@ -851,7 +856,7 @@ class geoIndex(dict):
                     except IndexError as e:
                         warn(f"pointCollection.geoIndex: failed to read {this_file}:"+str(e))
                         continue
-                elif result['type'] == 'indexed_h5':
+                elif result['type'] == 'indexedH5':
                     D = [pc.indexedH5.data(filename=this_file).read([result['x'], result['y']],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]
                 elif result['type'] == 'indexed_h5_from_matlab':
                     D = [ pc.indexedH5.data(filename=this_file).read([result['x']/1000, result['y']/1000],  fields=fields, index_range=[result['offset_start'], result['offset_end']])]

@@ -267,13 +267,37 @@ class tilingSchema(object):
         return (bds[0][[0, 0, 1, 1, 0]], bds[1][[0, 1, 1, 0, 0]])
 
     def write_tiles(self, D, bin_size=None, replace=True):
+        """
+        write the data in D to the tiles of this schema
+
+        Parameters
+        ----------
+        D : pc.data
+            data to be written.  Each point is assigned to the tile it falls
+            in by tile_xy(return_dict=True).
+        bin_size : numeric, optional
+            width of the sub-tile bins used by the 'indexedH5' data format.
+            The default is None, meaning use self.bin_size.
+        replace : bool, optional
+            if True, overwrite any existing tile files. The default is True.
+        """
+        if self.source is not None:
+            raise ValueError('write_tiles: this schema points at a remote '
+                             'source, which cannot be written to')
+        if bin_size is None:
+            bin_size = self.bin_size
+        # accept the geoIndex spelling ('indexed_h5') of the format name
+        data_format = pc.io_utils.canonical_file_type(self.data_format)
         tile_dict = self.tile_xy(data=D, return_dict=True)
         for xy0, ii in tile_dict.items():
             out_file = self.tile_filename(xy0)
-            if self.data_format == 'h5':
+            if data_format == 'h5':
                 D[ii].to_h5(out_file, replace=True)
-            elif self.data_format == 'indexed_h5':
+            elif data_format == 'indexedH5':
                 pc.indexedH5.data( bin_W = (bin_size, bin_size) ).to_file(D[ii], out_file, replace=replace)
+            else:
+                raise ValueError(f'write_tiles: data_format {self.data_format}'
+                                 ' not understood')
 
     def file_xy(self, filenames=None):
         if filenames is None:
