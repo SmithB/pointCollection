@@ -76,12 +76,14 @@ exclude = ["test*"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-norecursedirs = ".git"
+# keep collection out of the ad hoc scripts and notebooks that live alongside
+# the package; several of them share a basename with a real test module
+norecursedirs = [".git", ".pixi", "build", "misc", "notebooks", "scratch"]
 python_files = [
-    "test*.py"
+    "test_*.py"
 ]
 testpaths = [
-    "test"
+    "tests"
 ]
 
 [tool.pixi.workspace]
@@ -108,7 +110,7 @@ cmd = "pixi workspace export conda-environment {{ flags }} > environment.yml"
 description = "Export workspace to a conda environment file" 
 
 [tool.pixi.feature.dev.tasks.coverage]
-cmd = "pytest --cov=pointCollection --junitxml=pytest.xml --cov-report=xml test"
+cmd = "pytest --cov=pointCollection --junitxml=pytest.xml --cov-report=xml tests"
 description = "Run the pytest suite and create coverage reports"
 
 [tool.pixi.feature.dev.tasks.lint]
