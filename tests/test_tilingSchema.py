@@ -279,3 +279,67 @@ def test_write_tiles_rejects_remote_source(tmp_path):
                          source={'type': 'EarthAccess', 'short_name': 'ATL11XO'})
     with pytest.raises(ValueError, match='remote source'):
         tS.write_tiles(_test_data())
+
+
+# ---------------------------------------------------------------------------
+# tile_bounds() describes the tile that contains xy.  It called tile_xy() with
+# the default all_tiles=True, which for a point within tol (bin_size/2) of an
+# edge also returns the neighboring tile; np.unique() sorts the result
+# ascending, so [0] could be a tile the point is not in.
+# ---------------------------------------------------------------------------
+
+def test_tile_bounds_near_edge_uses_containing_tile():
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4)      # tol = 5000
+    # 1.01e5 is 1000 past the boundary at 1e5, so inside the 2e5 tile but
+    # close enough to the edge that all_tiles also offers the 0 tile
+    xy = [np.array([1.01e5]), np.array([0.])]
+    assert len(tS.tile_xy(xy=[a.copy() for a in xy], all_tiles=True)) == 2
+    np.testing.assert_array_equal(
+        tS.tile_xy(xy=[a.copy() for a in xy], all_tiles=False)[0], [2.e5, 0.])
+    bounds = tS.tile_bounds(xy=[1.01e5, 0.])
+    np.testing.assert_array_equal(bounds[0], [1.e5, 3.e5])
+    np.testing.assert_array_equal(bounds[1], [-1.e5, 1.e5])
+
+
+def test_tile_bounds_near_edge_with_tile_offset():
+    # a tile_offset moves the edges, so the origin can land next to one
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, tile_offset=[1.e5, 1.e5])
+    bounds = tS.tile_bounds(xy=[0., 0.])
+    np.testing.assert_array_equal(bounds[0], [0., 2.e5])
+    np.testing.assert_array_equal(bounds[1], [0., 2.e5])
+
+
+@pytest.mark.parametrize('mapping_function_name', ['round', 'floor'])
+@pytest.mark.parametrize('tile_offset', [[0, 0], [5.e3, 5.e3]])
+def test_tile_bounds_always_contain_the_query_point(mapping_function_name, tile_offset):
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, tile_offset=tile_offset,
+                         mapping_function_name=mapping_function_name)
+    rng = np.random.default_rng(0)
+    for x, y in rng.uniform(-6.e5, 6.e5, (50, 2)):
+        bounds_x, bounds_y = tS.tile_bounds(xy=[x, y])
+        assert bounds_x[0] <= x <= bounds_x[1]
+        assert bounds_y[0] <= y <= bounds_y[1]
+
+
+def test_tile_boundary_encloses_containing_tile():
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4)
+    bx, by = tS.tile_boundary(xy=[1.01e5, 0.])
+    np.testing.assert_array_equal(np.unique(bx), [1.e5, 3.e5])
+    np.testing.assert_array_equal(np.unique(by), [-1.e5, 1.e5])
+
+
+def test_tile_filenames_unchanged_by_bounds_fix(tmp_path):
+    # tile_filename() reaches tile_bounds() for the xmin/xmax/ymin/ymax naming
+    # scheme, but always with a tile center, which is never within tol of its
+    # own edge for a sane bin_size -- so no existing tile name moves
+    tS = pc.tilingSchema(tile_spacing=2.e5, bin_size=1.e4, directory=str(tmp_path),
+                         format_str='E%d_%d_N%d_%d',
+                         format_variables=['xmin', 'xmax', 'ymin', 'ymax'])
+    names = [os.path.basename(f) for f in
+             tS.filenames_for_box([[-3.e5, 3.e5], [-3.e5, 3.e5]], resolution=1.e5)]
+    assert 'E-300_-100_N-300_-100.h5' in names
+    assert 'E100_300_N100_300.h5' in names
+    # every name describes a tile whose bounds are tile_spacing wide
+    for xy_t in tS.tile_xy(xy=[np.array([0., 2.e5]), np.array([0., 2.e5])]):
+        bounds = tS.tile_bounds(xy_t)
+        assert np.diff(bounds[0])[0] == tS.tile_spacing

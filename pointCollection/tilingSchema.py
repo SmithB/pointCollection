@@ -259,7 +259,10 @@ class tilingSchema(object):
             offset = [0,0]
         elif self.mapping_function == np.floor:
             offset = [self.tile_spacing/2, self.tile_spacing/2]
-        xyT = self.tile_xy(xy=xy)[0]
+        # all_tiles=True would also return the neighboring tiles for a point
+        # within tol of a tile edge, and np.unique() sorts those ascending, so
+        # [0] could be a tile that does not contain xy
+        xyT = self.tile_xy(xy=xy, all_tiles=False)[0]
         return [xy_i + off_i + np.array([-1, 1])*self.tile_spacing/2 for xy_i, off_i in zip(xyT, offset)]
 
     def tile_boundary(self, xy = [0., 0.]):
