@@ -16,7 +16,7 @@ import glob
 class tilingSchema(object):
     def __init__(self, tile_spacing=1.e5, tol=None,
                  mapping_function_name='round',
-                 mapping_function=np.round,
+                 mapping_function=None,
                  EPSG=None,
                  coords=['x','y'],
                  scale=1000,
@@ -253,6 +253,8 @@ class tilingSchema(object):
         return resolved, fs
 
     def tile_bounds(self, xy = [0.,0.]):
+        if self.mapping_function is None:
+            self.set_mapping_function()
         if self.mapping_function==np.round:
             offset = [0,0]
         elif self.mapping_function == np.floor:

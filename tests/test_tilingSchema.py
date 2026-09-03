@@ -1,7 +1,9 @@
 """
-Tests for pointCollection.tilingSchema, focused on the 'source' addition
-that lets a schema point at a remote (e.g. EarthAccess) collection instead
-of a local directory. No network access is required.
+Tests for pointCollection.tilingSchema.
+
+Covers the 'source' addition that lets a schema point at a remote (e.g.
+EarthAccess) collection instead of a local directory (no network access is
+required), and the mapping_function / mapping_function_name resolution.
 """
 import os
 import json
@@ -67,3 +69,131 @@ def test_resolve_files_for_box_local_mode(tmp_path):
     assert fs is None
     assert set(resolved.keys()) == {'E0_N0.h5', 'E200_N0.h5'}
     assert resolved['E0_N0.h5'] == ts.tile_filename([0., 0.])
+
+# ---------------------------------------------------------------------------
+# mapping_function_name / mapping_function parsing
+# ---------------------------------------------------------------------------
+# tilingSchema.__init__ used to default `mapping_function=np.round` (instead
+# of None), so `if mapping_function is not None:` was always true unless the
+# caller *also* explicitly passed mapping_function=, silently discarding
+# whatever `mapping_function_name` string was passed (e.g. 'floor') and
+# forcing 'round'. Introduced in commit 5fe55c6 (2025-11-12); fixed by
+# reverting the default back to None, restoring the original (pre-5fe55c6)
+# behavior where the string alone is honored and lazily resolved by
+# set_mapping_function() on first use.
+
+def test_default_mapping_function_is_round():
+    tS = pc.tilingSchema()
+    assert tS.mapping_function_name == 'round'
+    tS.tile_xy(xy=[np.array([0.]), np.array([0.])])
+    assert tS.mapping_function is np.round
+
+
+def test_mapping_function_name_only_selects_floor():
+    # this is exactly the call pattern used by ATL11's make_ATL11xo_tiles.py:
+    # only mapping_function_name is passed, mapping_function is left at its
+    # default. Before the fix this silently stayed 'round'.
+    tS = pc.tilingSchema(mapping_function_name='floor', tile_spacing=200000.)
+    assert tS.mapping_function_name == 'floor'
+    tS.tile_xy(xy=[np.array([0.]), np.array([0.])])
+    assert tS.mapping_function is np.floor
+
+
+def test_mapping_function_name_only_selects_round():
+    tS = pc.tilingSchema(mapping_function_name='round', tile_spacing=200000.)
+    tS.tile_xy(xy=[np.array([0.]), np.array([0.])])
+    assert tS.mapping_function is np.round
+
+
+def test_explicit_mapping_function_object_still_works():
+    # explicitly passing the function object (bypassing the name) must
+    # keep working, and should derive a matching mapping_function_name.
+    tS = pc.tilingSchema(mapping_function=np.floor, tile_spacing=200000.)
+    assert tS.mapping_function is np.floor
+    assert tS.mapping_function_name == 'floor'
+
+
+def test_explicit_mapping_function_overrides_conflicting_name():
+    # when both are given and disagree, the explicit function object wins.
+    tS = pc.tilingSchema(mapping_function_name='floor', mapping_function=np.round,
+                          tile_spacing=200000.)
+    assert tS.mapping_function is np.round
+    assert tS.mapping_function_name == 'round'
+
+
+# ---------------------------------------------------------------------------
+# tile_xy(): floor and round must actually produce different tile
+# assignments for the same data, once mapping_function_name is honored
+# ---------------------------------------------------------------------------
+
+def test_tile_xy_floor_vs_round_return_dict():
+    tile_spacing = 200000.
+    x = np.array([310000., 350000., 390000.])
+    y = np.array([310000., 350000., 390000.])
+
+    tS_floor = pc.tilingSchema(mapping_function_name='floor', tile_spacing=tile_spacing)
+    tS_round = pc.tilingSchema(mapping_function_name='round', tile_spacing=tile_spacing)
+
+    floor_keys = list(tS_floor.tile_xy(xy=[x.copy(), y.copy()], return_dict=True).keys())
+    round_keys = list(tS_round.tile_xy(xy=[x.copy(), y.copy()], return_dict=True).keys())
+
+    # floor: all points fall in [200000, 400000) -> corner (200000, 200000)
+    assert floor_keys == [(200000.0, 200000.0)]
+    # round: all points are nearest to 400000 -> center (400000, 400000)
+    assert round_keys == [(400000.0, 400000.0)]
+
+
+def test_tile_xy_return_dict_recovers_all_points():
+    tile_spacing = 200000.
+    x = np.array([310000., 350000., 390000.])
+    y = np.array([310000., 350000., 390000.])
+
+    tS = pc.tilingSchema(mapping_function_name='floor', tile_spacing=tile_spacing)
+    bin_dict = tS.tile_xy(xy=[x, y], return_dict=True)
+    (key, ii), = bin_dict.items()
+    np.testing.assert_array_equal(np.sort(ii), [0, 1, 2])
+
+
+# ---------------------------------------------------------------------------
+# tile_bounds(): must not crash when called before any tile_xy() call has
+# lazily resolved self.mapping_function, and must give the correct box for
+# both conventions (round -> centered, floor -> corner-anchored).
+# ---------------------------------------------------------------------------
+
+def test_tile_bounds_floor_lazy_resolution():
+    tile_spacing = 200000.
+    tS = pc.tilingSchema(mapping_function_name='floor', tile_spacing=tile_spacing)
+    # tile_xy() has never been called yet, so self.mapping_function is still
+    # None -- tile_bounds() must resolve it itself rather than crashing.
+    bounds = tS.tile_bounds(xy=[300000., 300000.])
+    np.testing.assert_array_equal(bounds[0], [200000., 400000.])
+    np.testing.assert_array_equal(bounds[1], [200000., 400000.])
+
+
+def test_tile_bounds_round_lazy_resolution():
+    tile_spacing = 200000.
+    tS = pc.tilingSchema(mapping_function_name='round', tile_spacing=tile_spacing)
+    # 350000 is unambiguously nearest the round-tile centered on 400000
+    # (300000 would sit exactly on a tile boundary between two centers).
+    bounds = tS.tile_bounds(xy=[350000., 350000.])
+    np.testing.assert_array_equal(bounds[0], [300000., 500000.])
+    np.testing.assert_array_equal(bounds[1], [300000., 500000.])
+
+
+# ---------------------------------------------------------------------------
+# scheme round-trip: from_file() updates mapping_function_name but not the
+# already-resolved mapping_function; keeping mapping_function=None until
+# first use (rather than eagerly resolving it in __init__) means a freshly
+# constructed schema correctly picks up a loaded scheme's mapping function.
+# ---------------------------------------------------------------------------
+
+def test_scheme_json_roundtrip_preserves_floor(tmp_path):
+    tile_spacing = 200000.
+    tS = pc.tilingSchema(mapping_function_name='floor', tile_spacing=tile_spacing)
+    json_file = str(tmp_path / 'scheme.json')
+    tS.to_json(json_file)
+
+    tS2 = pc.tilingSchema().from_file(json_file)
+    assert tS2.mapping_function_name == 'floor'
+    tS2.tile_xy(xy=[np.array([0.]), np.array([0.])])
+    assert tS2.mapping_function is np.floor
