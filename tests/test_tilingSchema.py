@@ -589,3 +589,65 @@ def test_data_format_is_a_geoIndex_file_type(tmp_path, data_format):
         .query_xy(pc.geoIndex().from_file(index_file).bins_as_array(),
                   get_data=True, fields=['x', 'y', 'z', 'time'])
     assert sum(Di.size for Di in D_read) > 0
+
+
+# ---------------------------------------------------------------------------
+# a schema with no bin_size: bins belong to indexedH5, so a schema used only
+# to name and find tiles need not have them.  tile_xy() defaulted tol to
+# self.bin_size/2 unconditionally, so every method that reaches it -- tile_xy,
+# tile_bounds, filenames_for_xy, write_tiles -- raised TypeError on None.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def unbinned_schema(tmp_path):
+    return pc.tilingSchema(tile_spacing=2.e5, bin_size=None, directory=str(tmp_path))
+
+
+def test_no_bin_size_tiling_works(unbinned_schema):
+    tS = unbinned_schema
+    xy = [np.array([1.01e5]), np.array([0.])]
+    assert tS.check_bin_size() is None
+    np.testing.assert_array_equal(tS.tile_xy(xy=[a.copy() for a in xy]), [[2.e5, 0.]])
+    np.testing.assert_array_equal(
+        tS.tile_xy(xy=[a.copy() for a in xy], all_tiles=False), [[2.e5, 0.]])
+    np.testing.assert_array_equal(tS.tile_bounds(xy=[1.01e5, 0.])[0], [1.e5, 3.e5])
+    assert len(tS.filenames_for_xy([a.copy() for a in xy])) == 1
+    assert os.path.basename(tS.tile_filename(np.array([2.e5, 0.]))) == 'E200_N0.h5'
+
+
+def test_no_bin_size_skips_the_widening(unbinned_schema):
+    # nothing can straddle an edge, so all_tiles has nothing to add ...
+    tiles = unbinned_schema.tile_xy(xy=[np.array([1.e5]), np.array([0.])], all_tiles=True)
+    np.testing.assert_array_equal(tiles, [[0., 0.]])
+    # ... unless a halo is asked for explicitly
+    assert len(unbinned_schema.tile_xy(xy=[np.array([1.e5]), np.array([0.])],
+                                       all_tiles=True, tol=5.e3)) == 2
+
+
+def test_no_bin_size_cannot_be_aligned(unbinned_schema):
+    assert unbinned_schema.bins_are_aligned() is False
+    for call in [unbinned_schema.aligned_tile_offset, unbinned_schema.align_to_bins]:
+        with pytest.raises(ValueError, match='no bin_size'):
+            call()
+    with pytest.raises(ValueError, match='no bin_size'):
+        pc.tilingSchema(tile_spacing=2.e5, bin_size=None, align_tiles=True)
+
+
+def test_no_bin_size_writes_h5_tiles_but_not_indexedH5(tmp_path):
+    D = _test_data()
+    h5_dir = tmp_path / 'h5'
+    h5_dir.mkdir()
+    pc.tilingSchema(tile_spacing=1.e5, bin_size=None, directory=str(h5_dir),
+                    data_format='h5').write_tiles(D)
+    assert sum(pc.data().from_h5(os.path.join(str(h5_dir), f)).size
+               for f in os.listdir(str(h5_dir))) == D.size
+    # indexedH5 tiles are binned, so they need a bin size
+    with pytest.raises(ValueError, match='needs a bin_size'):
+        pc.tilingSchema(tile_spacing=1.e5, bin_size=None,
+                        directory=str(tmp_path)).write_tiles(D)
+
+
+def test_no_bin_size_round_trips_through_json(tmp_path):
+    json_file = str(tmp_path / 'scheme.json')
+    pc.tilingSchema(tile_spacing=2.e5, bin_size=None, directory=str(tmp_path)).to_json(json_file)
+    assert pc.tilingSchema().from_file(json_file).bin_size is None

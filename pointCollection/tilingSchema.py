@@ -135,7 +135,16 @@ class tilingSchema(object):
         -------
         float
             offset to apply to both axes
+
+        Raises
+        ------
+        ValueError
+            if the schema has no bin_size, or a tile is not a whole number
+            of bins across
         """
+        if self.bin_size is None:
+            raise ValueError('tilingSchema: this schema has no bin_size, so '
+                             'there are no bin edges to align the tiles to')
         # raises if a tile is not a whole number of bins across
         self.check_bin_size()
         if self.mapping_function_name == 'floor':
@@ -162,6 +171,9 @@ class tilingSchema(object):
     def bins_are_aligned(self):
         """
         True if the current tile_offset puts the tile edges on bin edges
+
+        False if the schema has no bins, or has bins that cannot be aligned
+        by any offset -- in neither case can a tiling be said to be aligned.
         """
         try:
             offset = self.aligned_tile_offset()
@@ -244,7 +256,9 @@ class tilingSchema(object):
         # schema's bins can straddle a tile edge
         halo_requested = tol is not None
         if tol is None:
-            tol=self.bin_size/2
+            # tol only drives the widening below, which a schema with no bins
+            # does not do
+            tol = 0. if self.bin_size is None else self.bin_size/2
 
         if self.mapping_function is None:
             self.set_mapping_function()
@@ -270,10 +284,12 @@ class tilingSchema(object):
         # return the unique tile centers that could
         # contribute to the points specified by xy0
         # widening a query to its neighbors only buys anything when a bin can
-        # straddle a tile edge; on an aligned schema every bin lies wholly
-        # within one tile, so the neighbors hold nothing relevant
+        # straddle a tile edge: an aligned schema keeps every bin wholly
+        # within one tile, and a schema with no bin_size has no bins at all,
+        # so in both cases the neighbors hold nothing relevant
+        bins_straddle_edges = self.bin_size is not None and not self.bins_are_aligned()
         if all_tiles and self.mapping_function_name=='round' \
-                and (halo_requested or not self.bins_are_aligned()):
+                and (halo_requested or bins_straddle_edges):
             # need to check for xys that are on boundaries.  For those that are, add
             # another point that is just on the other side of the boundary
             for dim, other_dim in zip([0, 1], [1, 0]):
@@ -420,6 +436,9 @@ class tilingSchema(object):
             bin_size = self.bin_size
         # accept the geoIndex spelling ('indexed_h5') of the format name
         data_format = self.check_data_format(self.data_format)
+        if data_format == 'indexedH5' and bin_size is None:
+            raise ValueError("write_tiles: data_format 'indexedH5' writes "
+                             'binned tiles, so it needs a bin_size')
         tile_dict = self.tile_xy(data=D, return_dict=True)
         for xy0, ii in tile_dict.items():
             out_file = self.tile_filename(xy0)
