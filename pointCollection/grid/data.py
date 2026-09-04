@@ -540,7 +540,10 @@ class data(object):
                 self.time=np.nan
                 return self
         try:
-            ds=gdal.Open(file, gdalconst.GA_ReadOnly)
+            # s3://bucket/key -> /vsis3/bucket/key; local paths pass through.
+            # GDAL's /vsis3 uses the ordinary AWS credential chain, so a raster
+            # in our own bucket needs no earthaccess session.
+            ds=gdal.Open(pc.io_utils.as_gdal_path(file), gdalconst.GA_ReadOnly)
             self.from_gdal(ds, **kwargs)
         except Exception as e:
             if 'verbose' in kwargs and kwargs['verbose']:
@@ -682,14 +685,14 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def h5_open(self, h5_file, mode='r', compression=None):
+    def h5_open(self, h5_file, mode='r', compression=None, fs=None):
         """
         Open an HDF5 file with or without external compression.
 
         Parameters
         ----------
         h5_file: str
-            HDF5 file
+            HDF5 file.  May be a local path or a URI (e.g. s3://bucket/key).
         mode: str, default 'r'
             Mode of opening the HDF5 file
         compression: str or NoneType, default None
@@ -698,20 +701,34 @@ class data(object):
             - ``None``: file is not externally compressed
             - ``'bzip'``
             - ``'gzip'``
+        fs: s3fs.S3FileSystem or NoneType, default None
+            Filesystem used if h5_file is remote.  If None, a session built
+            from the default AWS credential chain is used -- gridded rasters
+            are ancillary data we own, not DAAC holdings, so an earthaccess
+            session would not grant access to them.  Pass an explicit fs to
+            read a raster out of a DAAC bucket.
         """
         # lazy import of h5py
         import h5py
+        # a remote file is opened as a file object and handed to h5py/bz2/gzip,
+        # all three of which accept one in place of a name
+        if pc.io_utils.is_remote_path(h5_file):
+            if fs is None:
+                fs = pc.io_utils.get_s3fs(daac=None)
+            source = fs.open(h5_file, 'rb')
+        else:
+            source = h5_file
         if (compression is None):
-            return h5py.File(h5_file,mode=mode)
+            return h5py.File(source,mode=mode)
         elif (compression == 'bzip'):
             # read bytes from bzip compressed file
-            with bz2.BZ2File(h5_file) as fd:
+            with bz2.BZ2File(source) as fd:
                 fid = io.BytesIO(fd.read())
                 fid.seek(0)
                 return h5py.File(fid, 'r')
         elif (compression == 'gzip'):
             # read gzip compressed file and extract into in-memory file object
-            with gzip.open(h5_file,'r') as fd:
+            with gzip.open(source,'r') as fd:
                 fid = io.BytesIO(fd.read())
                 fid.seek(0)
                 return h5py.File(fid, 'r')
@@ -863,7 +880,7 @@ class data(object):
         bounds=None,  skip=1, fill_value=None,
         t_axis=None, t_range=None, bands=None,
         compression=None, swap_xy=False, source_fillvalue=None,
-        coord_mapping=None):
+        coord_mapping=None, fs=None):
         """
         Read a raster from an HDF5 file.
 
@@ -903,6 +920,9 @@ class data(object):
             - ``None``: file is not externally compressed
             - ``'bzip'``
             - ``'gzip'``
+        fs: s3fs.S3FileSystem or NoneType, default None
+            Filesystem to use if h5_file is a URI rather than a local path.
+            See h5_open().
         swap_xy: bool, default False
             Swap the orientation of x and y variables in the grid
 
@@ -934,7 +954,7 @@ class data(object):
 
         #default
         yorient=1
-        with self.h5_open(h5_file, mode='r', compression=compression) as h5f:
+        with self.h5_open(h5_file, mode='r', compression=compression, fs=fs) as h5f:
             x = np.array(h5f[group][xname]).ravel()
             y = np.array(h5f[group][yname]).ravel()
             for time_var_name in set(['time','t', timename]):
@@ -1089,14 +1109,14 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def nc_open(self, nc_file, mode='r', compression=None):
+    def nc_open(self, nc_file, mode='r', compression=None, fs=None):
         """
         Open a netCDF4 file with or without external compression.
 
         Parameters
         ----------
         nc_file: str
-            netCDF4 file
+            netCDF4 file.  May be a local path or a URI (e.g. s3://bucket/key).
         mode: str, default 'r'
             Mode of opening the netCDF4 file
         compression, str or NoneType, default None
@@ -1105,8 +1125,25 @@ class data(object):
             - ``None``: file is not externally compressed
             - ``'bzip'``
             - ``'gzip'``
+        fs: s3fs.S3FileSystem or NoneType, default None
+            Filesystem used if nc_file is remote.  If None, a session built
+            from the default AWS credential chain is used; see h5_open().
         """
         import netCDF4
+        if pc.io_utils.is_remote_path(nc_file):
+            # netCDF4.Dataset takes a name or an in-memory buffer, but not a
+            # file object, so a remote file has to be read whole.  That is the
+            # same thing the compression branches below already do, and it is
+            # why remote reads suit ancillary grids rather than large rasters.
+            if fs is None:
+                fs = pc.io_utils.get_s3fs(daac=None)
+            with fs.open(nc_file, 'rb') as fd:
+                buffer = fd.read()
+            if (compression == 'bzip'):
+                buffer = bz2.decompress(buffer)
+            elif (compression == 'gzip'):
+                buffer = gzip.decompress(buffer)
+            return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=buffer)
         if (compression is None):
             return netCDF4.Dataset(nc_file, mode=mode)
         elif (compression == 'bzip'):
@@ -1125,7 +1162,7 @@ class data(object):
         bands=None, skip=1,
         fill_value=None,
         meta_only=False,
-        t_axis=None, compression=None):
+        t_axis=None, compression=None, fs=None):
         """
         Read a raster from a netCDF4 file.
 
@@ -1167,6 +1204,9 @@ class data(object):
             - ``None``: file is not externally compressed
             - ``'bzip'``
             - ``'gzip'``
+        fs: s3fs.S3FileSystem or NoneType, default None
+            Filesystem to use if nc_file is a URI rather than a local path.
+            See nc_open().
 
         Returns
         -------
@@ -1192,7 +1232,7 @@ class data(object):
         dims=[xname, yname, 't', 'time'] + list(self.coordinates or [])
         t=None
         grid_mapping_name = None
-        with self.nc_open(nc_file,mode='r',compression=compression) as fileID:
+        with self.nc_open(nc_file,mode='r',compression=compression, fs=fs) as fileID:
             # set automasking
             fileID.set_auto_mask(False)
             # check if reading from root group or sub-group

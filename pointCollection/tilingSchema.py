@@ -217,16 +217,33 @@ class tilingSchema(object):
         with open(json_file,'w') as fh:
             json.dump(scheme_dict, fh, indent=2)
 
-    def from_file(self, scheme_file):
+    def from_file(self, scheme_file, fs=None):
+        """
+        Read a tiling schema from a .json or .h5 file.
+
+        Parameters
+        ----------
+        scheme_file : str
+            Schema file.  May be a local path or a URI (e.g. s3://bucket/key),
+            so a schema can live beside the tiles it describes in a bucket.
+        fs : s3fs.S3FileSystem or NoneType, default None
+            Filesystem to use if scheme_file is remote.  If None, a session
+            built from the default AWS credential chain is used: a schema is
+            ours to write, so it sits in our own bucket rather than a DAAC's,
+            even when the tiles it points at are DAAC holdings.
+        """
+        remote = pc.io_utils.is_remote_path(scheme_file)
+        if remote and fs is None:
+            fs = pc.io_utils.get_s3fs(daac=None)
 
         # choose what kind of file this is:
         if scheme_file.endswith('.json'):
-            with open(scheme_file,'r') as fh:
+            with (fs.open(scheme_file, 'r') if remote
+                  else open(scheme_file, 'r')) as fh:
                 scheme_dict = json.load(fh)
         elif scheme_file.endswith('.h5'):
-            import h5py
             scheme_dict={}
-            with h5py.File(scheme_file,'r') as fh:
+            with pc.io_utils.open_h5(scheme_file, 'r', fs=fs) as fh:
                 if 'tiling_schema' in fh:
                     group='tiling_schema'
                 else:
