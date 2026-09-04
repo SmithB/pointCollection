@@ -69,7 +69,8 @@ def index_path_for_granule(granule_basename, index_root):
     return os.path.join(index_root, subdir, granule_basename)
 
 
-def read_ATL11_granule_cloud_items(s3_url, index_file, xr, yr, fields=None, fs=None, version_mismatch='error'):
+def read_ATL11_granule_cloud_items(s3_url, index_file, xr, yr, fields=None, fs=None,
+                                   index_fs=None, version_mismatch='error'):
     """
     Find the rows of a cloud ATL11 granule falling within [xr, yr], using a
     pre-built per-granule geoIndex to locate them, and return them as the
@@ -91,6 +92,11 @@ def read_ATL11_granule_cloud_items(s3_url, index_file, xr, yr, fields=None, fs=N
     fields : list or dict, optional
     fs : s3fs.S3FileSystem, optional
         reused across calls to avoid re-deriving S3 credentials per granule.
+        This is the session for the GRANULE, i.e. a DAAC (earthaccess) one.
+    index_fs : s3fs.S3FileSystem, optional
+        session for a remote index_file.  The index is ours and lives in our
+        own bucket, so it needs the default AWS credentials rather than the
+        DAAC session in `fs`; if None, one is derived on demand.
     version_mismatch : {'error', 'skip'}, optional
         what to do when the granule indexed by index_file does not match
         the cloud-found granule s3_url (e.g. the index was built from an
@@ -111,12 +117,17 @@ def read_ATL11_granule_cloud_items(s3_url, index_file, xr, yr, fields=None, fs=N
     if version_mismatch not in ('error', 'skip'):
         raise ValueError(f"version_mismatch must be 'error' or 'skip', got {version_mismatch!r}")
 
-    if not os.path.isfile(index_file):
+    if pc.io_utils.is_remote_path(index_file) and index_fs is None:
+        index_fs = pc.io_utils.get_s3fs(daac=None)
+    # os.path.isfile() is False for any URI, so a remote index has to be
+    # checked against the bucket -- otherwise every granule would be reported
+    # missing and skipped, and the tile would come back empty rather than failing
+    if not pc.io_utils.path_exists(index_file, fs=index_fs, assume_remote_exists=False):
         warnings.warn(f'query_ATL11_cloud: missing geoIndex {index_file} for granule {s3_url}, skipping')
         return None
 
     s3_basename = os.path.basename(s3_url)
-    gI = pc.geoIndex().from_file(index_file)
+    gI = pc.geoIndex().from_file(index_file, fs=index_fs)
     indexed_name = pc.io_utils.strip_pair_suffix(gI.attrs.get('file_0'))
     if indexed_name is not None:
         indexed_basename = os.path.basename(indexed_name)
@@ -134,7 +145,8 @@ def read_ATL11_granule_cloud_items(s3_url, index_file, xr, yr, fields=None, fs=N
     return D
 
 
-def read_ATL11_granule_cloud(s3_url, index_file, xr, yr, fields=None, fs=None, version_mismatch='error'):
+def read_ATL11_granule_cloud(s3_url, index_file, xr, yr, fields=None, fs=None,
+                             index_fs=None, version_mismatch='error'):
     """
     Read the rows of a cloud ATL11 granule falling within [xr, yr], using a
     pre-built per-granule geoIndex to locate them, concatenated into a
@@ -147,7 +159,8 @@ def read_ATL11_granule_cloud(s3_url, index_file, xr, yr, fields=None, fs=None, v
     pointCollection.data, or None if the granule was skipped
     """
     D = read_ATL11_granule_cloud_items(s3_url, index_file, xr, yr, fields=fields,
-                                        fs=fs, version_mismatch=version_mismatch)
+                                        fs=fs, index_fs=index_fs,
+                                        version_mismatch=version_mismatch)
     if D is None:
         return None
     return pc.data().from_list(D)

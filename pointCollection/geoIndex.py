@@ -190,17 +190,25 @@ class geoIndex(dict):
         self.attrs['n_files']=len(fileListTo)
         return self
 
-    def from_file(self, index_file, read_file=False, group='index'):
+    def from_file(self, index_file, read_file=False, group='index', fs=None):
         """
         read geoIndex info from file 'index_file.'
         If read_file is set to False, the file is not read, but the
         h5_file_index attribute of the resulting geoIndex is set to a
         reference to the hdf_file's 'index' attribute.  This seems to be
         faster than reading the whole file.
+
+        index_file may be a local path or a URI (e.g. s3://bucket/key).
+        fs is the filesystem used for a remote index; if None, a session from
+        the default AWS credential chain is used.  Note that an index lives in
+        our own bucket even when the granules it indexes are DAAC holdings, so
+        this is deliberately not the granules' earthaccess session.
         """
 
-        import h5py
-        h5_f = h5py.File(os.path.expanduser(index_file),'r')
+        h5_f = pc.io_utils.open_h5(os.path.expanduser(index_file), 'r',
+                                   fs=fs or (pc.io_utils.get_s3fs(daac=None)
+                                             if pc.io_utils.is_remote_path(index_file)
+                                             else None))
         h5_i = h5_f[group]
         if read_file:
             for bin in h5_i.keys():

@@ -60,15 +60,56 @@ def strip_pair_suffix(filename):
 
 def get_s3fs(daac='NSIDC', **kwargs):
     """
-    Return a cached, authenticated s3fs.S3FileSystem for the given DAAC,
-    created via earthaccess.get_s3fs_session(). Sessions are cached by
-    (daac, kwargs) so repeated calls don't re-derive credentials.
+    Return a cached s3fs.S3FileSystem.
+
+    Parameters
+    ----------
+    daac : str or None, default 'NSIDC'
+        If a DAAC name, the session is created with
+        earthaccess.get_s3fs_session(), which supplies the short-lived
+        in-region credentials that DAAC's cloud buckets require.
+        If None, an ordinary s3fs.S3FileSystem() is returned, which picks up
+        whatever the default AWS credential chain provides (environment,
+        ~/.aws, or an instance/task role).  That is the right choice for
+        buckets we own rather than read from a DAAC -- ancillary rasters,
+        masks and tiling schemas on s3://maap-ops-workspace/... -- since
+        earthaccess credentials do not grant access to them.
+
+    Sessions are cached by (daac, kwargs) so repeated calls don't re-derive
+    credentials.
     """
     key = (daac, tuple(sorted(kwargs.items())))
     if key not in _S3FS_CACHE:
-        import earthaccess
-        _S3FS_CACHE[key] = earthaccess.get_s3fs_session(daac=daac, **kwargs)
+        if daac is None:
+            import s3fs
+            _S3FS_CACHE[key] = s3fs.S3FileSystem(**kwargs)
+        else:
+            import earthaccess
+            _S3FS_CACHE[key] = earthaccess.get_s3fs_session(daac=daac, **kwargs)
     return _S3FS_CACHE[key]
+
+def as_gdal_path(filename):
+    """
+    Translate a URI into the /vsi... path GDAL uses for the same object.
+
+    GDAL cannot open an 's3://bucket/key' URI directly, but it reads the same
+    object through its /vsis3/ virtual filesystem, which uses the ordinary AWS
+    credential chain (AWS_* environment variables or ~/.aws).  Local paths and
+    paths that are already /vsi... are returned unchanged, so callers can pass
+    everything through this on the way to gdal.Open().
+    """
+    if not is_remote_path(filename):
+        return filename
+    scheme, _, rest = filename.partition('://')
+    scheme = scheme.lower()
+    if scheme == 's3':
+        return '/vsis3/' + rest
+    if scheme == 'gs':
+        return '/vsigs/' + rest
+    if scheme in ('http', 'https', 'ftp'):
+        return '/vsicurl/' + filename
+    # unknown scheme: hand it to GDAL as-is and let GDAL report the problem
+    return filename
 
 def path_exists(filename, fs=None, assume_remote_exists=True):
     """
