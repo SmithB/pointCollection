@@ -24,6 +24,11 @@ readme = "README.md"
 version = "1.0.0.0"
 
 requires-python = "~=3.6"
+# CI installs the pixi environment with --locked, and pixi bakes this table (plus
+# the extras below) into pixi.lock as the editable path dependency's requires_dist.
+# Editing either one puts the lock out of date and every pull request fails at the
+# "Set up pixi environment" step, before a single test runs.  Run `pixi lock` and
+# commit pixi.lock in the SAME commit as the change.
 dependencies = [
     "h5py",
     "matplotlib",
@@ -55,6 +60,8 @@ Repository = "https://github.com/SmithB/pointCollection"
 Issues = "https://github.com/SmithB/pointCollection/issues"
 
 [project.optional-dependencies]
+# see the note on [project] dependencies: these land in pixi.lock too, so a new
+# extra needs `pixi lock` alongside it
 all = ["gdal", "notebook", "shapely"]
 dev = ["flake8", "pytest>=4.6", "pytest-cov"]
 cloud = ["earthaccess", "s3fs", "fsspec"]
