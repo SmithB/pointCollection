@@ -685,7 +685,8 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def h5_open(self, h5_file, mode='r', compression=None, fs=None):
+    def h5_open(self, h5_file, mode='r', compression=None, fs=None,
+                block_size=None):
         """
         Open an HDF5 file with or without external compression.
 
@@ -707,15 +708,19 @@ class data(object):
             are ancillary data we own, not DAAC holdings, so an earthaccess
             session would not grant access to them.  Pass an explicit fs to
             read a raster out of a DAAC bucket.
+        block_size: int or NoneType, default None
+            Bytes fetched per range request if h5_file is remote.  None leaves
+            the filesystem's own default (5 MiB for s3fs); a windowed read of
+            a chunked file wants a much smaller one, e.g.
+            io_utils.DEFAULT_REMOTE_BLOCK_SIZE.  Ignored for a local file.
         """
         # lazy import of h5py
         import h5py
         # a remote file is opened as a file object and handed to h5py/bz2/gzip,
         # all three of which accept one in place of a name
         if pc.io_utils.is_remote_path(h5_file):
-            if fs is None:
-                fs = pc.io_utils.get_s3fs(daac=None)
-            source = fs.open(h5_file, 'rb')
+            source = pc.io_utils.open_remote(h5_file, fs=fs,
+                                             block_size=block_size, daac=None)
         else:
             source = h5_file
         if (compression is None):
@@ -880,7 +885,7 @@ class data(object):
         bounds=None,  skip=1, fill_value=None,
         t_axis=None, t_range=None, bands=None,
         compression=None, swap_xy=False, source_fillvalue=None,
-        coord_mapping=None, fs=None):
+        coord_mapping=None, fs=None, block_size=None):
         """
         Read a raster from an HDF5 file.
 
@@ -923,6 +928,9 @@ class data(object):
         fs: s3fs.S3FileSystem or NoneType, default None
             Filesystem to use if h5_file is a URI rather than a local path.
             See h5_open().
+        block_size: int or NoneType, default None
+            Bytes fetched per range request if h5_file is remote.
+            See h5_open().
         swap_xy: bool, default False
             Swap the orientation of x and y variables in the grid
 
@@ -954,7 +962,8 @@ class data(object):
 
         #default
         yorient=1
-        with self.h5_open(h5_file, mode='r', compression=compression, fs=fs) as h5f:
+        with self.h5_open(h5_file, mode='r', compression=compression, fs=fs,
+                          block_size=block_size) as h5f:
             x = np.array(h5f[group][xname]).ravel()
             y = np.array(h5f[group][yname]).ravel()
             for time_var_name in set(['time','t', timename]):
@@ -1109,9 +1118,19 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
-    def nc_open(self, nc_file, mode='r', compression=None, fs=None):
+    def nc_open(self, nc_file, mode='r', compression=None, fs=None,
+                engine='auto', block_size=None, rdcc_nbytes=None):
         """
         Open a netCDF4 file with or without external compression.
+
+        A remote file is read through h5py and range requests rather than
+        netCDF4: netCDF4.Dataset takes a filename or an in-memory buffer but
+        never a file object, so reading a window out of a remote granule with
+        netCDF4 means downloading the whole thing.  netCDF4 files are HDF5
+        underneath and h5py does take a file object, so the same read costs
+        only the chunks the window touches.  What comes back is then a
+        grid.nc_h5.H5Dataset, which presents the netCDF4 API that from_nc()
+        uses; a file h5py cannot open (NETCDF3/classic) falls back to netCDF4.
 
         Parameters
         ----------
@@ -1120,7 +1139,10 @@ class data(object):
         mode: str, default 'r'
             Mode of opening the netCDF4 file
         compression, str or NoneType, default None
-            Compression format for the netCDF4 file
+            External compression format for the netCDF4 file -- the whole file
+            wrapped in a compressed stream, as distinct from the per-chunk
+            compression inside a netCDF4 file, which is transparent and is
+            what makes a windowed read cheap.
 
             - ``None``: file is not externally compressed
             - ``'bzip'``
@@ -1128,32 +1150,82 @@ class data(object):
         fs: s3fs.S3FileSystem or NoneType, default None
             Filesystem used if nc_file is remote.  If None, a session built
             from the default AWS credential chain is used; see h5_open().
+        engine: str, default 'auto'
+            Library used to read the file.
+
+            - ``'auto'``: h5py for a remote file, netCDF4 for a local one
+            - ``'h5py'``: h5py in both cases (what the tests compare against)
+            - ``'netcdf4'``: netCDF4 in both cases, reading a remote file whole
+        block_size: int or NoneType, default None
+            Bytes fetched per range request for a remote file.  If None,
+            io_utils.DEFAULT_REMOTE_BLOCK_SIZE is used for the h5py path,
+            which fetches far less than the fsspec default for a windowed
+            read.  Ignored for a local file.
+        rdcc_nbytes: int or NoneType, default None
+            Size of the HDF5 chunk cache, in bytes.  Worth raising for files
+            whose chunks are larger than the 1 MiB default.
+
+        Returns
+        -------
+        netCDF4.Dataset or grid.nc_h5.H5Dataset
         """
         import netCDF4
-        if pc.io_utils.is_remote_path(nc_file):
-            # netCDF4.Dataset takes a name or an in-memory buffer, but not a
-            # file object, so a remote file has to be read whole.  That is the
-            # same thing the compression branches below already do, and it is
-            # why remote reads suit ancillary grids rather than large rasters.
-            if fs is None:
-                fs = pc.io_utils.get_s3fs(daac=None)
-            with fs.open(nc_file, 'rb') as fd:
-                buffer = fd.read()
-            if (compression == 'bzip'):
-                buffer = bz2.decompress(buffer)
+        from . import nc_h5
+
+        if engine not in ('auto', 'h5py', 'netcdf4'):
+            raise ValueError(f"unrecognized engine: {engine}")
+        remote = pc.io_utils.is_remote_path(nc_file)
+
+        if compression is not None:
+            # A gzip or bzip2 stream carries no index, so byte N is only
+            # reachable by inflating everything before it: there is nothing to
+            # read chunk-wise, and the file is decompressed whole as it always
+            # has been.
+            if remote:
+                with pc.io_utils.open_remote(nc_file, fs=fs, daac=None) as fd:
+                    buffer = fd.read()
+                if (compression == 'bzip'):
+                    buffer = bz2.decompress(buffer)
+                elif (compression == 'gzip'):
+                    buffer = gzip.decompress(buffer)
+                return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=buffer)
+            elif (compression == 'bzip'):
+                # read bytes from bzip compressed file
+                with bz2.BZ2File(nc_file) as fd:
+                    return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
             elif (compression == 'gzip'):
-                buffer = gzip.decompress(buffer)
+                # read bytes from gzip compressed file
+                with gzip.open(nc_file) as fd:
+                    return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
+            raise ValueError(f"unrecognized compression: {compression}")
+
+        if engine == 'h5py' or (engine == 'auto' and remote):
+            if remote:
+                if block_size is None:
+                    block_size = pc.io_utils.DEFAULT_REMOTE_BLOCK_SIZE
+                source = pc.io_utils.open_remote(nc_file, fs=fs,
+                                                 block_size=block_size, daac=None)
+            else:
+                source = nc_file
+            try:
+                return nc_h5.open_nc_as_h5(source, mode=mode, rdcc_nbytes=rdcc_nbytes)
+            except Exception as exception:
+                if remote:
+                    source.close()
+                # An OSError here means h5py could not read the file -- a
+                # NETCDF3/classic file, say.  netCDF4 reads those, so fall
+                # through to it rather than failing.
+                if engine == 'h5py' or not isinstance(exception, OSError):
+                    raise
+
+        if remote:
+            # netCDF4 takes no file object, so the file has to be read whole.
+            # That is a sequential read, so it wants the filesystem's own
+            # block size rather than the small one a windowed read wants.
+            with pc.io_utils.open_remote(nc_file, fs=fs, daac=None) as fd:
+                buffer = fd.read()
             return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=buffer)
-        if (compression is None):
-            return netCDF4.Dataset(nc_file, mode=mode)
-        elif (compression == 'bzip'):
-            # read bytes from bzipcompressed file
-            with bz2.BZ2File(nc_file) as fd:
-                return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
-        elif (compression == 'gzip'):
-            # read bytes from gzip compressed file
-            with gzip.open(nc_file) as fd:
-                return netCDF4.Dataset(uuid.uuid4().hex, mode=mode, memory=fd.read())
+        return netCDF4.Dataset(nc_file, mode=mode)
 
     def from_nc(self, nc_file, field_mapping=None, group='',
                 fields=None,
@@ -1162,7 +1234,8 @@ class data(object):
         bands=None, skip=1,
         fill_value=None,
         meta_only=False,
-        t_axis=None, compression=None, fs=None):
+        t_axis=None, compression=None, fs=None,
+        engine='auto', block_size=None, rdcc_nbytes=None):
         """
         Read a raster from a netCDF4 file.
 
@@ -1207,6 +1280,13 @@ class data(object):
         fs: s3fs.S3FileSystem or NoneType, default None
             Filesystem to use if nc_file is a URI rather than a local path.
             See nc_open().
+        engine: str, default 'auto'
+            Library used to read the file: 'auto', 'h5py' or 'netcdf4'.
+            See nc_open().
+        block_size: int or NoneType, default None
+            Bytes fetched per range request for a remote file.  See nc_open().
+        rdcc_nbytes: int or NoneType, default None
+            Size of the HDF5 chunk cache, in bytes.  See nc_open().
 
         Returns
         -------
@@ -1232,7 +1312,10 @@ class data(object):
         dims=[xname, yname, 't', 'time'] + list(self.coordinates or [])
         t=None
         grid_mapping_name = None
-        with self.nc_open(nc_file,mode='r',compression=compression, fs=fs) as fileID:
+        from . import nc_h5
+        with self.nc_open(nc_file, mode='r', compression=compression, fs=fs,
+                          engine=engine, block_size=block_size,
+                          rdcc_nbytes=rdcc_nbytes) as fileID:
             # set automasking
             fileID.set_auto_mask(False)
             # check if reading from root group or sub-group
@@ -1301,9 +1384,11 @@ class data(object):
                 this_slice = tuple([slices[dim] for dim in this_dim_order])
                 z = np.array(f_field[this_slice])
 
-                # replace invalid values with nan
+                # replace invalid values with nan.  A packed variable's data
+                # arrive scaled while its _FillValue is stored raw, so the
+                # fill value has to be put on the same scale to match.
                 if hasattr(f_field, '_FillValue'):
-                    fill_value = f_field.getncattr('_FillValue')
+                    fill_value = nc_h5.scaled_fill_value(f_field)
                     try:
                         z[z == fill_value] = self.fill_value
                     except ValueError:

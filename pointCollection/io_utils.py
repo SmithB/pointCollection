@@ -10,6 +10,13 @@ import re
 
 _S3FS_CACHE = {}
 
+# Block size for remote reads that pull windows out of a large file.  fsspec's
+# 5 MiB default is sized for reading a file end to end; a windowed read of a
+# chunked HDF5 file touches scattered chunks, and the read-ahead is then mostly
+# waste -- a 60 km window out of ATL14 fetches 35 MiB in 5 MiB blocks and
+# 6.6 MiB in 256 KiB ones.
+DEFAULT_REMOTE_BLOCK_SIZE = 256 * 1024
+
 # pc.indexedH5 is the class that reads and writes this format, so 'indexedH5'
 # is its canonical name.  geoIndex files written before that spelling was
 # settled on, and calling code following the geoIndex file_type convention,
@@ -88,6 +95,41 @@ def get_s3fs(daac='NSIDC', **kwargs):
             _S3FS_CACHE[key] = earthaccess.get_s3fs_session(daac=daac, **kwargs)
     return _S3FS_CACHE[key]
 
+def open_remote(filename, mode='rb', fs=None, block_size=None, daac='NSIDC'):
+    """
+    Open a remote (e.g. s3://) file as a file object.
+
+    Parameters
+    ----------
+    filename : str
+    mode : str, default 'rb'
+    fs : s3fs.S3FileSystem or NoneType, default None
+        Filesystem to open with.  If None, a cached session is obtained via
+        get_s3fs(daac=daac).
+    block_size : int or NoneType, default None
+        Bytes fetched per range request.  None leaves the filesystem's own
+        default (5 MiB for s3fs) in place; see DEFAULT_REMOTE_BLOCK_SIZE for
+        why a windowed read wants a smaller one.  Passed per file rather than
+        to the session, so it applies to a caller-supplied fs too -- including
+        an earthaccess DAAC session, whose constructor takes no such argument.
+    daac : str or NoneType, default 'NSIDC'
+        DAAC whose credentials are needed, if fs is None.  None selects the
+        default AWS credential chain; see get_s3fs().
+
+    Returns
+    -------
+    file object
+    """
+    if fs is None:
+        fs = get_s3fs(daac=daac)
+    if block_size is None:
+        return fs.open(filename, mode)
+    try:
+        return fs.open(filename, mode, block_size=block_size)
+    except TypeError:
+        # a filesystem (or a stand-in) whose open() takes no block_size
+        return fs.open(filename, mode)
+
 def as_gdal_path(filename):
     """
     Translate a URI into the /vsi... path GDAL uses for the same object.
@@ -133,7 +175,7 @@ def path_exists(filename, fs=None, assume_remote_exists=True):
         return (fs or get_s3fs()).exists(filename)
     return os.path.isfile(filename)
 
-def open_h5(filename, mode='r', fs=None):
+def open_h5(filename, mode='r', fs=None, block_size=None):
     """
     Open an HDF5 file for reading, whether local or remote.
 
@@ -144,6 +186,9 @@ def open_h5(filename, mode='r', fs=None):
     fs : s3fs.S3FileSystem, optional
         filesystem to use for a remote open. If None, a cached session is
         obtained via get_s3fs().
+    block_size : int, optional
+        bytes fetched per range request for a remote file.  None leaves the
+        filesystem default; see open_remote().
 
     Returns
     -------
@@ -151,5 +196,5 @@ def open_h5(filename, mode='r', fs=None):
     """
     import h5py
     if is_remote_path(filename):
-        return h5py.File((fs or get_s3fs()).open(filename, 'rb'), mode)
+        return h5py.File(open_remote(filename, fs=fs, block_size=block_size), mode)
     return h5py.File(filename, mode)
