@@ -192,9 +192,13 @@ def _s3fs_from_maap(daac, **kwargs):
         return None, None
 
 
+# Remembers the outcome of try_earthaccess_login(): None = not yet attempted.
+_EARTHACCESS_LOGIN_TRIED = None
+
+
 def try_earthaccess_login():
     """
-    Log in to Earthdata if we can, and carry on if we cannot.
+    Log in to Earthdata if we can, without ever blocking on a prompt.
 
     A CMR metadata search needs no authentication -- only granule READS do, and
     those get their credentials from get_s3fs(), which on MAAP uses MAAP's
@@ -203,19 +207,39 @@ def try_earthaccess_login():
     MAAP DPS worker cannot satisfy: it runs as root with no ~/.netrc, so the
     search raised LoginStrategyUnavailable before ever reaching CMR.
 
-    Bare login() tries environment, then netrc, then interactive, so a local
-    user's existing setup still works.  Failure warns rather than raising,
-    because the caller very likely does not need it.
+    The strategies are tried EXPLICITLY, and 'interactive' is not among them.
+    Bare login() defaults to strategy='all', which ends at an interactive
+    prompt: on a DPS worker that printed "Enter your Earthdata Login username:"
+    into the job log for every call and then failed on the closed stdin.  A
+    batch job must never wait on a human, and a prompt in a log that scrolls
+    past is worse than a clean warning.
+
+    The result is remembered, so a tile that searches once per granule pays for
+    at most one attempt instead of one per call.
     """
+    global _EARTHACCESS_LOGIN_TRIED
+    if _EARTHACCESS_LOGIN_TRIED is not None:
+        return _EARTHACCESS_LOGIN_TRIED
+
     import warnings
     import earthaccess
-    try:
-        earthaccess.login()
-    except Exception as exc:
-        warnings.warn(f'earthaccess.login() failed ({type(exc).__name__}: {exc}); '
-                      'continuing, since a CMR search needs no credentials.  '
-                      'Granule reads get their credentials separately, via '
-                      'pointCollection.io_utils.get_s3fs().')
+
+    failures = []
+    for strategy in ('environment', 'netrc'):
+        try:
+            earthaccess.login(strategy=strategy)
+            _EARTHACCESS_LOGIN_TRIED = True
+            return True
+        except Exception as exc:
+            failures.append(f'{strategy}: {type(exc).__name__}: {exc}')
+
+    warnings.warn('earthaccess login unavailable (' + '; '.join(failures) + ').  '
+                  'Continuing, since a CMR search needs no credentials.  Granule '
+                  'reads get their credentials separately, via '
+                  'pointCollection.io_utils.get_s3fs().  The interactive '
+                  'strategy is deliberately not tried.')
+    _EARTHACCESS_LOGIN_TRIED = False
+    return False
 
 
 def _expiry_timestamp(creds):
