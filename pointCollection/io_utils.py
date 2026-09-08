@@ -10,6 +10,16 @@ import re
 
 _S3FS_CACHE = {}
 
+# DAAC -> the DAAC's own S3-credentials endpoint, for the MAAP path in
+# get_s3fs().  MAAP brokers these: maap.aws.earthdata_s3_credentials(<uri>)
+# returns short-lived accessKeyId/secretAccessKey/sessionToken using MAAP's own
+# auth, so a MAAP DPS worker needs no Earthdata credentials of its own -- no
+# .netrc, nothing at rest.  A DAAC that is not listed simply falls through to
+# earthaccess, which is still the right answer off MAAP.
+MAAP_S3_CREDENTIALS_ENDPOINTS = {
+    'NSIDC': 'https://data.nsidc.earthdatacloud.nasa.gov/s3credentials',
+}
+
 # Block size for remote reads that pull windows out of a large file.  fsspec's
 # 5 MiB default is sized for reading a file end to end; a windowed read of a
 # chunked HDF5 file touches scattered chunks, and the read-ahead is then mostly
@@ -72,9 +82,11 @@ def get_s3fs(daac='NSIDC', **kwargs):
     Parameters
     ----------
     daac : str or None, default 'NSIDC'
-        If a DAAC name, the session is created with
-        earthaccess.get_s3fs_session(), which supplies the short-lived
-        in-region credentials that DAAC's cloud buckets require.
+        If a DAAC name, the session carries the short-lived in-region
+        credentials that DAAC's cloud buckets require.  On MAAP those come
+        from MAAP's own credential broker (see _s3fs_from_maap), which needs
+        no Earthdata credentials at all; everywhere else, and whenever the
+        broker declines, they come from earthaccess.get_s3fs_session().
         If None, an ordinary s3fs.S3FileSystem() is returned, which picks up
         whatever the default AWS credential chain provides (environment,
         ~/.aws, or an instance/task role).  That is the right choice for
@@ -91,9 +103,80 @@ def get_s3fs(daac='NSIDC', **kwargs):
             import s3fs
             _S3FS_CACHE[key] = s3fs.S3FileSystem(**kwargs)
         else:
-            import earthaccess
-            _S3FS_CACHE[key] = earthaccess.get_s3fs_session(daac=daac, **kwargs)
+            fs = _s3fs_from_maap(daac, **kwargs)
+            if fs is None:
+                import earthaccess
+                fs = earthaccess.get_s3fs_session(daac=daac, **kwargs)
+            _S3FS_CACHE[key] = fs
     return _S3FS_CACHE[key]
+
+
+def _s3fs_from_maap(daac, **kwargs):
+    """
+    Build an s3fs session from MAAP-brokered DAAC credentials.
+
+    Returns None -- with a warning saying why -- whenever this is not a MAAP
+    environment or the broker will not answer, so the caller falls back to
+    earthaccess.  Off MAAP this costs one dict lookup and returns None.
+
+    This exists because a MAAP DPS worker has NO Earthdata credentials: it runs
+    as root with no ~/.netrc, and earthaccess's netrc and environment
+    strategies both come up empty there.  What it does have is MAAP's own auth
+    ($MAAP_PGT, and a maap_token from config), which
+    maap.aws.earthdata_s3_credentials() exchanges for the DAAC's temporary
+    read credentials.  See docs.maap-project.org, science/NISAR/NISAR_access.html.
+
+    The credentials are short-lived and get_s3fs() caches the session for the
+    life of the process.  That is fine for a per-tile job of minutes; a process
+    that runs longer than the token's `expiration` would need to re-derive, and
+    nothing here does that yet.
+
+    Every failure warns rather than passing silently: a session that quietly
+    came from somewhere other than where you think is exactly the kind of
+    failure that only shows up later, as a permission error with no obvious
+    cause.
+    """
+    import os
+    import warnings
+
+    endpoint = MAAP_S3_CREDENTIALS_ENDPOINTS.get(str(daac).upper())
+    if endpoint is None:
+        return None
+    if not os.environ.get('MAAP_PGT'):
+        # The ADE and DPS workers both set it; its absence means this is not a
+        # MAAP environment, which is not worth warning about.
+        return None
+
+    try:
+        from maap.maap import MAAP
+    except ImportError as exc:
+        warnings.warn(f'MAAP_PGT is set but maap-py is not importable ({exc}); '
+                      f'falling back to earthaccess for {daac}.')
+        return None
+
+    try:
+        creds = MAAP(
+            maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org')
+        ).aws.earthdata_s3_credentials(endpoint)
+        return _s3fs_with_credentials(creds, **kwargs)
+    except Exception as exc:
+        warnings.warn(f'MAAP could not broker {daac} credentials from {endpoint} '
+                      f'({type(exc).__name__}: {exc}); falling back to earthaccess.')
+        return None
+
+
+def _s3fs_with_credentials(creds, **kwargs):
+    """s3fs session from an earthdata_s3_credentials() response."""
+    import s3fs
+    missing = [k for k in ('accessKeyId', 'secretAccessKey', 'sessionToken')
+               if k not in creds]
+    if missing:
+        raise KeyError(f'credential response is missing {missing}')
+    return s3fs.S3FileSystem(anon=False,
+                             key=creds['accessKeyId'],
+                             secret=creds['secretAccessKey'],
+                             token=creds['sessionToken'],
+                             **kwargs)
 
 def open_remote(filename, mode='rb', fs=None, block_size=None, daac='NSIDC'):
     """
