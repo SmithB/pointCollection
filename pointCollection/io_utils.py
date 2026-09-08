@@ -8,7 +8,17 @@ sources in an index or a tiling schema.
 """
 import re
 
+# key -> (filesystem, expires_at or None).  Brokered DAAC credentials expire
+# (MAAP/NSIDC issue roughly four hours), so the session cannot simply be cached
+# for the life of the process: a long read phase would start 403-ing partway
+# through, which at a per-tile fan-out looks like a random data error rather
+# than an expiry.  A session with no expiry (daac=None, the worker's own
+# identity) caches as before.
 _S3FS_CACHE = {}
+
+# Re-derive this many seconds BEFORE the stated expiry, so a read that starts
+# just under the wire does not expire mid-request.
+_CREDENTIAL_SAFETY_MARGIN = 600
 
 # DAAC -> the DAAC's own S3-credentials endpoint, for the MAAP path in
 # get_s3fs().  MAAP brokers these: maap.aws.earthdata_s3_credentials(<uri>)
@@ -94,30 +104,46 @@ def get_s3fs(daac='NSIDC', **kwargs):
         masks and tiling schemas on s3://maap-ops-workspace/... -- since
         earthaccess credentials do not grant access to them.
 
-    Sessions are cached by (daac, kwargs) so repeated calls don't re-derive
-    credentials.
+    Sessions are cached by (daac, kwargs), so repeated calls are a dict lookup
+    -- but a cached session whose brokered credentials are within
+    _CREDENTIAL_SAFETY_MARGIN of expiring is discarded and re-derived.  Callers
+    doing a long sequence of reads should therefore call this per item rather
+    than hoisting one filesystem out of the loop, which costs a dict lookup and
+    is what makes the refresh actually take effect.
     """
+    import time
+
     key = (daac, tuple(sorted(kwargs.items())))
-    if key not in _S3FS_CACHE:
-        if daac is None:
-            import s3fs
-            _S3FS_CACHE[key] = s3fs.S3FileSystem(**kwargs)
-        else:
-            fs = _s3fs_from_maap(daac, **kwargs)
-            if fs is None:
-                import earthaccess
-                fs = earthaccess.get_s3fs_session(daac=daac, **kwargs)
-            _S3FS_CACHE[key] = fs
-    return _S3FS_CACHE[key]
+    entry = _S3FS_CACHE.get(key)
+    if entry is not None:
+        fs, expires_at = entry
+        if expires_at is None or time.time() < expires_at - _CREDENTIAL_SAFETY_MARGIN:
+            return fs
+        # Otherwise fall through and re-derive: the credentials this session
+        # carries are about to stop working.
+
+    if daac is None:
+        import s3fs
+        # The default credential chain refreshes itself; nothing to expire here.
+        _S3FS_CACHE[key] = (s3fs.S3FileSystem(**kwargs), None)
+    else:
+        fs, expires_at = _s3fs_from_maap(daac, **kwargs)
+        if fs is None:
+            import earthaccess
+            # earthaccess manages its own session; we do not know its expiry.
+            fs, expires_at = earthaccess.get_s3fs_session(daac=daac, **kwargs), None
+        _S3FS_CACHE[key] = (fs, expires_at)
+    return _S3FS_CACHE[key][0]
 
 
 def _s3fs_from_maap(daac, **kwargs):
     """
     Build an s3fs session from MAAP-brokered DAAC credentials.
 
-    Returns None -- with a warning saying why -- whenever this is not a MAAP
+    Returns (filesystem, expires_at) where expires_at is a POSIX timestamp, or
+    (None, None) -- with a warning saying why -- whenever this is not a MAAP
     environment or the broker will not answer, so the caller falls back to
-    earthaccess.  Off MAAP this costs one dict lookup and returns None.
+    earthaccess.  Off MAAP this costs one dict lookup and returns (None, None).
 
     This exists because a MAAP DPS worker has NO Earthdata credentials: it runs
     as root with no ~/.netrc, and earthaccess's netrc and environment
@@ -126,10 +152,11 @@ def _s3fs_from_maap(daac, **kwargs):
     maap.aws.earthdata_s3_credentials() exchanges for the DAAC's temporary
     read credentials.  See docs.maap-project.org, science/NISAR/NISAR_access.html.
 
-    The credentials are short-lived and get_s3fs() caches the session for the
-    life of the process.  That is fine for a per-tile job of minutes; a process
-    that runs longer than the token's `expiration` would need to re-derive, and
-    nothing here does that yet.
+    The credentials are short-lived -- MAAP/NSIDC issue roughly four hours --
+    so the response's `expiration` is parsed and handed back for get_s3fs() to
+    cache against.  An Antarctic tile whose ATL11 read phase runs long would
+    otherwise start 403-ing partway through, and at a per-tile fan-out that
+    reads as a random data error rather than as an expiry.
 
     Every failure warns rather than passing silently: a session that quietly
     came from somewhere other than where you think is exactly the kind of
@@ -141,28 +168,88 @@ def _s3fs_from_maap(daac, **kwargs):
 
     endpoint = MAAP_S3_CREDENTIALS_ENDPOINTS.get(str(daac).upper())
     if endpoint is None:
-        return None
+        return None, None
     if not os.environ.get('MAAP_PGT'):
         # The ADE and DPS workers both set it; its absence means this is not a
         # MAAP environment, which is not worth warning about.
-        return None
+        return None, None
 
     try:
         from maap.maap import MAAP
     except ImportError as exc:
         warnings.warn(f'MAAP_PGT is set but maap-py is not importable ({exc}); '
                       f'falling back to earthaccess for {daac}.')
-        return None
+        return None, None
 
     try:
         creds = MAAP(
             maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org')
         ).aws.earthdata_s3_credentials(endpoint)
-        return _s3fs_with_credentials(creds, **kwargs)
+        return _s3fs_with_credentials(creds, **kwargs), _expiry_timestamp(creds)
     except Exception as exc:
         warnings.warn(f'MAAP could not broker {daac} credentials from {endpoint} '
                       f'({type(exc).__name__}: {exc}); falling back to earthaccess.')
-        return None
+        return None, None
+
+
+def try_earthaccess_login():
+    """
+    Log in to Earthdata if we can, and carry on if we cannot.
+
+    A CMR metadata search needs no authentication -- only granule READS do, and
+    those get their credentials from get_s3fs(), which on MAAP uses MAAP's
+    broker rather than earthaccess.  Callers used to write
+    earthaccess.login(strategy='netrc'), which hard-codes the ONE strategy a
+    MAAP DPS worker cannot satisfy: it runs as root with no ~/.netrc, so the
+    search raised LoginStrategyUnavailable before ever reaching CMR.
+
+    Bare login() tries environment, then netrc, then interactive, so a local
+    user's existing setup still works.  Failure warns rather than raising,
+    because the caller very likely does not need it.
+    """
+    import warnings
+    import earthaccess
+    try:
+        earthaccess.login()
+    except Exception as exc:
+        warnings.warn(f'earthaccess.login() failed ({type(exc).__name__}: {exc}); '
+                      'continuing, since a CMR search needs no credentials.  '
+                      'Granule reads get their credentials separately, via '
+                      'pointCollection.io_utils.get_s3fs().')
+
+
+def _expiry_timestamp(creds):
+    """
+    POSIX timestamp for a credential response's `expiration`, or None.
+
+    The field arrives as e.g. '2026-09-08 22:19:41+00:00'.  An unparseable or
+    absent value is treated as a SHORT lifetime rather than an unlimited one:
+    guessing "no expiry" from a value we failed to read is how a session
+    outlives its credentials.
+    """
+    import datetime
+    import warnings
+
+    raw = creds.get('expiration')
+    if raw is None:
+        warnings.warn('credential response carried no expiration; '
+                      're-deriving conservatively.')
+        return _conservative_expiry()
+    try:
+        when = datetime.datetime.fromisoformat(str(raw))
+    except ValueError:
+        warnings.warn(f'could not parse credential expiration {raw!r}; '
+                      're-deriving conservatively.')
+        return _conservative_expiry()
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=datetime.timezone.utc)
+    return when.timestamp()
+
+
+def _conservative_expiry():
+    """A short fallback lifetime for a credential response we could not read."""
+    import time
+    return time.time() + 1800 + _CREDENTIAL_SAFETY_MARGIN
 
 
 def _s3fs_with_credentials(creds, **kwargs):

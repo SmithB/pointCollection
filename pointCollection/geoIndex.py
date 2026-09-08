@@ -773,7 +773,17 @@ class geoIndex(dict):
                 # this keeps the shared handle's access pattern close to
                 # monotonic rather than jumping around arbitrarily.
                 tasks.sort(key=lambda t: (t['pair_num'], int(t['index_range'][0])))
-                with pc.io_utils.open_h5(physical_file, fs=fs) as h5f:
+                # THIS is the read DEFAULT_REMOTE_BLOCK_SIZE was measured for:
+                # scattered index_ranges out of a chunked, compressed granule,
+                # where fsspec's 5 MiB default reads mostly waste (Q27 measured
+                # 35 MiB against 6.6 MiB for the same window).  It was not being
+                # passed, so the most windowed read in the job ran on the
+                # default.  The index-file read in from_file() above is left
+                # alone deliberately -- an index averages ~250 KiB and is read
+                # end to end, which is what the larger default suits.
+                with pc.io_utils.open_h5(
+                        physical_file, fs=fs,
+                        block_size=pc.io_utils.DEFAULT_REMOTE_BLOCK_SIZE) as h5f:
                     for task in tasks:
                         try:
                             if task['type'] == 'h5':

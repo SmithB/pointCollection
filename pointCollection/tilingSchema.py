@@ -396,7 +396,11 @@ class tilingSchema(object):
             import earthaccess
             search_kwargs = {k: v for k, v in self.source.items()
                               if k not in ('type', 'daac')}
-            earthaccess.login(strategy='netrc')
+            # Best-effort, and NOT strategy='netrc': this is a CMR search,
+            # which needs no credentials, and a MAAP DPS worker has no ~/.netrc
+            # to offer.  See pc.io_utils.try_earthaccess_login().
+            from pointCollection.io_utils import try_earthaccess_login
+            try_earthaccess_login()
             granules = earthaccess.search_data(granule_name=candidates, **search_kwargs)
             found = {}
             for g in granules:
