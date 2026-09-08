@@ -49,8 +49,35 @@ def find_ATL11_granules(bounding_box, short_name='ATL11', **search_kwargs):
     list of earthaccess.DataGranule
     """
     import earthaccess
-    earthaccess.login(strategy='netrc')
+    _try_earthaccess_login()
     return earthaccess.search_data(short_name=short_name, bounding_box=bounding_box, **search_kwargs)
+
+
+def _try_earthaccess_login():
+    """
+    Log in to Earthdata if we can, and carry on if we cannot.
+
+    A CMR metadata search needs no authentication -- only the granule READS do,
+    and those go through pc.io_utils.get_s3fs(), which on MAAP gets its
+    credentials from MAAP's broker rather than from earthaccess.  This used to
+    be earthaccess.login(strategy='netrc'), which hard-codes the ONE strategy a
+    MAAP DPS worker cannot satisfy: it runs as root with no ~/.netrc, so every
+    search raised LoginStrategyUnavailable before reaching CMR at all, even
+    though the search itself needed no credentials.
+
+    Bare login() tries environment, then netrc, then interactive, so it still
+    picks up whatever a local user has.  Failure warns rather than raising:
+    the caller may well not need it.
+    """
+    import warnings
+    import earthaccess
+    try:
+        earthaccess.login()
+    except Exception as exc:
+        warnings.warn(f'earthaccess.login() failed ({type(exc).__name__}: {exc}); '
+                      'continuing, since a CMR search needs no credentials.  '
+                      'Granule reads get their credentials separately, via '
+                      'pointCollection.io_utils.get_s3fs().')
 
 
 def index_path_for_granule(granule_basename, index_root):
