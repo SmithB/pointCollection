@@ -37,6 +37,15 @@ MAAP_S3_CREDENTIALS_ENDPOINTS = {
 # 6.6 MiB in 256 KiB ones.
 DEFAULT_REMOTE_BLOCK_SIZE = 256 * 1024
 
+# Ceiling on the bytes a windowed remote read keeps cached per open file.
+# fsspec's default 'readahead' cache holds ONE block, and reading a range out
+# of a chunked HDF5 file walks through every field's chunks in turn, so a
+# block is evicted and fetched again many times: an ATL11 tile read pulled
+# 1.4-3.3x the whole granules' size (IS 1.71 GB where 0.26 GB was needed).
+# A 'blockcache' keeps the blocks already fetched (LRU); only blocks actually
+# read are held, so memory is what the read touches, up to this ceiling.
+DEFAULT_REMOTE_CACHE_BYTES = 1024**3
+
 # pc.indexedH5 is the class that reads and writes this format, so 'indexedH5'
 # is its canonical name.  geoIndex files written before that spelling was
 # settled on, and calling code following the geoIndex file_type convention,
@@ -302,10 +311,14 @@ def open_remote(filename, mode='rb', fs=None, block_size=None, daac='NSIDC'):
         get_s3fs(daac=daac).
     block_size : int or NoneType, default None
         Bytes fetched per range request.  None leaves the filesystem's own
-        default (5 MiB for s3fs) in place; see DEFAULT_REMOTE_BLOCK_SIZE for
+        default in place (50 MiB for s3fs 2026.7; fsspec's generic default is
+        5 MiB), which suits a whole-file read; see DEFAULT_REMOTE_BLOCK_SIZE for
         why a windowed read wants a smaller one.  Passed per file rather than
         to the session, so it applies to a caller-supplied fs too -- including
         an earthaccess DAAC session, whose constructor takes no such argument.
+        A read with a block_size also gets an fsspec 'blockcache' (see
+        DEFAULT_REMOTE_CACHE_BYTES), so a block is fetched once however often
+        the read comes back to it.
     daac : str or NoneType, default 'NSIDC'
         DAAC whose credentials are needed, if fs is None.  None selects the
         default AWS credential chain; see get_s3fs().
@@ -318,11 +331,18 @@ def open_remote(filename, mode='rb', fs=None, block_size=None, daac='NSIDC'):
         fs = get_s3fs(daac=daac)
     if block_size is None:
         return fs.open(filename, mode)
-    try:
-        return fs.open(filename, mode, block_size=block_size)
-    except TypeError:
-        # a filesystem (or a stand-in) whose open() takes no block_size
-        return fs.open(filename, mode)
+    attempts = [{'block_size': block_size}]
+    if 'r' in mode:
+        attempts.insert(0, {'block_size': block_size, 'cache_type': 'blockcache',
+                            'cache_options': {'maxblocks': max(1, DEFAULT_REMOTE_CACHE_BYTES // block_size)}})
+    for kwargs in attempts:
+        try:
+            return fs.open(filename, mode, **kwargs)
+        except TypeError:
+            # a filesystem (or a stand-in) whose open() takes no cache_type,
+            # or no block_size: fall back to what it does take
+            pass
+    return fs.open(filename, mode)
 
 def as_gdal_path(filename):
     """
