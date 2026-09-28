@@ -200,14 +200,23 @@ def test_remote_index_is_not_reported_missing(tmp_path):
     assert items is not None and len(items) > 0
 
 
+def test_missing_remote_index_raises(tmp_path):
+    """by default, a remote index that really is absent is a staging error"""
+    index_fs = FakeS3FS({})
+    with pytest.raises(FileNotFoundError, match='missing geoIndex'):
+        read_ATL11_granule_cloud_items(
+            'ATL11_044110_0331_007_04.h5', 's3://bucket/no_such_index.h5',
+            [-1, 1], [-1, 1], index_fs=index_fs)
+
+
 def test_missing_remote_index_still_skips(tmp_path):
-    """a remote index that really is absent must still warn and skip"""
+    """with missing_index='skip', an absent remote index must warn and skip"""
     index_fs = FakeS3FS({})
     import warnings
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         items = read_ATL11_granule_cloud_items(
             'ATL11_044110_0331_007_04.h5', 's3://bucket/no_such_index.h5',
-            [-1, 1], [-1, 1], index_fs=index_fs)
+            [-1, 1], [-1, 1], index_fs=index_fs, missing_index='skip')
     assert items is None
     assert any('missing geoIndex' in str(w.message) for w in caught)
