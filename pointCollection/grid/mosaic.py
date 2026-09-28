@@ -16,7 +16,7 @@ from .data import data
 import pointCollection as pc
 
 class mosaic(data):
-    def __init__(self, spacing=[None,None], **kwargs):
+    def __init__(self, spacing=None, **kwargs):
         #self.x=None
         #self.y=None
         #self.t=None
@@ -27,7 +27,8 @@ class mosaic(data):
         self.extent=[np.inf,-np.inf,np.inf,-np.inf]
         self.dimensions=[None,None,None]
         self.field_dims={}
-        self.spacing=spacing
+        # copy spacing so that mosaics never share a spacing list
+        self.spacing=[None, None] if spacing is None else list(spacing)
         self.tile_weight=None
         self.fill_value=np.nan
         self.normalized=True
@@ -58,7 +59,7 @@ class mosaic(data):
             dx = temp.x[1] - temp.x[0]
             if not dx == 0:
                 self.spacing[0] = dx
-            dy = temp.x[1] - temp.x[0]
+            dy = temp.y[1] - temp.y[0]
             if not dy == 0:
                 self.spacing[1] = dy
         except:
