@@ -8,6 +8,7 @@ logic using local files only.
 import os
 import shutil
 import numpy as np
+import pytest
 import pointCollection as pc
 from pointCollection.scripts.query_ATL11_cloud import (
     read_ATL11_granule_cloud, read_ATL11_granule_cloud_items)
@@ -106,9 +107,18 @@ def test_read_ATL11_granule_cloud_merges_items(tmp_path):
     assert merged.size == sum(Di.size for Di in items)
 
 
+def test_read_ATL11_granule_cloud_items_missing_index_raises(tmp_path):
+    """by default, a missing index is a staging error"""
+    with pytest.raises(FileNotFoundError, match='missing geoIndex'):
+        read_ATL11_granule_cloud_items(
+            'not-a-real-granule.h5', str(tmp_path / 'no_such_index.h5'), [-1, 1], [-1, 1])
+
+
 def test_read_ATL11_granule_cloud_items_missing_index_returns_none(tmp_path):
-    items = read_ATL11_granule_cloud_items(
-        'not-a-real-granule.h5', str(tmp_path / 'no_such_index.h5'), [-1, 1], [-1, 1])
+    with pytest.warns(UserWarning, match='missing geoIndex'):
+        items = read_ATL11_granule_cloud_items(
+            'not-a-real-granule.h5', str(tmp_path / 'no_such_index.h5'), [-1, 1], [-1, 1],
+            missing_index='skip')
     assert items is None
 
 
