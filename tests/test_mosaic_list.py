@@ -171,6 +171,23 @@ def test_make_mosaic_remote_directory(tiles, memory_tiles, tmp_path, monkeypatch
     assert np.array_equal(local.dz, remote.dz, equal_nan=True)
 
 
+def test_make_mosaic_sorts_a_local_glob(tiles, tmp_path, monkeypatch):
+    # a weighted mosaic depends on summation order in the last bit; a
+    # directory that lists its files in another order (as CI's did) must not
+    # change the result
+    import glob
+    from pointCollection.scripts import make_mosaic
+    common = ['-d', os.path.dirname(tiles[0]), '-g', 'E*.h5', '-w', '-p', '4', '-f', '8',
+              '--in_group', 'dz/', '-F', 'dz', '-R']
+    run_make_mosaic(monkeypatch, common + ['-O', str(tmp_path / 'listed.h5')])
+    listed_glob = glob.glob   # make_mosaic.glob IS the glob module: keep the real one
+    monkeypatch.setattr(make_mosaic.glob, 'glob', lambda pattern: listed_glob(pattern)[::-1])
+    run_make_mosaic(monkeypatch, common + ['-O', str(tmp_path / 'reversed.h5')])
+    listed = pc.grid.data().from_h5(str(tmp_path / 'listed.h5'), group='dz')
+    reversed_ = pc.grid.data().from_h5(str(tmp_path / 'reversed.h5'), group='dz')
+    assert np.array_equal(listed.dz, reversed_.dz, equal_nan=True)
+
+
 @pytest.mark.parametrize('output', ['mosaic.h5', 's3://bucket/mosaic.h5'])
 def test_make_mosaic_remote_directory_needs_a_local_absolute_output(memory_tiles, monkeypatch, output):
     with pytest.raises(SystemExit) as exit_info:

@@ -162,7 +162,11 @@ def main():
             args.block_size = pc.io_utils.DEFAULT_REMOTE_BLOCK_SIZE
         find_files = pc.io_utils.glob_remote
     else:
-        find_files = glob.glob
+        # SORTED, like glob_remote: a weighted mosaic sums its tiles in list
+        # order, and a different order changes the last bit, so an unsorted
+        # glob (whatever order the directory gives) made the same mosaic
+        # differ between filesystems, and between local and remote tiles
+        find_files = lambda pattern: sorted(glob.glob(pattern))
 
     if isinstance(args.glob_string, str):
         initial_file_list = find_files(args.directory +'/'+args.glob_string)
