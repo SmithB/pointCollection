@@ -367,6 +367,32 @@ def as_gdal_path(filename):
     # unknown scheme: hand it to GDAL as-is and let GDAL report the problem
     return filename
 
+def glob_remote(pattern, fs=None):
+    """
+    The remote counterpart of glob.glob: list the objects matching a URI
+    pattern such as 's3://bucket/tiles/matched/E*.h5'.
+
+    Parameters
+    ----------
+    pattern : str
+        URI with glob wildcards in its key.
+    fs : fsspec filesystem, optional
+        filesystem to list with.  If None, a cached session on the default AWS
+        credential chain is used (get_s3fs(daac=None)): a remote glob is for
+        buckets we own, as a gridded read of an s3:// file is.
+
+    Returns
+    -------
+    list of str
+        matching URIs, with the pattern's scheme, SORTED -- unlike glob.glob,
+        whose order is whatever the directory gives -- so a mosaic built from
+        the list sums its tiles in the same order every time.
+    """
+    scheme = pattern.partition('://')[0]
+    if fs is None:
+        fs = get_s3fs(daac=None)
+    return sorted(f'{scheme}://' + fs._strip_protocol(path) for path in fs.glob(pattern))
+
 def path_exists(filename, fs=None, assume_remote_exists=True):
     """
     Check whether a local or remote file exists.
