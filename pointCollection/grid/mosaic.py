@@ -5,15 +5,144 @@ mosaic.py
 Routines for creating a weighted mosaic from a series of tiles
 
 UPDATE HISTORY:
+    Updated 09/2026: from_list reads remote files with a block_size, and in a
+        process pool (workers); tiles are still added in list order
     Updated 06/2023: calculate x and y arrays using np.arange and spacing
     updated 03/2021: change scheme for calculating weights, raised cosine as default
     Updated 03/2020: check number of dimensions of z if only a single band
     Written 03/2020
 """
 
+import collections
+import itertools
+import os
+import pickle
 import numpy as np
 from .data import data
 import pointCollection as pc
+
+# extensions whose readers (from_h5, from_nc) take a block_size for a remote file
+_BLOCK_SIZE_FORMATS = ('h5', 'hdf', 'hdf5', 'nc', 'netcdf')
+
+def _read_kwargs(item, block_size, **kwargs):
+    """
+    from_file keyword arguments for one item: block_size is added only for a
+    remote HDF5 or netCDF file, the readers that take it (a local file has no
+    blocks, and from_geotif has no such argument).
+    """
+    if block_size is not None and pc.io_utils.is_remote_path(item) and \
+            os.path.splitext(item)[1][1:].lower() in _BLOCK_SIZE_FORMATS:
+        kwargs['block_size'] = block_size
+    return kwargs
+
+def _read_item(job):
+    """
+    Read one file for a mosaic: (item, meta_only, kwargs) -> (grid, exception).
+
+    Module-level so a process pool can pickle it.  An exception is returned,
+    not raised, so the caller can raise it where the serial read would have
+    -- inside the same try/except, with the same consequence for the tile.
+    """
+    item, meta_only, kwargs = job
+    try:
+        if meta_only:
+            return pc.grid.data().from_file(item, meta_only=True, **kwargs), None
+        return pc.grid.mosaic().from_file(item, **kwargs), None
+    except Exception as exc:
+        try:
+            pickle.dumps(exc)
+        except Exception:
+            # an exception that cannot cross the process boundary would fail
+            # the whole pool; carry its text instead
+            exc = RuntimeError(f'{type(exc).__name__}: {exc}')
+        return None, exc
+
+# How a reading pool starts its workers.  NOT plain fork: by the time a mosaic
+# reads remote tiles the parent has an s3fs event-loop thread (listing the
+# tiles starts it), and a child forked from a multi-threaded process can
+# deadlock -- s3fs itself refuses, "This class is not fork-safe".  forkserver
+# forks each worker from a clean single-threaded server that has imported
+# pointCollection once, so a worker still starts fast (40 GL tiles, 8
+# workers: 9 s, after a one-off ~10 s server start; serial 32 s).
+_START_METHOD = 'forkserver'
+
+def _init_worker():
+    """
+    Drop any s3fs session a worker inherited (possible only under a fork
+    start method): its event loop and connections belong to the parent.  The
+    worker builds its own on first use.
+    """
+    pc.io_utils._S3FS_CACHE.clear()
+
+def _ordered_reads(pool, jobs, window):
+    """
+    Yield _read_item(job) for each job, IN ORDER, with at most `window` reads
+    in flight -- so results are consumed in list order (the summation order
+    of the serial loop) and at most `window` tiles wait in memory.
+    """
+    jobs = iter(jobs)
+    pending = collections.deque(pool.submit(_read_item, job)
+                                for job in itertools.islice(jobs, window))
+    while pending:
+        result = pending.popleft().result()
+        for job in itertools.islice(jobs, 1):
+            pending.append(pool.submit(_read_item, job))
+        yield result
+
+class _TileReader:
+    """
+    Reads the string items of a mosaic's input list, serially or in a process
+    pool, always yielding in list order.  Non-string items (grids already in
+    memory) pass through untouched.
+
+    Threads would not help: h5py holds its global lock for the whole of a
+    read from a Python file object, so remote reads in threads run one at a
+    time (measured: 8 threads = serial).  Processes do not share that lock.
+    """
+    def __init__(self, workers=1, block_size=None):
+        self.workers = max(1, int(workers or 1))
+        self.block_size = block_size
+        self.pool = None
+
+    def __enter__(self):
+        if self.workers > 1:
+            import concurrent.futures
+            import multiprocessing
+            method = _START_METHOD
+            if method not in multiprocessing.get_all_start_methods():
+                method = 'spawn'
+            context = multiprocessing.get_context(method)
+            if method == 'forkserver':
+                # effective only before the server starts; it then lasts for
+                # the life of this process, so later pools start at once
+                context.set_forkserver_preload(['pointCollection'])
+            self.pool = concurrent.futures.ProcessPoolExecutor(
+                self.workers, mp_context=context, initializer=_init_worker)
+        return self
+
+    def __exit__(self, *exc_info):
+        if self.pool is not None:
+            self.pool.shutdown()
+            self.pool = None
+
+    def read(self, items, meta_only=False, **kwargs):
+        """
+        yield (item, grid, exception) for each item of `items`, in order;
+        grid is the item itself (exception None) for a non-string item
+        """
+        items = list(items)
+        jobs = [(item, meta_only, _read_kwargs(item, self.block_size, **kwargs))
+                for item in items if isinstance(item, str)]
+        if self.pool is None:
+            results = map(_read_item, jobs)
+        else:
+            results = _ordered_reads(self.pool, jobs, 2*self.workers)
+        for item in items:
+            if isinstance(item, str):
+                grid, exc = next(results)
+                yield item, grid, exc
+            else:
+                yield item, item, None
 
 class mosaic(data):
     def __init__(self, spacing=None, **kwargs):
@@ -124,13 +253,24 @@ class mosaic(data):
                 group=None,
                 fields=None,
                 bounds=None,
-                bands=None):
-
-        for item in in_list.copy():
+                bands=None,
+                reader=None):
+        """
+        Set the mosaic's extent and spacing from its inputs, removing from
+        in_list any that cannot be read or fall outside bounds.  reader, a
+        _TileReader, reads the files' metadata (in a pool, if it has one);
+        without one they are read here, one at a time.
+        """
+        if reader is None:
+            reader = _TileReader()
+        metadata = reader.read(in_list.copy(), meta_only=True, group=group, bands=bands)
+        for item, meta, read_error in metadata:
             if isinstance(item, str):
                 # read tile grid from file
                 try:
-                    temp=pc.grid.data().from_file(item, group=group, meta_only=True, bands=bands)
+                    if read_error is not None:
+                        raise read_error
+                    temp=meta
                     if bounds is not None:
                         temp=temp.cropped(*bounds)
                     if temp is not None and (len(temp.x)>0) and (len(temp.y) > 0):
@@ -161,7 +301,7 @@ class mosaic(data):
         self.__update_size_and_shape__()
 
 
-    def setup_fields(self, item, group=None, fields=None, bands=None):
+    def setup_fields(self, item, group=None, fields=None, bands=None, reader=None):
         '''
         Set up fields based on an input data item
         '''
@@ -170,7 +310,11 @@ class mosaic(data):
         # read data grid from the first tile HDF5, use it to set the field dimensions
 
         if isinstance(item, str):
-            prototype=pc.grid.mosaic().from_file(item, group=group, fields=fields, bands=bands)
+            if reader is None:
+                reader = _TileReader()
+            _, prototype, read_error = next(reader.read([item], group=group, fields=fields, bands=bands))
+            if read_error is not None:
+                raise read_error
         else:
             if bands is not None:
                 item=item[:,:,bands]
@@ -372,7 +516,8 @@ class mosaic(data):
                 if in_band is None:
                     temp=item
                 else:
-                    temp=item[:,:,in_band]
+                    # slicing returns a plain grid.data (grid.data.__copy__)
+                    temp=pc.grid.mosaic().from_grid(item[:,:,in_band])
             else:
                 if in_band is None:
                     temp=pc.grid.mosaic().from_grid(item)
@@ -548,12 +693,15 @@ class mosaic(data):
                   verbose=False,
                   spacing=[None, None],
                   bands=None,
+                  block_size=None,
+                  workers=1,
                   ):
         """
         Generate a mosaic from a list of inputs.
 
         Inputs can be strings (indicating files) or pointCollection.grid or
-        pointCollection.mosaic objects.
+        pointCollection.mosaic objects.  A string may be a URI
+        (e.g. s3://bucket/key.h5).
 
         Parameters
         ----------
@@ -576,6 +724,21 @@ class mosaic(data):
         bands : iterable, optional
             Bands (e.g. time slices) to read from each input, in order. If
             not specified, all bands in each input are read. The default is None.
+        block_size : int, optional
+            Bytes per range request for a remote HDF5 or netCDF input.  None
+            leaves the filesystem's default, which for s3fs is 50 MiB: a
+            mosaic reads a few fields from each tile, so with the default a
+            remote tile is read almost whole.  io_utils.DEFAULT_REMOTE_BLOCK_SIZE
+            suits this read.  Ignored for local files.  The default is None.
+        workers : int, optional
+            Read the files in this many processes (a pool).  Tiles are still
+            added in list order, so the result is the same as a serial read;
+            at most 2 x workers read tiles wait in memory.  Remote reads are
+            latency-bound, so this is where the speed-up is.  Each worker
+            costs its own interpreter and imports, ~0.35 GiB resident
+            (measured, 2026-09): budget workers x 0.35 GiB on top of the
+            mosaic.  The default is 1: files are read one at a time, in this
+            process.
 
         Returns
         -------
@@ -585,43 +748,73 @@ class mosaic(data):
         """
         weight = (pad is not None and pad > 0) or (feather is not None and feather>0)
 
-        self.setup_bounds_from_list(in_list, group=group, fields=fields, bounds=bounds, bands=bands)
-        message = self.setup_fields(in_list[0], group=group, fields=fields, bands=bands)
-        if message is not None:
-            return message
-        # check if using a weighted summation scheme for calculating mosaic
-        if weight:
-            if by_band:
-                if len(self.shape)>2:
-                    band_list=range(self.shape[2])
+        with _TileReader(workers=workers, block_size=block_size) as reader:
+            # with neither option the loops below hand the file names to add,
+            # add_to_band and replace, which read them: the original code path
+            prefetch = reader.pool is not None or block_size is not None
+
+            def items(**read_kwargs):
+                """(item, what to add, bands for the add, read error) in order"""
+                if not prefetch:
+                    for item in in_list:
+                        yield item, item, read_kwargs.get('bands'), None
+                    return
+                for item, grid, read_error in reader.read(in_list, **read_kwargs):
+                    # a file read here is already band-selected; an in-memory
+                    # grid is band-selected by the method it goes to
+                    yield item, grid, (None if isinstance(item, str) else read_kwargs.get('bands')), read_error
+
+            self.setup_bounds_from_list(in_list, group=group, fields=fields, bounds=bounds,
+                                        bands=bands, reader=reader)
+            message = self.setup_fields(in_list[0], group=group, fields=fields, bands=bands,
+                                        reader=reader)
+            if message is not None:
+                return message
+            # add, add_to_band and replace read self.fields when fields is None
+            read_fields = fields if fields is not None else self.fields.copy()
+            # check if using a weighted summation scheme for calculating mosaic
+            if weight:
+                if by_band:
+                    if len(self.shape)>2:
+                        band_list=range(self.shape[2])
+                    else:
+                        band_list=[None]
+                    for band in band_list:
+                        self.invalid = np.ones(self.dimensions[0:2],dtype=bool)
+                        self.weight = np.zeros((self.dimensions[0],self.dimensions[1]))
+                        # if specific input bands were requested, map the output
+                        # band index back to the corresponding input band
+                        in_band = bands[band] if (bands is not None and band is not None) else band
+                        in_bands = None if in_band is None else [in_band]
+                        for item, grid, grid_bands, read_error in items(group=group, fields=read_fields, bands=in_bands):
+                            if read_error is not None:
+                                raise read_error
+                            if prefetch and isinstance(item, str):
+                                self.add_to_band(grid, group=group, fields=fields, pad=pad, feather=feather, in_band=None, out_band=band)
+                            else:
+                                self.add_to_band(item, group=group, fields=fields, pad=pad, feather=feather, in_band=in_band, out_band=band)
+                        self.normalize(band=band)
                 else:
-                    band_list=[None]
-                for band in band_list:
                     self.invalid = np.ones(self.dimensions[0:2],dtype=bool)
                     self.weight = np.zeros((self.dimensions[0],self.dimensions[1]))
-                    # if specific input bands were requested, map the output
-                    # band index back to the corresponding input band
-                    in_band = bands[band] if (bands is not None and band is not None) else band
-                    for item in in_list:
-                        self.add_to_band(item, group=group, fields=fields, pad=pad, feather=feather, in_band=in_band, out_band=band)
-                    self.normalize(band=band)
+                    # for each file in the list
+                    for item, grid, grid_bands, read_error in items(group=group, fields=read_fields, bands=bands):
+                        try:
+                            if read_error is not None:
+                                raise read_error
+                            self.add(grid, group=group, fields=fields, pad=pad, feather=feather, bands=grid_bands)
+                        except Exception as e:
+                            print(f"mosaic.from_list : problem with {item} for group={group} and fields={fields}")
+                            print(e)
+                    self.normalize()
             else:
-                self.invalid = np.ones(self.dimensions[0:2],dtype=bool)
-                self.weight = np.zeros((self.dimensions[0],self.dimensions[1]))
+                # overwrite the mosaic with each subsequent tile
                 # for each file in the list
-                for item in in_list:
-                    try:
-                        self.add(item, group=group, fields=fields, pad=pad, feather=feather, bands=bands)
-                    except Exception as e:
-                        print(f"mosaic.from_list : problem with {item} for group={group} and fields={fields}")
-                        print(e)
-                self.normalize()
-        else:
-            # overwrite the mosaic with each subsequent tile
-            # for each file in the list
-            self.invalid = np.ones(self.dimensions[0:2],dtype=bool)
-            for item in in_list:
-                self.replace(item, group=group, fields=fields, bands=bands)
-            self.normalize(by_weight=False)
+                self.invalid = np.ones(self.dimensions[0:2],dtype=bool)
+                for item, grid, grid_bands, read_error in items(group=group, fields=read_fields, bands=bands):
+                    if read_error is not None:
+                        raise read_error
+                    self.replace(grid, group=group, fields=fields, bands=grid_bands)
+                self.normalize(by_weight=False)
 
         return self

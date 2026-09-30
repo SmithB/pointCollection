@@ -8,7 +8,8 @@ Create a weighted mosaic from a series of tiles
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
-    -d X, --directory X: directory to run
+    -d X, --directory X: directory to run; may be a URI (e.g. s3://bucket/dir),
+        whose tiles are then read in place (-O must be a local absolute path)
     -g X, --glob_string X: quoted string to pass to glob to find the files
     --proj4: projection string for the tiles and output mosaic
     -r X, --range X: valid range of tiles to read [xmin,xmax,ymin,ymax]
@@ -26,8 +27,11 @@ COMMAND LINE OPTIONS:
     -s, --show: create plot of output mosaic
     -m X, --mode X: Local permissions mode of the output mosaic
     -N --ignore_Nodata: ignore nodata values (except Nan) in inputs
+    --block_size X: bytes per range request for remote tiles
+    -j X, --workers X: read the tiles in X processes
 
 UPDATE HISTORY:
+    Updated 09/2026: remote (URI) directories; --block_size and --workers
     Updated 05/2024: allow cropping in time for 3D fields
     Updated 01/2021: added option for setting projection attributes
     Updated 10/2021: added option for using a non-weighted summation
@@ -120,6 +124,11 @@ def main():
     parser.add_argument('--mode','-m',
         type=lambda x: int(x,base=8), default=0o775,
         help='permissions mode of output mosaic')
+    parser.add_argument('--block_size', type=int, default=None,
+        help='bytes per range request when the tiles are remote (default: '
+             'pointCollection.io_utils.DEFAULT_REMOTE_BLOCK_SIZE)')
+    parser.add_argument('--workers','-j', type=int, default=1,
+        help='read the tiles in this many processes (default 1)')
     try:
         assert(len(sys.argv)>1)
         args=parser.parse_args()
@@ -140,13 +149,27 @@ def main():
     if args.verbose:
         print("searching in directory "+args.directory+" with  glob string:"+"["+str(args.glob_string)+"]")
     # find list of valid files
+    # A URI directory (e.g. s3://bucket/region) is listed with a remote glob,
+    # and the tiles are read in place.  The output is written with h5py, which
+    # needs a local file, so it must then be given as a local absolute path:
+    # a relative one would be joined onto the URI below.
+    remote = pc.io_utils.is_remote_path(args.directory)
+    if remote:
+        if pc.io_utils.is_remote_path(args.output) or not os.path.isabs(args.output):
+            parser.error(f'--directory {args.directory} is remote, so --output must be a '
+                         f'local absolute path, not {args.output}')
+        if args.block_size is None:
+            args.block_size = pc.io_utils.DEFAULT_REMOTE_BLOCK_SIZE
+        find_files = pc.io_utils.glob_remote
+    else:
+        find_files = glob.glob
 
     if isinstance(args.glob_string, str):
-        initial_file_list = glob.glob(args.directory +'/'+args.glob_string)
+        initial_file_list = find_files(args.directory +'/'+args.glob_string)
     else:
         initial_file_list = []
         for glob_string in args.glob_string:
-            initial_file_list += glob.glob(args.directory +'/'+glob_string)
+            initial_file_list += find_files(args.directory +'/'+glob_string)
 
     if args.verbose:
         print(f"initial file list contains {len(initial_file_list)} files")
@@ -176,7 +199,9 @@ def main():
                                       group=args.in_group,
                                       pad=args.pad,
                                       feather=args.feather,
-                                      by_band=args.by_band)
+                                      by_band=args.by_band,
+                                      block_size=args.block_size,
+                                      workers=args.workers)
     if isinstance(mosaic, str):
         if args.verbose:
             print(f"pc.grid.mosaic failed for group {args.in_group} and fields {args.fields} with message:")
