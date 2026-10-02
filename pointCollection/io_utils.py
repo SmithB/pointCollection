@@ -30,6 +30,16 @@ MAAP_S3_CREDENTIALS_ENDPOINTS = {
     'NSIDC': 'https://data.nsidc.earthdatacloud.nasa.gov/s3credentials',
 }
 
+# The broker call is tried this many times, this far apart.  The MAAP API
+# stops answering when several hundred jobs start together: on 2026-10-01, 61
+# of 556 jobs submitted at once lost their one attempt, each after ~135 s.
+MAAP_BROKER_ATTEMPTS = 5
+MAAP_BROKER_PAUSE_S = 10
+
+# daac -> why the last broker call failed, for the error get_s3fs() raises
+# when the earthaccess fallback has nothing either.
+_BROKER_FAILURES = {}
+
 # Block size for remote reads that pull windows out of a large file.  fsspec's
 # 5 MiB default is sized for reading a file end to end; a windowed read of a
 # chunked HDF5 file touches scattered chunks, and the read-ahead is then mostly
@@ -140,7 +150,19 @@ def get_s3fs(daac='NSIDC', **kwargs):
         if fs is None:
             import earthaccess
             # earthaccess manages its own session; we do not know its expiry.
-            fs, expires_at = earthaccess.get_s3fs_session(daac=daac, **kwargs), None
+            try:
+                fs, expires_at = earthaccess.get_s3fs_session(daac=daac, **kwargs), None
+            except Exception as exc:
+                broker = _BROKER_FAILURES.get(daac)
+                if broker is None:
+                    raise
+                # On a MAAP DPS worker earthaccess has no login, so the
+                # fallback fails with an AttributeError about a NoneType that
+                # says nothing of the cause.  Name both.
+                raise RuntimeError(
+                    f'no {daac} S3 credentials: {broker}; and the earthaccess '
+                    f'fallback has no login here ({type(exc).__name__}: {exc})'
+                ) from exc
         _S3FS_CACHE[key] = (fs, expires_at)
     return _S3FS_CACHE[key][0]
 
@@ -153,6 +175,10 @@ def _s3fs_from_maap(daac, **kwargs):
     (None, None) -- with a warning saying why -- whenever this is not a MAAP
     environment or the broker will not answer, so the caller falls back to
     earthaccess.  Off MAAP this costs one dict lookup and returns (None, None).
+
+    The broker call is tried MAAP_BROKER_ATTEMPTS times, MAAP_BROKER_PAUSE_S
+    apart, before giving up; the reason it gave up is kept in _BROKER_FAILURES
+    so that get_s3fs() can report it if earthaccess cannot help either.
 
     This exists because a MAAP DPS worker has NO Earthdata credentials: it runs
     as root with no ~/.netrc, and earthaccess's netrc and environment
@@ -173,8 +199,10 @@ def _s3fs_from_maap(daac, **kwargs):
     cause.
     """
     import os
+    import time
     import warnings
 
+    _BROKER_FAILURES.pop(daac, None)
     endpoint = MAAP_S3_CREDENTIALS_ENDPOINTS.get(str(daac).upper())
     if endpoint is None:
         return None, None
@@ -190,15 +218,20 @@ def _s3fs_from_maap(daac, **kwargs):
                       f'falling back to earthaccess for {daac}.')
         return None, None
 
-    try:
-        creds = MAAP(
-            maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org')
-        ).aws.earthdata_s3_credentials(endpoint)
-        return _s3fs_with_credentials(creds, **kwargs), _expiry_timestamp(creds)
-    except Exception as exc:
-        warnings.warn(f'MAAP could not broker {daac} credentials from {endpoint} '
-                      f'({type(exc).__name__}: {exc}); falling back to earthaccess.')
-        return None, None
+    for attempt in range(1, MAAP_BROKER_ATTEMPTS + 1):
+        try:
+            creds = MAAP(
+                maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org')
+            ).aws.earthdata_s3_credentials(endpoint)
+            return _s3fs_with_credentials(creds, **kwargs), _expiry_timestamp(creds)
+        except Exception as exc:
+            last = f'{type(exc).__name__}: {exc}'
+        if attempt < MAAP_BROKER_ATTEMPTS:
+            time.sleep(MAAP_BROKER_PAUSE_S)
+    _BROKER_FAILURES[daac] = (f'MAAP could not broker {daac} credentials from {endpoint} '
+                              f'in {MAAP_BROKER_ATTEMPTS} attempts (last error: {last})')
+    warnings.warn(f'{_BROKER_FAILURES[daac]}; falling back to earthaccess.')
+    return None, None
 
 
 # Remembers the outcome of try_earthaccess_login(): None = not yet attempted.

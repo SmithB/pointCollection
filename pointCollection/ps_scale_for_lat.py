@@ -1,6 +1,5 @@
 import numpy as np
 import warnings
-warnings.filterwarnings("ignore")
 
 def ps_scale_for_lat(lat):
     '''
@@ -31,7 +30,15 @@ def ps_scale_for_lat(lat):
             https://pubs/usgs.gov/pp/1395/report.pdf
     '''
 
-    if np.nanmean(lat) > 0:
+    # Warnings this function knows about are silenced HERE, around the lines
+    # that raise them.  A module-level warnings.filterwarnings("ignore") did
+    # that until 2026-10, and silenced every warning in the importing process
+    # with it -- including the one saying why a credential request failed.
+    with warnings.catch_warnings():
+        # an all-NaN input: "Mean of empty slice"; the result is NaN anyway
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        mean_lat = np.nanmean(lat)
+    if mean_lat > 0:
         hemisphere=1
     else:
         hemisphere=-1
@@ -64,9 +71,11 @@ def ps_scale_for_lat(lat):
     #print(t)
 
     # distance scaling including special case of the pole
-    k = t/m *mc_tc
-    kp = 0.5*mc_tc*np.sqrt(((1.0+e)**(1.0+e))*((1.0-e)**(1.0-e)))
-    scale = np.where(np.isclose(latr,np.pi/2.0),1.0/kp,1.0/k)
+    # m is zero at the pole, where kp is used instead of k
+    with np.errstate(divide='ignore', invalid='ignore'):
+        k = t/m *mc_tc
+        kp = 0.5*mc_tc*np.sqrt(((1.0+e)**(1.0+e))*((1.0-e)**(1.0-e)))
+        scale = np.where(np.isclose(latr,np.pi/2.0),1.0/kp,1.0/k)
     return scale
     #
     # check: at S pole (this comes out right!)
