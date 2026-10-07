@@ -26,26 +26,38 @@ CREDS = {'accessKeyId': 'id', 'secretAccessKey': 'secret', 'sessionToken': 'toke
 
 @pytest.fixture
 def broker(monkeypatch):
-    """A stand-in maap-py whose broker fails `failures` times, then answers."""
-    state = {'calls': 0, 'failures': 0, 'naps': []}
+    """A stand-in maap-py whose broker fails `failures` times (with `error`),
+    then answers; whose client fails to build `build_failures` times; and a
+    clock that only sleep() moves, with the jitter fixed at `jitter`."""
+    state = {'calls': 0, 'failures': 0, 'naps': [], 'builds': 0, 'build_failures': 0,
+             'error': ConnectionError('timed out'), 'now': 0.0, 'jitter': 1.0}
 
     class AWS:
         def earthdata_s3_credentials(self, endpoint):
             state['calls'] += 1
             if state['calls'] <= state['failures']:
-                raise ConnectionError('timed out')
+                raise state['error']
             return dict(CREDS)
 
     class MAAP:
         def __init__(self, maap_host=None):
+            state['builds'] += 1
+            if state['builds'] <= state['build_failures']:
+                raise ConnectionError('config timed out')
             self.aws = AWS()
+
+    def sleep(s):
+        state['naps'].append(s)
+        state['now'] += s
 
     package, module = types.ModuleType('maap'), types.ModuleType('maap.maap')
     module.MAAP = MAAP
     monkeypatch.setitem(sys.modules, 'maap', package)
     monkeypatch.setitem(sys.modules, 'maap.maap', module)
     monkeypatch.setenv('MAAP_PGT', 'set')
-    monkeypatch.setattr('time.sleep', state['naps'].append)
+    monkeypatch.setattr('time.sleep', sleep)
+    monkeypatch.setattr('time.monotonic', lambda: state['now'])
+    monkeypatch.setattr('random.uniform', lambda a, b: state['jitter'] * (a + b) / 2)
     monkeypatch.setattr(io_utils, '_s3fs_with_credentials', lambda creds, **kw: ('fs', creds))
     monkeypatch.setattr(io_utils, '_S3FS_CACHE', {})
     monkeypatch.setattr(io_utils, '_BROKER_FAILURES', {})
@@ -68,15 +80,47 @@ def test_the_broker_call_is_retried(broker):
     fs, expires = io_utils._s3fs_from_maap('NSIDC')
     assert fs == ('fs', CREDS) and expires is not None
     assert broker['calls'] == 3
-    assert broker['naps'] == [io_utils.MAAP_BROKER_PAUSE_S] * 2
+    assert broker['naps'] == list(io_utils.MAAP_BROKER_PAUSES_S[:2])
+    assert broker['builds'] == 1                    # one client for every try
 
 
 def test_giving_up_warns_with_the_reason(broker):
     broker['failures'] = 99
-    with pytest.warns(UserWarning, match=r'in 5 attempts \(last error: ConnectionError: timed out\)'):
+    with pytest.warns(UserWarning, match=r'in 6 attempts \(last error: ConnectionError: timed out\)'):
         assert io_utils._s3fs_from_maap('NSIDC') == (None, None)
-    assert broker['calls'] == io_utils.MAAP_BROKER_ATTEMPTS
-    assert len(broker['naps']) == io_utils.MAAP_BROKER_ATTEMPTS - 1      # none after the last
+    assert broker['calls'] == len(io_utils.MAAP_BROKER_PAUSES_S) + 1
+    assert broker['naps'] == list(io_utils.MAAP_BROKER_PAUSES_S)        # none after the last
+    assert sum(broker['naps']) <= io_utils.MAAP_BROKER_BUDGET_S
+
+
+def test_pauses_are_jittered(broker):
+    broker['failures'], broker['jitter'] = 1, 0.5
+    io_utils._s3fs_from_maap('NSIDC')
+    assert broker['naps'] == [io_utils.MAAP_BROKER_PAUSES_S[0] * 0.5]
+
+
+def test_no_pause_past_the_budget(broker):
+    # jitter at its top: 15 + 30 + 60 + 90 = 195 s, and the next 90 s would end at 285
+    broker['failures'], broker['jitter'] = 99, 1.5
+    with pytest.warns(UserWarning, match=r'in 5 attempts .*a 90 s pause would pass the 240 s budget'):
+        assert io_utils._s3fs_from_maap('NSIDC') == (None, None)
+    assert broker['naps'] == [15, 30, 60, 90]
+
+
+def test_401_stops_at_once(broker):
+    class HTTPError(Exception):
+        response = types.SimpleNamespace(status_code=401)
+    broker['failures'], broker['error'] = 99, HTTPError('401 Unauthorized')
+    with pytest.warns(UserWarning, match=r'in 1 attempts .*HTTP 401: MAAP_PGT was rejected'):
+        assert io_utils._s3fs_from_maap('NSIDC') == (None, None)
+    assert broker['calls'] == 1 and broker['naps'] == []
+
+
+def test_a_client_that_failed_to_build_is_built_again(broker):
+    broker['build_failures'] = 2
+    fs, _ = io_utils._s3fs_from_maap('NSIDC')
+    assert fs == ('fs', CREDS)
+    assert broker['builds'] == 3 and broker['calls'] == 1
 
 
 def test_no_broker_and_no_earthaccess_login_names_both(broker, monkeypatch):

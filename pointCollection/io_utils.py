@@ -30,11 +30,16 @@ MAAP_S3_CREDENTIALS_ENDPOINTS = {
     'NSIDC': 'https://data.nsidc.earthdatacloud.nasa.gov/s3credentials',
 }
 
-# The broker call is tried this many times, this far apart.  The MAAP API
-# stops answering when several hundred jobs start together: on 2026-10-01, 61
-# of 556 jobs submitted at once lost their one attempt, each after ~135 s.
-MAAP_BROKER_ATTEMPTS = 5
-MAAP_BROKER_PAUSE_S = 10
+# The broker call is retried after pauses that grow, each jittered by
+# +-MAAP_BROKER_JITTER so that jobs which failed together do not retry
+# together, and no pause is taken that would end past MAAP_BROKER_BUDGET_S
+# from the first try -- a node waiting costs money.  The MAAP API stops
+# answering when several hundred jobs start together: on 2026-10-01, 61 of 556
+# jobs submitted at once lost their one attempt, each after ~135 s.  The same
+# schedule as ATL1415's workspace_credentials.py (plan_pack_tiles.sh K2-K3).
+MAAP_BROKER_PAUSES_S = (10, 20, 40, 60, 60)     # between tries: up to 6 tries
+MAAP_BROKER_JITTER = 0.5
+MAAP_BROKER_BUDGET_S = 240
 
 # daac -> why the last broker call failed, for the error get_s3fs() raises
 # when the earthaccess fallback has nothing either.
@@ -176,9 +181,13 @@ def _s3fs_from_maap(daac, **kwargs):
     environment or the broker will not answer, so the caller falls back to
     earthaccess.  Off MAAP this costs one dict lookup and returns (None, None).
 
-    The broker call is tried MAAP_BROKER_ATTEMPTS times, MAAP_BROKER_PAUSE_S
-    apart, before giving up; the reason it gave up is kept in _BROKER_FAILURES
-    so that get_s3fs() can report it if earthaccess cannot help either.
+    The broker call is tried up to len(MAAP_BROKER_PAUSES_S) + 1 times, after
+    the pauses above, on ONE MAAP client (building it is itself an API call),
+    before giving up; the reason it gave up is kept in _BROKER_FAILURES so
+    that get_s3fs() can report it if earthaccess cannot help either.  HTTP 401
+    gives up at once: MAAP_PGT was rejected, and retrying the same token
+    cannot help.  There is no per-try timeout: this may run off the main
+    thread, where SIGALRM is not available.
 
     This exists because a MAAP DPS worker has NO Earthdata credentials: it runs
     as root with no ~/.netrc, and earthaccess's netrc and environment
@@ -199,6 +208,7 @@ def _s3fs_from_maap(daac, **kwargs):
     cause.
     """
     import os
+    import random
     import time
     import warnings
 
@@ -218,18 +228,32 @@ def _s3fs_from_maap(daac, **kwargs):
                       f'falling back to earthaccess for {daac}.')
         return None, None
 
-    for attempt in range(1, MAAP_BROKER_ATTEMPTS + 1):
+    client = None
+    attempts = len(MAAP_BROKER_PAUSES_S) + 1
+    t0 = time.monotonic()
+    why = ''
+    for attempt in range(1, attempts + 1):
         try:
-            creds = MAAP(
-                maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org')
-            ).aws.earthdata_s3_credentials(endpoint)
+            if client is None:
+                client = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
+            creds = client.aws.earthdata_s3_credentials(endpoint)
             return _s3fs_with_credentials(creds, **kwargs), _expiry_timestamp(creds)
         except Exception as exc:
             last = f'{type(exc).__name__}: {exc}'
-        if attempt < MAAP_BROKER_ATTEMPTS:
-            time.sleep(MAAP_BROKER_PAUSE_S)
+            if getattr(getattr(exc, 'response', None), 'status_code', None) == 401:
+                why = ('; HTTP 401: MAAP_PGT was rejected (likely the runner\'s token fetch '
+                       'failed at job start), and a retry cannot help')
+                break
+        if attempt == attempts:
+            break
+        nap = MAAP_BROKER_PAUSES_S[attempt - 1] * random.uniform(1 - MAAP_BROKER_JITTER,
+                                                                 1 + MAAP_BROKER_JITTER)
+        if time.monotonic() - t0 + nap > MAAP_BROKER_BUDGET_S:
+            why = f'; a {nap:.0f} s pause would pass the {MAAP_BROKER_BUDGET_S} s budget'
+            break
+        time.sleep(nap)
     _BROKER_FAILURES[daac] = (f'MAAP could not broker {daac} credentials from {endpoint} '
-                              f'in {MAAP_BROKER_ATTEMPTS} attempts (last error: {last})')
+                              f'in {attempt} attempts (last error: {last}){why}')
     warnings.warn(f'{_BROKER_FAILURES[daac]}; falling back to earthaccess.')
     return None, None
 
