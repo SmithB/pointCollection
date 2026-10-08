@@ -184,3 +184,32 @@ def test_ps_scale_for_lat_values_are_unchanged():
     # computed with the module-level filter still in place (main, 42f66cc)
     np.testing.assert_allclose(pc.ps_scale_for_lat(np.array([90., 70., 60.])),
                                [1.03107857, 1.0, 0.96206753], rtol=1e-6)
+
+
+def test_a_failed_config_read_is_read_again(broker, monkeypatch):
+    # maap-py caches /api/environment/config with functools.cache, a failed
+    # read (None) included: a rebuilt client must read it again
+    import functools
+    import types
+    reads = []
+
+    @functools.cache
+    def _get_client_config(maap_host):
+        reads.append(maap_host)
+        return None if len(reads) == 1 else {'service': {}}
+
+    module = sys.modules['maap.maap']
+    real = module.MAAP
+
+    class CachedConfigMAAP(real):
+        def __init__(self, maap_host=None):
+            _get_client_config(maap_host).get('service')   # AttributeError on a cached None
+            super().__init__(maap_host)
+    monkeypatch.setattr(module, 'MAAP', CachedConfigMAAP)
+    cfg = types.ModuleType('maap.config_reader')
+    cfg._get_client_config = _get_client_config
+    monkeypatch.setattr(sys.modules['maap'], 'config_reader', cfg, raising=False)
+    monkeypatch.setitem(sys.modules, 'maap.config_reader', cfg)
+    fs, _ = io_utils._s3fs_from_maap('NSIDC')
+    assert fs == ('fs', CREDS)
+    assert len(reads) == 2
