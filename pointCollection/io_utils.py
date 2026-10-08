@@ -228,6 +228,22 @@ def _s3fs_from_maap(daac, **kwargs):
                       f'falling back to earthaccess for {daac}.')
         return None, None
 
+    def new_client():
+        # maap-py (5.1.0) caches its /api/environment/config read with
+        # functools.cache -- a FAILED read (None, e.g. after a 502) included --
+        # so after one failure every MAAP() in the process raises
+        # AttributeError without asking the API again (2 of 1482 jobs spent all
+        # their tries that way on 2026-10-07).  Clear it before each build.
+        try:
+            from maap import config_reader
+            clear = getattr(getattr(config_reader, '_get_client_config', None),
+                            'cache_clear', None)
+            if clear is not None:
+                clear()
+        except ImportError:
+            pass
+        return MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
+
     client = None
     attempts = len(MAAP_BROKER_PAUSES_S) + 1
     t0 = time.monotonic()
@@ -235,7 +251,7 @@ def _s3fs_from_maap(daac, **kwargs):
     for attempt in range(1, attempts + 1):
         try:
             if client is None:
-                client = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
+                client = new_client()
             creds = client.aws.earthdata_s3_credentials(endpoint)
             return _s3fs_with_credentials(creds, **kwargs), _expiry_timestamp(creds)
         except Exception as exc:
