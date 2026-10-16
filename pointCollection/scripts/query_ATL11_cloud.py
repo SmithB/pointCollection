@@ -118,9 +118,9 @@ def find_ATL11_granules(bounding_box, short_name='ATL11', granule_release=None,
     -------
     list of earthaccess.DataGranule
     """
-    import earthaccess
     _try_earthaccess_login()
-    granules = earthaccess.search_data(short_name=short_name,
+    # retried on transient CMR errors (502s); see pc.io_utils.search_data()
+    granules = pc.io_utils.search_data(short_name=short_name,
                                        bounding_box=bounding_box, **search_kwargs)
     if granule_release is None:
         return granules

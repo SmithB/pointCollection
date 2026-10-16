@@ -393,15 +393,15 @@ class tilingSchema(object):
         """
         candidates = self.filenames_for_box(xyr, resolution=resolution)
         if self.source is not None and self.source.get('type') == 'EarthAccess':
-            import earthaccess
             search_kwargs = {k: v for k, v in self.source.items()
                               if k not in ('type', 'daac')}
             # Best-effort, and NOT strategy='netrc': this is a CMR search,
             # which needs no credentials, and a MAAP DPS worker has no ~/.netrc
             # to offer.  See pc.io_utils.try_earthaccess_login().
-            from pointCollection.io_utils import try_earthaccess_login
+            from pointCollection.io_utils import try_earthaccess_login, search_data
             try_earthaccess_login()
-            granules = earthaccess.search_data(granule_name=candidates, **search_kwargs)
+            # retried on transient CMR errors (502s); see pc.io_utils.search_data()
+            granules = search_data(granule_name=candidates, **search_kwargs)
             found = {}
             for g in granules:
                 url = g.data_links(access='direct')[0]

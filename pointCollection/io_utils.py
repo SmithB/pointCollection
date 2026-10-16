@@ -45,6 +45,14 @@ MAAP_BROKER_BUDGET_S = 240
 # when the earthaccess fallback has nothing either.
 _BROKER_FAILURES = {}
 
+# A CMR granule search (earthaccess.search_data) that fails with one of these
+# HTTP statuses, or cannot connect, is retried on the broker's schedule above.
+# earthaccess raises on the first error: over 2026-10-13..16, 59 MAAP DPS jobs
+# lost a tile to "502 Bad Gateway" from cmr.earthdata.nasa.gov/search, in
+# bursts (25 jobs in one hour), and every one of those tiles succeeded on its
+# next attempt.  Other errors (a 400 for a bad query) are not retried.
+CMR_RETRY_STATUS = frozenset((429, 500, 502, 503, 504))
+
 # Block size for remote reads that pull windows out of a large file.  fsspec's
 # 5 MiB default is sized for reading a file end to end; a windowed read of a
 # chunked HDF5 file touches scattered chunks, and the read-ahead is then mostly
@@ -322,6 +330,59 @@ def try_earthaccess_login():
                   'strategy is deliberately not tried.')
     _EARTHACCESS_LOGIN_TRIED = False
     return False
+
+
+def _cmr_transient(exc):
+    """
+    Why a CMR search error is worth retrying, or None if it is not.
+
+    earthaccess turns an HTTP error into RuntimeError(response.text) raised
+    FROM the requests HTTPError, so the status is on the exception's
+    __cause__; a connection failure or timeout comes straight from requests.
+    """
+    import requests
+    for err in (exc, exc.__cause__):
+        if isinstance(err, requests.exceptions.HTTPError):
+            status = getattr(err.response, 'status_code', None)
+            return f'HTTP {status}' if status in CMR_RETRY_STATUS else None
+        if isinstance(err, (requests.exceptions.ConnectionError,
+                            requests.exceptions.Timeout)):
+            return type(err).__name__
+    return None
+
+
+def search_data(**kwargs):
+    """
+    earthaccess.search_data(**kwargs), retried when CMR fails transiently.
+
+    A transient failure (HTTP 429/500/502/503/504, or no connection) is retried
+    after the pauses in MAAP_BROKER_PAUSES_S, jittered, within
+    MAAP_BROKER_BUDGET_S of the first try; each retry prints one line to stderr
+    so the job log records it.  Any other error, or the last transient one once
+    the tries or the budget run out, is raised unchanged -- the same exception
+    a caller of earthaccess.search_data() would have seen.
+    """
+    import random
+    import sys
+    import time
+    import earthaccess
+
+    attempts = len(MAAP_BROKER_PAUSES_S) + 1
+    t0 = time.monotonic()
+    for attempt in range(1, attempts + 1):
+        try:
+            return earthaccess.search_data(**kwargs)
+        except Exception as exc:
+            why = _cmr_transient(exc)
+            if why is None or attempt == attempts:
+                raise
+            nap = MAAP_BROKER_PAUSES_S[attempt - 1] * random.uniform(1 - MAAP_BROKER_JITTER,
+                                                                     1 + MAAP_BROKER_JITTER)
+            if time.monotonic() - t0 + nap > MAAP_BROKER_BUDGET_S:
+                raise
+            print(f'pointCollection: CMR search failed ({why}); retry '
+                  f'{attempt}/{attempts - 1} in {nap:.0f} s', file=sys.stderr, flush=True)
+            time.sleep(nap)
 
 
 def _expiry_timestamp(creds):
