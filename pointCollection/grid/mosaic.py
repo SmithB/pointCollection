@@ -284,15 +284,18 @@ class mosaic(data):
                     print(f"failed to read group {group} "+ str(item))
                     in_list.remove(item)
             else:
+                # a grid in memory: `this` is its band- and bounds-selected
+                # copy; the list keeps (and may drop) the original
+                this = item
                 if bands is not None:
-                    item=item[:,:,bands]
+                    this=this[:,:,bands]
                 if bounds is not None:
-                    item=item.cropped(*bounds)
-                if item is not None and (len(item.x)>0) and (len(item.y) > 0):
-                    self.update_bounds(item)
+                    this=this.cropped(*bounds)
+                if this is not None and (len(this.x)>0) and (len(this.y) > 0):
+                    self.update_bounds(this)
                     if self.spacing[0] is None:
-                        self.update_spacing(item)
-                    temp=item
+                        self.update_spacing(this)
+                    temp=this
                 else:
                     in_list.remove(item)
 
@@ -301,9 +304,10 @@ class mosaic(data):
         self.__update_size_and_shape__()
 
 
-    def setup_fields(self, item, group=None, fields=None, bands=None, reader=None):
+    def setup_fields(self, item, group=None, fields=None, bands=None, reader=None, bounds=None):
         '''
-        Set up fields based on an input data item
+        Set up fields based on an input data item.  A file is read only inside
+        bounds, if given: only its fields' dimensions are used here.
         '''
 
         # create output mosaic, weights, and mask
@@ -312,7 +316,8 @@ class mosaic(data):
         if isinstance(item, str):
             if reader is None:
                 reader = _TileReader()
-            _, prototype, read_error = next(reader.read([item], group=group, fields=fields, bands=bands))
+            _, prototype, read_error = next(reader.read([item], group=group, fields=fields, bands=bands,
+                                                        bounds=bounds))
             if read_error is not None:
                 raise read_error
         else:
@@ -340,16 +345,17 @@ class mosaic(data):
         self.__update_size_and_shape__()
 
 
-    def replace(self, item, group=None, fields=None, bands=None):
+    def replace(self, item, group=None, fields=None, bands=None, bounds=None):
         """
-        Overwrite a section of the mosaic with an input file or mosaic
+        Overwrite a section of the mosaic with an input file or mosaic; a file
+        is read only inside bounds, if given
         """
 
         if fields is None:
             fields=self.fields.copy()
         # read data grid from HDF5
         if isinstance(item, str):
-            temp=pc.grid.mosaic().from_file(item, group=group, fields=fields, bands=bands)
+            temp=pc.grid.mosaic().from_file(item, group=group, fields=fields, bands=bands, bounds=bounds)
         else:
             if bands is not None:
                 item=item[:,:,bands]
@@ -747,6 +753,14 @@ class mosaic(data):
 
         """
         weight = (pad is not None and pad > 0) or (feather is not None and feather>0)
+        # An unweighted mosaic needs from each file only its cells inside
+        # bounds, so a file is read only there (the readers' bounds select the
+        # cells with the same >= / <= test as crop).  Reading whole files and
+        # cropping after cost one ATL11_to_ATL15 tile 225 s and 6.5 GiB to take
+        # a 641 x 641 window of a remote ATL14 (2026-10-18).  A weighted mosaic
+        # still reads its inputs whole: pad and feather are measured from each
+        # input's own edges, which a window would move.
+        read_bounds = bounds if (bounds is not None and not weight) else None
 
         with _TileReader(workers=workers, block_size=block_size) as reader:
             # with neither option the loops below hand the file names to add,
@@ -766,7 +780,7 @@ class mosaic(data):
 
             self.setup_bounds_from_list(in_list, group=group, fields=fields, bounds=bounds,
                                         bands=bands, reader=reader)
-            message = self.setup_fields(in_list[0], group=group, fields=fields, bands=bands,
+            message = self.setup_fields(in_list[0], group=group, fields=fields, bands=bands, bounds=bounds,
                                         reader=reader)
             if message is not None:
                 return message
@@ -811,10 +825,11 @@ class mosaic(data):
                 # overwrite the mosaic with each subsequent tile
                 # for each file in the list
                 self.invalid = np.ones(self.dimensions[0:2],dtype=bool)
-                for item, grid, grid_bands, read_error in items(group=group, fields=read_fields, bands=bands):
+                for item, grid, grid_bands, read_error in items(group=group, fields=read_fields, bands=bands,
+                                                                 bounds=read_bounds):
                     if read_error is not None:
                         raise read_error
-                    self.replace(grid, group=group, fields=fields, bands=grid_bands)
+                    self.replace(grid, group=group, fields=fields, bands=grid_bands, bounds=read_bounds)
                 self.normalize(by_weight=False)
 
         return self
