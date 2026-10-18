@@ -194,3 +194,61 @@ def test_make_mosaic_remote_directory_needs_a_local_absolute_output(memory_tiles
         run_make_mosaic(monkeypatch, ['-d', 'memory://bucket/region/matched', '-g', 'E*.h5',
                                       '--in_group', 'z0/', '-F', 'z0', '-O', output])
     assert exit_info.value.code == 2
+
+
+# A window across four tiles: x from tiles 0, 40 and 80, y from tiles 0 and 40;
+# 31 and 52 are not on a cell (cells are at even values), so crop's >= / <= test
+# decides the edge cells, as the readers' bounds must.
+BOUNDS = [[10., 52.], [-12., 31.]]
+
+
+def whole_tiles(files, group, fields):
+    """the tiles read whole into memory: from_list never windows a grid it is given"""
+    return [pc.grid.mosaic().from_file(f, group=group, fields=fields) for f in files]
+
+
+@pytest.mark.parametrize('options', [dict(), dict(workers=2), dict(block_size=4096)],
+                         ids=['serial', 'workers', 'block_size'])
+@pytest.mark.parametrize('group, fields', [('z0', ['z0', 'cell_area']), ('dz', ['dz'])], ids=['2-D', '3-D'])
+def test_bounded_replace_mosaic_matches_cropping_whole_tiles(tiles, options, group, fields):
+    reference = mosaic(whole_tiles(tiles, group, fields), group=group, fields=fields, bounds=BOUNDS)
+    assert list(reference.shape[:2]) == [22, 22]
+    assert_same(reference, mosaic(tiles, group=group, fields=fields, bounds=BOUNDS, **options))
+
+
+@FORK_WARNING
+def test_bounded_replace_mosaic_of_remote_tiles(tiles, memory_tiles):
+    reference = mosaic(whole_tiles(tiles, 'z0', ['z0']), group='z0', fields=['z0'], bounds=BOUNDS)
+    assert_same(reference, mosaic(memory_tiles, group='z0', fields=['z0'], bounds=BOUNDS, block_size=4096))
+    assert_same(reference, mosaic(memory_tiles, group='z0', fields=['z0'], bounds=BOUNDS, workers=2))
+
+
+def test_bounded_replace_reads_only_the_window(tiles, monkeypatch):
+    shapes = []
+    from_h5 = pc.grid.data.from_h5
+    def spy(self, *args, **kwargs):
+        out = from_h5(self, *args, **kwargs)
+        if not kwargs.get('meta_only'):
+            shapes.append(getattr(out, 'z0').shape)
+        return out
+    monkeypatch.setattr(pc.grid.data, 'from_h5', spy)
+    result = mosaic(tiles, group='z0', fields=['z0'], bounds=BOUNDS)
+    # every data read is inside the 22 x 22 window; a whole tile is 31 x 31
+    assert shapes and max(max(s) for s in shapes) <= 22
+    assert_same(result, mosaic(whole_tiles(tiles, 'z0', ['z0']), group='z0', fields=['z0'], bounds=BOUNDS))
+
+
+def test_bounded_replace_mosaic_of_netcdf_files(tmp_path):
+    """the ATL11_to_ATL15 reference read: netCDF files, root group '', h and h_sigma"""
+    files = []
+    rng = np.random.default_rng(5)
+    for xc in (0., 40.):
+        x = xc + np.arange(-30., 30.1, 2.)
+        y = np.arange(-30., 30.1, 2.)
+        files.append(str(tmp_path / f'ref_{int(xc)}.nc'))
+        pc.grid.data().from_dict({'x': x, 'y': y, 'h': rng.normal(size=(y.size, x.size)),
+                                  'h_sigma': rng.random((y.size, x.size))}).to_nc(files[-1], replace=True)
+    kwargs = dict(group='', fields=['h', 'h_sigma'], bounds=[[20., 31.], [-5., 5.]])
+    reference = mosaic([pc.grid.mosaic().from_file(f, group='', fields=['h', 'h_sigma']) for f in files], **kwargs)
+    assert list(reference.shape[:2]) == [5, 6]
+    assert_same(reference, mosaic(files, **kwargs))
