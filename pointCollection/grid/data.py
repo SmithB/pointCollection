@@ -22,6 +22,7 @@ import posixpath
 import scipy
 import pointCollection as pc
 from . import DEM_date
+from . import nc_h5
 from .fill_edges import fill_edges
 import shapely
 
@@ -1067,8 +1068,9 @@ class data(object):
                             z=z.astype(self.fill_value.__class__)
                             z[z == this_fillvalue] = self.fill_value
                     # try to find grid mapping name from variable
+                    # (a netCDF4 file stores it as text that h5py returns as bytes)
                     try:
-                        grid_mapping_name = f_field.attrs['grid_mapping']
+                        grid_mapping_name = nc_h5._attribute_value(f_field.attrs['grid_mapping'])
                     except (KeyError,AttributeError):
                         pass
                     if swap_xy:
@@ -1111,7 +1113,8 @@ class data(object):
                 map_field_name = posixpath.join(group,grid_mapping_name)
                 try:
                     for att_name,att_val in h5f[map_field_name].attrs.items():
-                        self.projection[att_name] = att_val
+                        # str and scalars, as from_nc() returns them
+                        self.projection[att_name] = nc_h5._attribute_value(att_val)
                 except:
                     pass
         self.__update_extent__()

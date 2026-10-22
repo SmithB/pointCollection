@@ -291,6 +291,39 @@ def test_h5py_applies_scale_factor(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# from_h5 on a netCDF4 file finds the grid mapping from_nc finds
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('group', [None, 'grp'])
+def test_from_h5_reads_netcdf4_grid_mapping(tmp_path, group):
+    """
+    netCDF4 writes text attributes that h5py hands back as bytes, and from_h5
+    passed the bytes grid_mapping name to posixpath.join(), which raised
+    "Can't mix strings and bytes in path components" (ATL15 files do this).
+    """
+    path = write_packed_nc(str(tmp_path / 'packed.nc'), group=group)
+    kwargs = {'group': group} if group else {}
+    got = pc.grid.data(t_axis=0).from_h5(path, field='z', **kwargs)
+    expected = pc.grid.data().from_nc(path, engine='netcdf4', **kwargs)
+    assert got.projection == expected.projection
+    assert got.projection['spatial_epsg'] == '3413'
+
+
+def test_from_h5_projection_written_by_to_h5_is_unchanged(tmp_path):
+    """to_h5 writes str and scalar attributes, and they come back as written"""
+    pytest.importorskip('osgeo')
+    path = str(tmp_path / 'grid.h5')
+    D = pc.grid.data().from_dict({
+        'x': np.arange(9) * 100.,
+        'y': np.arange(7) * 100.,
+        'z': np.arange(63, dtype=float).reshape((7, 9))})
+    D.to_h5(path, srs_epsg=3413)
+    out = pc.grid.data().from_h5(path)
+    assert out.projection == D.crs
+    assert isinstance(out.projection['crs_wkt'], str)
+
+
+# ---------------------------------------------------------------------------
 # remote reads go through h5py, and only fetch what they need
 # ---------------------------------------------------------------------------
 
