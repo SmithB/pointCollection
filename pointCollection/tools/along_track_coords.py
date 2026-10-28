@@ -77,7 +77,7 @@ def along_track_coords(xy0, xyp, d_max=None, make_grid=False):
     lP = np.zeros_like(xyP, dtype=float)
     lP[1:]=np.cumsum(lxyP)
 
-    p2 = np.zeros_like(xy_sub, dtype=float)+np.Inf
+    p2 = np.zeros_like(xy_sub, dtype=float)+np.inf
     atc = np.zeros_like(xy_sub)+np.nan+1j*np.nan
 
     for xyp_i, dxyp_i, dlp_i, lp_i in zip(xyP[:-1], dxyP, lxyP, lP[:-1]):
