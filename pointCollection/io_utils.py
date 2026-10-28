@@ -6,6 +6,7 @@ access, letting HDF5 files be read from either local disk or a remote (e.g.
 s3://) location, and normalization of the data-format names used to tag the
 sources in an index or a tiling schema.
 """
+import contextlib
 import re
 
 # key -> (filesystem, expires_at or None).  Brokered DAAC credentials expire
@@ -399,6 +400,28 @@ def as_gdal_path(filename):
         return '/vsicurl/' + filename
     # unknown scheme: hand it to GDAL as-is and let GDAL report the problem
     return filename
+
+@contextlib.contextmanager
+def gdal_exceptions(use_exceptions=False):
+    """
+    Set the gdal/ogr/osr exception mode inside a block, then restore the
+    caller's mode on exit.
+
+    GDAL >= 3.9 issues a FutureWarning on the first gdal/ogr/osr call made
+    before UseExceptions() or DontUseExceptions() has been called, because
+    GDAL 4.0 will turn exceptions on by default.  A library should not flip
+    that process-wide switch for its callers, so pointCollection makes the
+    choice per-call with ExceptionMgr (GDAL >= 3.7), which also silences the
+    warning.  The default (False) keeps the behavior the code here was
+    written for: failed calls return None or an error code instead of
+    raising.
+    """
+    from osgeo import gdal, ogr, osr
+    with contextlib.ExitStack() as stack:
+        for module in (gdal, ogr, osr):
+            if hasattr(module, 'ExceptionMgr'):
+                stack.enter_context(module.ExceptionMgr(useExceptions=use_exceptions))
+        yield
 
 def glob_remote(pattern, fs=None):
     """
