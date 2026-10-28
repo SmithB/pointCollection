@@ -253,10 +253,19 @@ class data(object):
 
         for field in self.fields:
             ff=getattr(self, field)
+            n_finite=np.sum(np.isfinite(ff))
+            if n_finite > 0:
+                std=np.nanstd(ff)
+                minmax=[np.nanmin(ff), np.nanmax(ff)]
+            else:
+                # all-NaN or empty field: skip the nan-functions, which warn
+                # (or raise, for empty arrays)
+                std=np.nan
+                minmax=[np.nan, np.nan]
             finfo={'shape':ff.shape,
-                            'n_finite':np.sum(np.isfinite(ff)),
-                            'std':np.nanstd(ff),
-                            'minmax':[np.nanmin(ff), np.nanmax(ff)]}
+                            'n_finite':n_finite,
+                            'std':std,
+                            'minmax':minmax}
 
             table += [fmt % field +f' \t{finfo["shape"]}\t{finfo["n_finite"]}\t{finfo["std"]:0.2e}\t{finfo["minmax"][0]:0.2e} {finfo["minmax"][1]:0.2e}']
             summary[field] = finfo
