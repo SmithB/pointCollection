@@ -23,6 +23,7 @@ import scipy
 import pointCollection as pc
 from . import DEM_date
 from .fill_edges import fill_edges
+from ..io_utils import gdal_exceptions
 import shapely
 
 class data(object):
@@ -514,6 +515,7 @@ class data(object):
         elif file_format.lower() in ('nc','netcdf'):
             return self.from_nc(raster_file, **kwargs)
 
+    @gdal_exceptions()
     def from_geotif(self, file, date_format=None, **kwargs):
         """
         Read a raster from a geotiff file.
@@ -551,6 +553,7 @@ class data(object):
                 print(f'\n\tfor filename {file}')
         return self
 
+    @gdal_exceptions()
     def from_gdal(self, ds, field='z', bands=None, bounds=None, extent=None,
                   skip=1, fill_value=np.nan, min_res=None, meta_only=False,
                   t_range=None,
@@ -1680,6 +1683,7 @@ class data(object):
         out_ds=self.to_gdal(out_file=out_file,**kwargs)
         return out_ds
 
+    @gdal_exceptions()
     def to_gdal(self, driver='MEM', out_file='', field='z', srs_proj4=None,
                 srs_wkt=None, srs_epsg=None, EPSG=None, dtype=None,
                 options=["compress=LZW"]):
@@ -2306,6 +2310,7 @@ class data(object):
             dim = self.t_axis if len(getattr(self,field).shape)>2 else None
             getattr(self, field)[:]=fill_edges(getattr(self, field), w_smooth=w_smooth, dim=dim)
 
+    @gdal_exceptions()
     def rasterize_poly(self, in_geom, field='z', burn_value=1, epsg=1024, raster_epsg=None, poly_epsg=None):
         """Rasterize a shapely polygon"""
         from osgeo import gdal, osr, ogr
@@ -2349,6 +2354,7 @@ class data(object):
         # write the field from the mask ds to self
         setattr(self, field, mask_ds.z)
 
+    @gdal_exceptions()
     def crs_attributes(self, srs_proj4=None, srs_wkt=None, srs_epsg=None, **kwargs):
         """
         Return a dictionary of attributes for a projection.
