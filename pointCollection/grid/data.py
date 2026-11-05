@@ -1430,6 +1430,31 @@ class data(object):
         self.__update_size_and_shape__()
         return self
 
+    @staticmethod
+    def _bool_as_bytes(var):
+        """
+        Prepare a field for writing: booleans are written as bytes.
+
+        Boolean arrays cannot take the NaN fill value used for other fields,
+        so they are converted to unsigned bytes (0 and 1) with a nodata
+        value of 255.
+
+        Parameters
+        ----------
+        var : numpy.ndarray or None
+            field to write
+
+        Returns
+        -------
+        var : numpy.ndarray or None
+            the field, as uint8 if it was boolean
+        fill_value : int or None
+            255 if the field was boolean, otherwise None
+        """
+        if isinstance(var, np.ndarray) and var.dtype == bool:
+            return var.astype(np.uint8), 255
+        return var, None
+
     def to_h5(self, out_file, fields=None, group='/', replace=False,
               nocompression=False,
               attributes=None,
@@ -1439,7 +1464,7 @@ class data(object):
               **kwargs):
         # lazy import of h5py
         import h5py
-        """Write a grid data object to an hdf5 file."""
+        """Write a grid data object to an hdf5 file.  Boolean fields are written as bytes (uint8), with a nodata value of 255."""
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
         kwargs.setdefault('srs_epsg', None)
@@ -1498,12 +1523,15 @@ class data(object):
                         h5f[f_field_name][:]=getattr(self, field)
                 else:
                     #Otherwise, try to create the dataset
+                    data, bool_fillvalue = self._bool_as_bytes(getattr(self, field, None))
+                    dset_kwargs = {} if bool_fillvalue is None else {'fillvalue':bool_fillvalue}
                     try:
                         if nocompression or field in coord_fields:
-                            h5f.create_dataset(f_field_name, data=getattr(self, field))
+                            h5f.create_dataset(f_field_name, data=data, **dset_kwargs)
                         else:
-                            h5f.create_dataset(f_field_name, data=getattr(self, field),
-                                                   chunks=True, compression="gzip", fillvalue=self.fill_value)
+                            dset_kwargs.setdefault('fillvalue', self.fill_value)
+                            h5f.create_dataset(f_field_name, data=data,
+                                                   chunks=True, compression="gzip", **dset_kwargs)
                     except Exception:
                          pass
                 # try adding field attributes
@@ -1545,7 +1573,7 @@ class data(object):
               attributes = None,
               fill_value =None,
               **kwargs):
-        """Write a grid data object to a netCDF4 file."""
+        """Write a grid data object to a netCDF4 file.  Boolean fields are written as bytes (uint8), with a nodata value of 255."""
         kwargs.setdefault('srs_proj4', None)
         kwargs.setdefault('srs_wkt', None)
         kwargs.setdefault('srs_epsg', None)
@@ -1635,11 +1663,11 @@ class data(object):
                         ncf.variables[field][...] = var
                 elif hasattr(self, field):
                     #Otherwise, try to create the dataset
-                    var = getattr(self, field)
+                    var, bool_fillvalue = self._bool_as_bytes(getattr(self, field))
                     try:
                         ncf.createVariable(field, var.dtype, nc_dim,
                             zlib=np.logical_not(nocompression),
-                            fill_value=self.fill_value)
+                            fill_value=self.fill_value if bool_fillvalue is None else bool_fillvalue)
                     except Exception:
                         pass
                     else:
