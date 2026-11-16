@@ -23,6 +23,7 @@ import scipy
 import pointCollection as pc
 from . import DEM_date
 from .fill_edges import fill_edges
+from .linear_interp import linearGridInterpolator
 from ..io_utils import gdal_exceptions
 import shapely
 
@@ -2304,7 +2305,13 @@ class data(object):
                     grid_vars=(band_arr, row, col)
                 else:
                     grid_vars=(row, col, band_arr)
-            self.interpolator[field] = scipy.interpolate.RegularGridInterpolator(
+            # a three-dimensional grid is interpolated with a numba kernel
+            # (identical results) if numba is installed and the grid allows it
+            self.interpolator[field] = None
+            if len(grid_vars) == 3:
+                self.interpolator[field] = linearGridInterpolator.from_grid(grid_vars, z0)
+            if self.interpolator[field] is None:
+                self.interpolator[field] = scipy.interpolate.RegularGridInterpolator(
                                                     grid_vars,
                                                     z0, bounds_error=False)
         if gridded:
