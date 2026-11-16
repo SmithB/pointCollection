@@ -181,19 +181,34 @@ class mosaic(data):
 
     def update_spacing(self, temp):
         """
-        update the step size of mosaic
+        update the step size of mosaic from that of temp
+
+        The x and y spacings are set separately, in each dimension for which
+        temp has a (nonzero) spacing.  temp.spacing comes from temp's
+        coordinates or, in a dimension in which temp has a single value (a tile
+        cropped to bounds that end on its edge), from the grid or file that
+        temp was cut from.
         """
-        # try automatically getting spacing of tile
-        try:
-            dx = temp.x[1] - temp.x[0]
-            if not dx == 0:
-                self.spacing[0] = dx
-            dy = temp.y[1] - temp.y[0]
-            if not dy == 0:
-                self.spacing[1] = dy
-        except:
-            pass
+        temp_spacing = temp.spacing
+        if temp_spacing is None:
+            return self
+        if not isinstance(temp_spacing, (list, tuple, np.ndarray)):
+            temp_spacing = [temp_spacing, temp_spacing]
+        spacing = self._spacing
+        spacing = list(spacing) if isinstance(spacing, (list, tuple, np.ndarray)) else [spacing, spacing]
+        for dim in (0, 1):
+            delta = temp_spacing[dim]
+            if delta is not None and not delta == 0:
+                spacing[dim] = delta
+        self.spacing = spacing
         return self
+
+    def spacing_is_set(self):
+        """True if the mosaic has both an x and a y spacing"""
+        spacing = self.spacing
+        if not isinstance(spacing, (list, tuple, np.ndarray)):
+            return spacing is not None
+        return all(delta is not None for delta in spacing[:2])
 
     def update_bounds(self, temp):
         """
@@ -276,7 +291,7 @@ class mosaic(data):
                     if temp is not None and (len(temp.x)>0) and (len(temp.y) > 0):
                         #update the mosaic bounds to include this tile
                         self.update_bounds(temp)
-                        if self.spacing[0] is None:
+                        if not self.spacing_is_set():
                             self.update_spacing(temp)
                     else:
                         in_list.remove(item)
@@ -293,7 +308,7 @@ class mosaic(data):
                     this=this.cropped(*bounds)
                 if this is not None and (len(this.x)>0) and (len(this.y) > 0):
                     self.update_bounds(this)
-                    if self.spacing[0] is None:
+                    if not self.spacing_is_set():
                         self.update_spacing(this)
                     temp=this
                 else:

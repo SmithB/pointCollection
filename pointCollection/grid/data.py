@@ -81,12 +81,31 @@ class data(object):
     # Properties, accessible using dot syntax
     @property
     def spacing(self):
-        try:
-            col = getattr(self, self._col_coord)
-            row = getattr(self, self._row_coord)
-            return [col[1]-col[0], row[1]-row[0]]
-        except Exception:
+        """
+        Grid spacing, [column (x) spacing, row (y) spacing]
+
+        Each is calculated from the coordinates, if they have at least two
+        values.  A dimension with a single value (e.g. a grid cropped, or read
+        for bounds, that hold one row) has the spacing of the grid or file it
+        was cut from, which index (and so crop and copy_subset) and the
+        readers store.  If neither dimension has two values, this is the
+        stored spacing, as it was set.
+        """
+        from_coords = []
+        for name in (self._col_coord, self._row_coord):
+            coord = getattr(self, name, None)
+            try:
+                from_coords.append(coord[1]-coord[0] if len(coord) > 1 else None)
+            except TypeError:
+                from_coords.append(None)
+        if from_coords[0] is None and from_coords[1] is None:
             return self._spacing
+        if from_coords[0] is not None and from_coords[1] is not None:
+            return from_coords
+        stored = self._spacing
+        if not isinstance(stored, (list, tuple, np.ndarray)):
+            stored = [stored, stored]
+        return [this if this is not None else stored[dim] for dim, this in enumerate(from_coords)]
     @spacing.setter
     def spacing(self, val):
         self._spacing=val
@@ -166,6 +185,7 @@ class data(object):
                     setattr(temp, field, val)
         if self._time is not None:
             temp._time = self._time
+        temp._spacing = self.__stored_spacing_copy__()
         for field in fields:
             if hasattr(self, field):
                 setattr(temp, field, getattr(self, field).copy())
@@ -203,9 +223,36 @@ class data(object):
                     setattr(temp, field, val)
         if self._time is not None:
             temp._time = self._time
+        temp._spacing = self.__stored_spacing_copy__()
         temp.__update_size_and_shape__()
         temp.__update_extent__()
         return temp
+
+    def __stored_spacing_copy__(self):
+        """A copy of the stored spacing (see spacing), for a copy of self."""
+        stored = getattr(self, '_spacing', None)
+        if isinstance(stored, (list, tuple, np.ndarray)):
+            return list(stored)
+        return stored
+
+    def __inherit_spacing__(self, x, y, skip=1):
+        """
+        Store the spacing of the coordinates x and y of a file (or grid) that
+        self is being read (or cut) from, so that a dimension of self with a
+        single value still has a spacing (see spacing).  y is oriented
+        increasing, so its spacing is positive.
+        """
+        stored = self.__stored_spacing_copy__()
+        if not isinstance(stored, list):
+            stored = [stored, stored]
+        for dim, coord in enumerate((x, y)):
+            try:
+                if len(coord) > 1:
+                    delta = (coord[1] - coord[0])*skip
+                    stored[dim] = np.abs(delta) if dim == 1 else delta
+            except TypeError:
+                pass
+        self._spacing = stored
 
     def __getitem__(self, key, **kwargs):
         """Return a field by name or a spatial subset of the data."""
@@ -651,6 +698,8 @@ class data(object):
         if skip >1:
             cols=cols[::skip]
             rows=rows[::skip]
+        # keep the file's spacing, for bounds that hold a single row or column
+        self.__inherit_spacing__(x, y, skip=skip)
         x=x[cols]
         y=y[rows]
         self.x=x
@@ -1096,6 +1145,8 @@ class data(object):
                     if self_field not in self.fields:
                         self.fields.append(self_field)
 
+            # keep the file's spacing, for bounds that hold a single row or column
+            self.__inherit_spacing__(x, y, skip=skip)
             setattr(self, coord_mapping.get(xname, self._col_coord), x[cols])
             row_arr = y[rows]
             if yorient==-1:
@@ -1409,7 +1460,9 @@ class data(object):
                 # set output field
                 self.assign({self_field:z})
 
-            # reduce x and y to bounds
+            # reduce x and y to bounds, keeping the file's spacing, for bounds
+            # that hold a single row or column
+            self.__inherit_spacing__(x, y, skip=skip)
             setattr(self, self._col_coord, x[slices[self._col_coord]])
             setattr(self, self._row_coord, y[slices[self._row_coord]])
             if t is not None:
@@ -2014,6 +2067,11 @@ class data(object):
         """Slice a grid by row or column."""
         if fields is None:
             fields=self.fields
+        # the subset keeps the spacing of self, which it reports in a
+        # dimension in which it has a single value (see spacing)
+        spacing = self.spacing
+        if isinstance(spacing, (list, tuple, np.ndarray)):
+            self._spacing = list(spacing)
         setattr(self, self._col_coord, getattr(self, self._col_coord)[col_ind])
         setattr(self, self._row_coord, getattr(self, self._row_coord)[row_ind])
         if band_ind is not None:
