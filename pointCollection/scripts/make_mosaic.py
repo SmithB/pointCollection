@@ -29,8 +29,13 @@ COMMAND LINE OPTIONS:
     -N --ignore_Nodata: ignore nodata values (except Nan) in inputs
     --block_size X: bytes per range request for remote tiles
     -j X, --workers X: read the tiles in X processes
+    --tile_rms_diff X: for each field X (one of --fields), also write
+        X_tile_rms_diff, the RMS difference between the tiles that contribute
+        to each cell (nonzero weight, finite value) over all pairs of them,
+        and X_tile_count, the number of those tiles
 
 UPDATE HISTORY:
+    Updated 11/2026: --tile_rms_diff
     Updated 09/2026: remote (URI) directories; --block_size and --workers
     Updated 05/2024: allow cropping in time for 3D fields
     Updated 01/2021: added option for setting projection attributes
@@ -129,6 +134,12 @@ def main():
              'pointCollection.io_utils.DEFAULT_REMOTE_BLOCK_SIZE)')
     parser.add_argument('--workers','-j', type=int, default=1,
         help='read the tiles in this many processes (default 1)')
+    parser.add_argument('--tile_rms_diff', type=str, nargs='+', default=None,
+        metavar='FIELD',
+        help='for each FIELD (one of --fields), also write FIELD_tile_rms_diff, '
+             'the RMS difference between the tiles that contribute to each cell '
+             '(nonzero weight, finite value) over all pairs of them, and '
+             'FIELD_tile_count, the number of those tiles')
     try:
         assert(len(sys.argv)>1)
         args=parser.parse_args()
@@ -205,7 +216,8 @@ def main():
                                       feather=args.feather,
                                       by_band=args.by_band,
                                       block_size=args.block_size,
-                                      workers=args.workers)
+                                      workers=args.workers,
+                                      tile_diff_fields=args.tile_rms_diff)
     if isinstance(mosaic, str):
         if args.verbose:
             print(f"pc.grid.mosaic failed for group {args.in_group} and fields {args.fields} with message:")

@@ -5,6 +5,8 @@ mosaic.py
 Routines for creating a weighted mosaic from a series of tiles
 
 UPDATE HISTORY:
+    Updated 11/2026: from_list can map the RMS difference between tiles
+        (tile_diff_fields)
     Updated 09/2026: from_list reads remote files with a block_size, and in a
         process pool (workers); tiles are still added in list order
     Updated 06/2023: calculate x and y arrays using np.arange and spacing
@@ -163,6 +165,8 @@ class mosaic(data):
         self.normalized=True
         self.use_time=False
         self.fields=[]
+        # running statistics for the RMS difference between tiles, by field
+        self.tile_diff={}
 
     def from_grid(self, source, copy=False):
         """make a mosaic object from a pc.data.grid object"""
@@ -359,6 +363,84 @@ class mosaic(data):
         self.invalid = np.ones(self.dimensions,dtype=bool)
         self.__update_size_and_shape__()
 
+    def setup_tile_diff(self, fields):
+        """
+        Start the statistics for the RMS difference between tiles for each of
+        fields, which must be fields of the mosaic (call after setup_fields).
+
+        Each tile adds its values where it contributes to the mosaic: where its
+        weight is nonzero (everywhere, for an unweighted mosaic) and its value
+        is finite.  For each field, the running count, mean and sum of squared
+        deviations from the mean (Welford's algorithm, which avoids the
+        cancellation of a sum-of-squares formula for large values such as
+        elevations) have the dimensions of the field, so a 3-D field has
+        statistics for each band.  finish_tile_diff turns them into fields.
+        """
+        self.tile_diff = {}
+        for field in fields:
+            if field not in self.field_dims:
+                raise ValueError(f'pointCollection.grid.mosaic: tile difference requested for {field}, '
+                                 f'which is not one of the mosaic fields {list(self.field_dims)}')
+            shape = self.dimensions[0:self.field_dims[field]]
+            self.tile_diff[field] = {'N': np.zeros(shape), 'mean': np.zeros(shape), 'M2': np.zeros(shape)}
+
+    def accumulate_tile_diff(self, field, values, contributes, iy0, ix0, band=None):
+        """
+        Add one tile's values to the tile-difference statistics of a field.
+
+        Parameters
+        ----------
+        field : str
+            Field name; nothing is done if it has no tile-difference statistics.
+        values : numpy array
+            The tile's values at the mosaic cells [iy0, ix0]: 2-D, or 3-D with
+            all bands of a 3-D field.
+        contributes : boolean numpy array
+            2-D: True where the tile contributes to the cells [iy0, ix0].
+        iy0, ix0 : numpy arrays
+            Mosaic image coordinates (from image_coordinates).
+        band : int, optional
+            The mosaic band of 2-D values of a 3-D field (band-by-band
+            mosaics).  The default is None.
+        """
+        if field not in self.tile_diff:
+            return
+        stats = self.tile_diff[field]
+        if values.ndim == 3:
+            contributes = contributes[:, :, None]
+        valid = contributes & np.isfinite(values)
+        index = (iy0, ix0) if band is None else (iy0, ix0, band)
+        N = stats['N'][index] + valid
+        mean = stats['mean'][index]
+        delta = np.where(valid, values - mean, 0.)
+        mean = mean + np.divide(delta, N, out=np.zeros_like(delta), where=valid)
+        stats['M2'][index] += np.where(valid, delta*(values - mean), 0.)
+        stats['N'][index] = N
+        stats['mean'][index] = mean
+
+    def finish_tile_diff(self):
+        """
+        Assign the tile-difference fields from the statistics started by
+        setup_tile_diff, for each field F:
+
+        F_tile_rms_diff : the RMS difference between the values of the tiles
+            that contribute to each cell, over all pairs of them; fill_value
+            where fewer than two tiles contribute.  For N tiles with sum of
+            squared deviations M2 about their mean, the sum of the squared
+            differences over the N(N-1)/2 pairs is N*M2, so the RMS
+            difference is sqrt(2*M2/(N-1)) (sqrt(2) x the sample standard
+            deviation).
+        F_tile_count : the number of tiles that contribute to each cell.
+        """
+        for field, stats in self.tile_diff.items():
+            N, M2 = stats['N'], stats['M2']
+            rms = np.zeros_like(M2) + self.fill_value
+            many = N > 1
+            rms[many] = np.sqrt(2*np.maximum(M2[many], 0)/(N[many]-1))
+            self.assign({field+'_tile_rms_diff': rms, field+'_tile_count': N})
+            for out_field in [field+'_tile_rms_diff', field+'_tile_count']:
+                self.field_dims[out_field] = self.field_dims[field]
+        self.tile_diff = {}
 
     def replace(self, item, group=None, fields=None, bands=None, bounds=None):
         """
@@ -392,6 +474,9 @@ class mosaic(data):
                     field_data=getattr(temp, field)
                     getattr(self, field)[iy0,ix0] = field_data[iy1, ix1]
                     self.invalid[iy0, ix0] = False
+                # an unweighted mosaic: every cell of the tile contributes
+                self.accumulate_tile_diff(field, field_data[iy1, ix1],
+                                          np.ones(np.broadcast_shapes(iy1.shape, ix1.shape), dtype=bool), iy0, ix0)
             except IndexError as e:
                 thestr = f"problem with field {field}"
                 if isinstance(item, str):
@@ -474,6 +559,7 @@ class mosaic(data):
                     field_data=getattr(temp, field).copy()
                     getattr(self, field)[iy0, ix0] += field_data*temp.weight[iy1,ix1]
                     self.invalid[iy0,ix0] = False
+                self.accumulate_tile_diff(field, field_data[iy1, ix1], temp.weight[iy1, ix1] > 0, iy0, ix0)
             except (IndexError, ValueError) as e:
                 thestr = f"problem with field {field}"
                 if isinstance(item, str):
@@ -568,9 +654,14 @@ class mosaic(data):
                     field_data[valid_mask==0]=0
                 if getattr(self, field).ndim==3:
                     getattr(self, field)[iy0, ix0, out_band] += field_data[iy1, ix1] * temp.weight[iy1,ix1]
+                    diff_band = out_band
                 else:
                     getattr(self, field)[iy0, ix0] += field_data[iy1, ix1] * temp.weight[iy1,ix1]
+                    diff_band = None
                 self.invalid[iy0, ix0] = False
+                # field_data is zero where it was invalid, but the weight is too
+                self.accumulate_tile_diff(field, field_data[iy1, ix1], temp.weight[iy1, ix1] > 0,
+                                          iy0, ix0, band=diff_band)
             except (IndexError, ValueError) as e:
                 thestr = f"problem with field {field}"
                 if isinstance(item, str):
@@ -716,6 +807,7 @@ class mosaic(data):
                   bands=None,
                   block_size=None,
                   workers=1,
+                  tile_diff_fields=None,
                   ):
         """
         Generate a mosaic from a list of inputs.
@@ -760,6 +852,12 @@ class mosaic(data):
             (measured, 2026-09): budget workers x 0.35 GiB on top of the
             mosaic.  The default is 1: files are read one at a time, in this
             process.
+        tile_diff_fields : iterable of str, optional
+            For each of these fields, also make F_tile_rms_diff, the RMS
+            difference between the values of the inputs that contribute to
+            each cell (nonzero weight, finite value), over all pairs of them,
+            and F_tile_count, the number of those inputs (see
+            setup_tile_diff and finish_tile_diff).  The default is None.
 
         Returns
         -------
@@ -799,6 +897,8 @@ class mosaic(data):
                                         reader=reader)
             if message is not None:
                 return message
+            if tile_diff_fields:
+                self.setup_tile_diff(tile_diff_fields)
             # add, add_to_band and replace read self.fields when fields is None
             read_fields = fields if fields is not None else self.fields.copy()
             # check if using a weighted summation scheme for calculating mosaic
@@ -846,5 +946,7 @@ class mosaic(data):
                         raise read_error
                     self.replace(grid, group=group, fields=fields, bands=grid_bands, bounds=read_bounds)
                 self.normalize(by_weight=False)
+            # after normalizing, which divides every field in self.fields by the weights
+            self.finish_tile_diff()
 
         return self
